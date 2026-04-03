@@ -1,0 +1,19 @@
+# Rust build outputs
+target/
+**/target/
+**/target*/
+.cargo-target*/
+**/.cargo-target*/
+
+# OMX local runtime state
+.omx/logs/
+.omx/state/
+.omx/metrics.json
+.omx/notepad.md
+.omx/hud-config.json
+.omx/setup-scope.json
+.omx/tmux-hook.json
+
+# OS junk
+Thumbs.db
+.DS_Store
