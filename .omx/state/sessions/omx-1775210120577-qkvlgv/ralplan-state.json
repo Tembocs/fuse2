@@ -1,0 +1,16 @@
+{
+  "active": false,
+  "current_phase": "completed",
+  "started_at": "2026-04-03T10:08:10Z",
+  "completed_at": "2026-04-03T10:10:30Z",
+  "task_description": "Consensus planning for Fuse Phase 1-5 / Stage 0 bootstrap.",
+  "spec_path": ".omx/specs/deep-interview-fuse-phase-1-to-5.md",
+  "prd_path": ".omx/plans/prd-fuse-phase-1-to-5.md",
+  "test_spec_path": ".omx/plans/test-spec-fuse-phase-1-to-5.md",
+  "status": "approved-for-execution",
+  "notes": [
+    "Strict staged bootstrap selected.",
+    "Stage 0/Core only.",
+    "Fuse Full implementation deferred; textual test artifacts still required in Phase 1."
+  ]
+}

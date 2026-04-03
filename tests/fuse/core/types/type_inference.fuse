@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// 3
+// done
+
+fn plusOne(n: Int) -> Int => n + 1
+
+@entrypoint
+fn main() {
+  val start = 2
+  val next = plusOne(start)
+  println(next)
+  println("done")
+}

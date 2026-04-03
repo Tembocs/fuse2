@@ -1,0 +1,8 @@
+// EXPECTED WARNING:
+// warning: write guard held across await
+//   --> write_guard_across_await.fuse:7:3
+
+@entrypoint
+async fn main() {
+  // placeholder Fuse Full test contract
+}

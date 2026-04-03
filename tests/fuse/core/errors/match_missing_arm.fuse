@@ -1,0 +1,14 @@
+// EXPECTED ERROR:
+// error: non-exhaustive match for `Result`
+//   --> match_missing_arm.fuse:6:3
+
+fn describe(result: Result<Int, String>) -> String {
+  match result {
+    Ok(value) => f"value: {value}"
+  }
+}
+
+@entrypoint
+fn main() {
+  println(describe(Ok(7)))
+}

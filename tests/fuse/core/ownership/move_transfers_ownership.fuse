@@ -1,0 +1,20 @@
+// EXPECTED OUTPUT:
+// Closing: db://main
+// [del] Closed: db://main
+
+@value
+data class Connection(val dsn: String) {
+  fn __del__(owned self) {
+    println(f"[del] Closed: {self.dsn}")
+  }
+}
+
+fn closeConnection(owned conn: Connection) {
+  println(f"Closing: {conn.dsn}")
+}
+
+@entrypoint
+fn main() {
+  val conn = Connection("db://main")
+  closeConnection(move conn)
+}

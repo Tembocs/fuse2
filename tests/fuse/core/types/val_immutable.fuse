@@ -1,0 +1,9 @@
+// EXPECTED ERROR:
+// error: cannot assign to immutable binding `name`
+//   --> val_immutable.fuse:8:3
+
+@entrypoint
+fn main() {
+  val name = "Amara"
+  name = "Biko"
+}

@@ -1,0 +1,10 @@
+// EXPECTED ERROR:
+// error: cannot import non-pub item `secret`
+//   --> import_pub_only.fuse:5:1
+
+import src.helpers.private_only.{secret}
+
+@entrypoint
+fn main() {
+  println(secret())
+}

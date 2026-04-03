@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "active": true,
+  "skill": "team",
+  "keyword": "$team",
+  "phase": "planning",
+  "activated_at": "2026-04-03T11:09:40.333Z",
+  "updated_at": "2026-04-03T11:09:40.333Z",
+  "source": "keyword-detector",
+  "session_id": "",
+  "thread_id": "019d52f9-214f-7041-968a-89e6e113bc76",
+  "turn_id": "019d5305-854c-7b52-b741-395fefcd745d",
+  "input_lock": {
+    "active": false,
+    "scope": "deep-interview-auto-approval",
+    "acquired_at": "2026-04-03T10:00:38.784Z",
+    "blocked_inputs": [
+      "yes",
+      "y",
+      "proceed",
+      "continue",
+      "ok",
+      "sure",
+      "go ahead",
+      "next i should"
+    ],
+    "message": "Deep interview is active; auto-approval shortcuts are blocked until the interview finishes.",
+    "released_at": "2026-04-03T11:09:40.333Z",
+    "exit_reason": "handoff"
+  },
+  "iteration": 3,
+  "last_turn_at": "2026-04-03T11:58:15.685Z"
+}

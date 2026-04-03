@@ -1,0 +1,8 @@
+// EXPECTED ERROR:
+// error: cannot capture mutref across spawn boundary
+//   --> spawn_mutref_rejected.fuse:9:3
+
+@entrypoint
+fn main() {
+  // placeholder Fuse Full test contract
+}

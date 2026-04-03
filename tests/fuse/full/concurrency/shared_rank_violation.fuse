@@ -1,0 +1,8 @@
+// EXPECTED ERROR:
+// error: cannot acquire @rank(2) while holding @rank(3)
+//   --> shared_rank_violation.fuse:12:3
+
+@entrypoint
+fn main() {
+  // placeholder Fuse Full test contract
+}

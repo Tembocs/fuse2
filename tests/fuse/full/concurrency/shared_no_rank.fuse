@@ -1,0 +1,8 @@
+// EXPECTED ERROR:
+// error: Shared<T> requires @rank annotation
+//   --> shared_no_rank.fuse:8:3
+
+@entrypoint
+fn main() {
+  // placeholder Fuse Full test contract
+}

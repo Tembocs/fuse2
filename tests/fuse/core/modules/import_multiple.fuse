@@ -1,0 +1,9 @@
+// EXPECTED OUTPUT:
+// left-right
+
+import src.helpers.multi.{left, right}
+
+@entrypoint
+fn main() {
+  println(left() + "-" + right())
+}

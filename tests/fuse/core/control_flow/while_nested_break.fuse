@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// outer 0 inner 0
+// outer 1 inner 0
+
+@entrypoint
+fn main() {
+  var outer = 0
+  while outer < 2 {
+    var inner = 0
+    while inner < 3 {
+      println(f"outer {outer} inner {inner}")
+      break
+    }
+    outer = outer + 1
+  }
+}

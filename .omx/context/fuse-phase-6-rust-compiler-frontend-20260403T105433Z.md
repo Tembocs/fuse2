@@ -1,0 +1,37 @@
+# Context Snapshot
+
+- Task statement: Implement Phase 6 - Rust Compiler Frontend as outlined in `docs/fuse-implementation-plan-2.md`.
+- Desired outcome: A launch-ready clarified execution brief for Phase 6 / Stage 1 frontend work.
+- Stated solution: User asked to implement the Rust compiler frontend defined in Phase 6.
+- Probable intent hypothesis: Continue the repository from completed Stage 0 / Fuse Core work into a Rust-based Stage 1 frontend that reproduces lexer, parser, and checking behavior with production-grade diagnostics.
+- Known facts/evidence:
+  - `docs/fuse-implementation-plan-2.md` defines Phase 6 as reproducing Stage 0 lexer, parser, and checker in Rust, plus AST and HIR, with done-when centered on `cargo run --bin fusec -- --check <file.fuse>`.
+  - `docs/fuse-repository-layout-2.md` describes the intended `stage1/fusec/src/{lexer,parser,ast,hir,checker}` layout.
+  - The current workspace contains `stage0/`, `tests/`, `docs/`, and `.omx/`.
+  - `stage0/src/` already contains lexer/parser/AST/checker/evaluator files, so there is a concrete Stage 0 implementation to mirror.
+  - `tests/fuse/core/**` and `tests/fuse/full/**` already exist, including compile-error and compile-warning expectations relevant to Phase 6.
+  - `stage1/` does not currently exist in the workspace.
+  - Prior OMX artifacts exist for phases 1-5 under `.omx/context/`, `.omx/specs/`, and `.omx/plans/`.
+- Constraints:
+  - Deep-interview mode must clarify intent, non-goals, and decision boundaries before any execution handoff.
+  - No direct implementation is allowed inside this mode.
+  - The v2 docs remain the source of truth unless the user explicitly approves deviation.
+- Unknowns/open questions:
+  - Whether Phase 6 should target Fuse Core checking only, exactly as the "done when" block states, or also include the Phase 6 deliverables listed for Full-facing checker modules (`rank`, `spawn`, `async_lint`) now.
+  - Whether the user wants a strict docs-faithful bootstrap of `stage1/` from scratch, or adaptation of any unstated external/reference Stage 1 implementation.
+  - What level of CLI, diagnostics, and test-runner parity is required in this repo for Phase 6 completion.
+- Decision-boundary unknowns:
+  - Whether OMX may decide Rust crate layout, module split, and AST/HIR representation details without further approval.
+  - Whether OMX may defer non-blocking planned files from the layout doc if the acceptance criteria can be met with a smaller implementation.
+  - Whether warning-message/error-message wording must exactly match test comments or only semantically match them.
+- Likely codebase touchpoints:
+  - `docs/fuse-implementation-plan-2.md`
+  - `docs/fuse-repository-layout-2.md`
+  - `.omx/specs/deep-interview-fuse-phase-1-to-5.md`
+  - `.omx/plans/prd-fuse-phase-1-to-5.md`
+  - `stage0/src/lexer.py`
+  - `stage0/src/parser.py`
+  - `stage0/src/fuse_ast.py`
+  - `stage0/src/checker.py`
+  - `tests/fuse/core/**`
+  - `tests/fuse/full/**`

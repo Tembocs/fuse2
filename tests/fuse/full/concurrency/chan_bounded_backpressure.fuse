@@ -1,0 +1,7 @@
+// EXPECTED OUTPUT:
+// blocked until receiver drains
+
+@entrypoint
+fn main() {
+  // placeholder Fuse Full test contract
+}

@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// A
+// B
+
+@entrypoint
+fn main() {
+  for item in ["A", "B", "C"] {
+    if item == "C" { break }
+    println(item)
+  }
+}

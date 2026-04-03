@@ -1,0 +1,17 @@
+// EXPECTED ERROR:
+// error: cannot use `conn` after `move`
+//   --> move_prevents_reuse.fuse:16:11
+
+@value
+data class Connection(val dsn: String)
+
+fn closeConnection(owned conn: Connection) {
+  println(f"Closing: {conn.dsn}")
+}
+
+@entrypoint
+fn main() {
+  val conn = Connection("db://main")
+  closeConnection(move conn)
+  println(conn.dsn)
+}

@@ -1,0 +1,2 @@
+pub fn left() -> String => "left"
+pub fn right() -> String => "right"

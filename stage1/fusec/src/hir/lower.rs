@@ -1,0 +1,39 @@
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+use crate::ast::nodes::{Declaration, Program as AstProgram};
+
+use super::Module;
+
+pub fn lower_program(program: &AstProgram, path: PathBuf) -> Module {
+    let mut imports = Vec::new();
+    let mut functions = Vec::new();
+    let mut data_classes = Vec::new();
+    let mut enums = Vec::new();
+    let mut extension_functions = HashMap::new();
+
+    for declaration in &program.declarations {
+        match declaration {
+            Declaration::Import(import_decl) => imports.push(import_decl.clone()),
+            Declaration::Function(function) => {
+                if let Some(receiver_type) = &function.receiver_type {
+                    extension_functions.insert((receiver_type.clone(), function.name.clone()), function.clone());
+                } else {
+                    functions.push(function.clone());
+                }
+            }
+            Declaration::DataClass(data_class) => data_classes.push(data_class.clone()),
+            Declaration::Enum(enum_decl) => enums.push(enum_decl.clone()),
+        }
+    }
+
+    Module {
+        path,
+        filename: program.filename.clone(),
+        imports,
+        functions,
+        data_classes,
+        enums,
+        extension_functions,
+    }
+}

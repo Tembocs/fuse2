@@ -1,0 +1,15 @@
+// EXPECTED ERROR:
+// error: cannot assign through `ref` parameter `user`
+//   --> ref_read_only.fuse:8:3
+
+data class User(var name: String)
+
+fn rename(ref user: User) {
+  user.name = "Biko"
+}
+
+@entrypoint
+fn main() {
+  val user = User("Amara")
+  rename(ref user)
+}

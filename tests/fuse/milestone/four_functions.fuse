@@ -1,0 +1,38 @@
+// EXPECTED OUTPUT:
+// Resource: file.txt (0)
+// Hello, Amara.
+// Resource: file.txt (2)
+// Consuming: file.txt
+// [del] Resource released: file.txt
+
+@value
+data class Resource(val name: String, var uses: Int) {
+  fn __del__(owned self) {
+    println(f"[del] Resource released: {self.name}")
+  }
+}
+
+fn inspect(ref r: Resource) {
+  println(f"Resource: {r.name} ({r.uses})")
+}
+
+fn increment(mutref r: Resource) {
+  r.uses = r.uses + 1
+}
+
+fn consume(owned r: Resource) {
+  println(f"Consuming: {r.name}")
+}
+
+fn greet(name: String) -> String => f"Hello, {name}."
+
+@entrypoint
+fn main() {
+  var r = Resource("file.txt", 0)
+  inspect(ref r)
+  println(greet("Amara"))
+  increment(mutref r)
+  increment(mutref r)
+  inspect(ref r)
+  consume(move r)
+}

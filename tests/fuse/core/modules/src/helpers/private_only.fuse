@@ -1,0 +1,2 @@
+fn secret() -> String => "nope"
+pub fn publicName() -> String => "ok"

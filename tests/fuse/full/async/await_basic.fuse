@@ -1,0 +1,7 @@
+// EXPECTED OUTPUT:
+// done
+
+@entrypoint
+async fn main() {
+  // placeholder Fuse Full test contract
+}

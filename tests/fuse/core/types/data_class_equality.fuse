@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// true
+// Point(1, 2)
+
+data class Point(val x: Int, val y: Int)
+
+@entrypoint
+fn main() {
+  val p1 = Point(1, 2)
+  val p2 = Point(1, 2)
+  println(p1 == p2)
+  println(p1)
+}

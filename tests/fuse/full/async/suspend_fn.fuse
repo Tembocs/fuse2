@@ -1,0 +1,9 @@
+// EXPECTED OUTPUT:
+// suspended
+
+suspend fn pause() { }
+
+@entrypoint
+fn main() {
+  // placeholder Fuse Full test contract
+}

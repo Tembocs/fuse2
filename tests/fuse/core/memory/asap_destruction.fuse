@@ -1,0 +1,22 @@
+// EXPECTED OUTPUT:
+// Using A: A
+// [del] Destroyed: A
+// Using B: B
+// [del] Destroyed: B
+// Done
+
+@value
+data class Sensor(val id: String) {
+  fn __del__(owned self) {
+    println(f"[del] Destroyed: {self.id}")
+  }
+}
+
+@entrypoint
+fn main() {
+  val a = Sensor("A")
+  val b = Sensor("B")
+  println(f"Using A: {a.id}")
+  println(f"Using B: {b.id}")
+  println("Done")
+}

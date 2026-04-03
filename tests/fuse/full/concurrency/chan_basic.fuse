@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// sent: 1
+// recv: 1
+
+// Phase 1 contract only. Fuse Full implementation is deferred.
+@entrypoint
+fn main() {
+  val ch = Chan::<Int>.new()
+  spawn { ch.send(1) }
+  println(f"recv: {ch.recv()}")
+}

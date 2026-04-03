@@ -1,0 +1,22 @@
+// EXPECTED OUTPUT:
+// start
+// Error: stop
+
+fn step(ok: Bool) -> Result<String, String> {
+  if ok { return Ok("ok") }
+  Err("stop")
+}
+
+fn run() -> Result<String, String> {
+  println("start")
+  step(false)?
+  Ok("done")
+}
+
+@entrypoint
+fn main() {
+  match run() {
+    Ok(msg)  => println(msg)
+    Err(err) => println(f"Error: {err}")
+  }
+}

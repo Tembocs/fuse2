@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// HELLO!
+// true
+
+fn String.scream(ref self) -> String {
+  self.toUpper() + "!"
+}
+
+fn Int.isEven(ref self) -> Bool {
+  self % 2 == 0
+}
+
+@entrypoint
+fn main() {
+  println("hello".scream())
+  println(4.isEven())
+}

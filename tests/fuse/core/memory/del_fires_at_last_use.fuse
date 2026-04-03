@@ -1,0 +1,18 @@
+// EXPECTED OUTPUT:
+// ping alpha
+// [del] Resource released: alpha
+// after
+
+@value
+data class Resource(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] Resource released: {self.name}")
+  }
+}
+
+@entrypoint
+fn main() {
+  val r = Resource("alpha")
+  println(f"ping {r.name}")
+  println("after")
+}

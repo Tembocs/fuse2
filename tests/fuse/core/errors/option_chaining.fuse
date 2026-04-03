@@ -1,0 +1,24 @@
+// EXPECTED OUTPUT:
+// en
+// Amara
+// Ken
+
+data class Profile(val displayName: String, val locale: String)
+data class User(val name: String, val profile: Option<Profile>)
+
+fn getLocale(user: User) -> String {
+  user.profile?.locale ?: "en"
+}
+
+fn getDisplayName(user: User) -> String {
+  user.profile?.displayName ?: user.name
+}
+
+@entrypoint
+fn main() {
+  val guest = User("Amara", None)
+  val known = User("Ken", Some(Profile("Ken", "sw")))
+  println(getLocale(guest))
+  println(getDisplayName(guest))
+  println(getDisplayName(known))
+}

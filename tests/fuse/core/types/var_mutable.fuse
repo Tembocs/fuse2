@@ -1,0 +1,9 @@
+// EXPECTED OUTPUT:
+// 2
+
+@entrypoint
+fn main() {
+  var count = 1
+  count = count + 1
+  println(count)
+}

@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// 0
+// 1
+
+@entrypoint
+fn main() {
+  var count = 0
+  while count < 5 {
+    if count == 2 { break }
+    println(count)
+    count = count + 1
+  }
+}

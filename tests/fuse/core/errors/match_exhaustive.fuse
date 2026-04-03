@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// value: 7
+// bad: nope
+
+fn describe(result: Result<Int, String>) -> String {
+  match result {
+    Ok(value) => f"value: {value}"
+    Err(err)  => f"bad: {err}"
+  }
+}
+
+@entrypoint
+fn main() {
+  println(describe(Ok(7)))
+  println(describe(Err("nope")))
+}

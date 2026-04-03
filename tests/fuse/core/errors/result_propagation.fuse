@@ -1,0 +1,25 @@
+// EXPECTED OUTPUT:
+// result: 5
+// Error: division by zero
+
+fn divide(a: Int, b: Int) -> Result<Int, String> {
+  if b == 0 { return Err("division by zero") }
+  Ok(a / b)
+}
+
+fn calculate(x: Int, y: Int) -> Result<String, String> {
+  val result = divide(x, y)?
+  Ok(f"result: {result}")
+}
+
+@entrypoint
+fn main() {
+  match calculate(10, 2) {
+    Ok(s)  => println(s)
+    Err(e) => println(f"Error: {e}")
+  }
+  match calculate(10, 0) {
+    Ok(s)  => println(s)
+    Err(e) => println(f"Error: {e}")
+  }
+}
