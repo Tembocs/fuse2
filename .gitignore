@@ -10,6 +10,7 @@ target/
 .omx/state/
 .omx/metrics.json
 .omx/notepad.md
+.omx/project-memory.json
 .omx/hud-config.json
 .omx/setup-scope.json
 .omx/tmux-hook.json

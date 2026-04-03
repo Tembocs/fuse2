@@ -1,0 +1,32 @@
+# Context Snapshot — Fuse Phase 7 Rust Compiler Backend
+
+- Task statement: Implement Phase 7 - Rust Compiler Backend.
+- Desired outcome: A launch-ready clarified execution brief for the Stage 1 backend / native codegen phase.
+- Stated solution: User asked to implement the Rust compiler backend.
+- Probable intent hypothesis: Move the current Stage 1 Rust frontend from `--check` parity into native compilation for Fuse Core without drifting into Phase 8 Fuse Full work.
+- Known facts/evidence:
+  - `docs/fuse-implementation-plan-2.md` defines Phase 7 as generating native binaries from checked Fuse Core programs using Cranelift.
+  - The same Phase 7 doc lists deliverables under `stage1/fusec/src/codegen/`, `stage1/fuse-runtime/`, and `stage1/cranelift-ffi/`.
+  - `docs/fuse-repository-layout-2.md` shows a broader Stage 1 layout that also includes later Full-facing checker/runtime modules, so literal directory shape and actual Phase 7 scope are not identical.
+  - Current `stage1/` only contains the Phase 6 frontend crate (`fusec`) with lexer/parser/AST/HIR/checker; no `codegen/`, `fuse-runtime/`, or `cranelift-ffi/` tree exists yet.
+  - The Phase 6 deep-interview and PRD explicitly kept backend/codegen and Full semantics out of scope until after frontend verification.
+- Constraints:
+  - Preserve the Phase 6 boundary discipline: Phase 7 should advance Stage 1 without silently absorbing Phase 8 Fuse Full work.
+  - No new dependencies should be added casually; Cranelift is documented as the intended backend for this phase.
+  - Verification will likely need both compile-time proof and runtime parity against Stage 0 outputs for Fuse Core programs.
+- Unknowns/open questions:
+  - Whether Phase 7 should include only the minimum Core-native backend path, or also the `cranelift-ffi` and runtime surfaces needed for later Stage 2 work in the same phase.
+  - Whether "all `tests/fuse/core/` compile and pass" means only representative milestone proof for now, or the full Core corpus as the acceptance target for this repo.
+  - What exact CLI surface is expected in this phase: keep `--check` and add compile mode, or replace it with a general compile-and-run path.
+  - Whether the known Cranelift pitfalls in the docs must be fully fixed now or merely documented/avoided.
+- Decision-boundary unknowns:
+  - How much OMX may decide about runtime layout, codegen ABI, CLI flags, and milestone selection without asking again.
+  - Whether OMX may stage the work in smaller deliverables if the full Phase 7 milestone proves too large for one pass.
+- Likely codebase touchpoints:
+  - `docs/fuse-implementation-plan-2.md`
+  - `docs/fuse-repository-layout-2.md`
+  - `docs/fuse-language-guide-2.md`
+  - `stage1/Cargo.toml`
+  - `stage1/fusec/**`
+  - `tests/fuse/core/**`
+  - `tests/fuse/milestone/four_functions.fuse`
