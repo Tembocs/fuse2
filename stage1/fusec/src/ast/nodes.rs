@@ -99,6 +99,7 @@ pub enum Statement {
 
 #[derive(Clone, Debug)]
 pub struct VarDecl {
+    pub rank: Option<i64>,
     pub mutable: bool,
     pub name: String,
     pub type_name: Option<String>,

@@ -19,6 +19,7 @@ enum ValueKind {
     String(String),
     List(Vec<FuseHandle>),
     Channel(ChannelValue),
+    Shared(FuseHandle),
     Data(DataValue),
     Option(Option<FuseHandle>),
     Result { is_ok: bool, value: FuseHandle },
@@ -85,6 +86,7 @@ unsafe fn clone_to_string(handle: FuseHandle) -> String {
             rendered
         }
         ValueKind::Channel(_) => "Chan(..)".to_string(),
+        ValueKind::Shared(value) => unsafe { clone_to_string(*value) },
         ValueKind::Data(data) => {
             let mut rendered = String::new();
             let _ = write!(&mut rendered, "{}(", data.type_name);
@@ -253,6 +255,7 @@ pub unsafe extern "C" fn fuse_is_truthy(handle: FuseHandle) -> bool {
             ValueKind::String(value) => !value.is_empty(),
             ValueKind::List(value) => !value.is_empty(),
             ValueKind::Channel(value) => !value.items.is_empty(),
+            ValueKind::Shared(_) => true,
             ValueKind::Data(_) => true,
             ValueKind::Unit => false,
         }
@@ -394,6 +397,26 @@ pub unsafe extern "C" fn fuse_chan_recv(chan: FuseHandle) -> FuseHandle {
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_shared_new(value: FuseHandle) -> FuseHandle {
+    FuseValue::new(ValueKind::Shared(value))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_shared_read(shared: FuseHandle) -> FuseHandle {
+    unsafe {
+        match &value_ref(shared).kind {
+            ValueKind::Shared(value) => *value,
+            _ => ptr::null_mut(),
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_shared_write(shared: FuseHandle) -> FuseHandle {
+    unsafe { fuse_shared_read(shared) }
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_data_new(
     type_name_ptr: *const u8,
     type_name_len: usize,
@@ -448,6 +471,9 @@ pub unsafe extern "C" fn fuse_release(handle: FuseHandle) {
             while let Some(item) = channel.items.pop_front() {
                 unsafe { fuse_release(item) };
             }
+        }
+        ValueKind::Shared(value) => {
+            unsafe { fuse_release(*value) };
         }
         _ => {}
     }

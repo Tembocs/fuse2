@@ -64,3 +64,45 @@ fn spawn_mutref_rejected_matches_current_checker_contract() {
     let actual = check_path_output(&path);
     assert_eq!(actual.trim(), expected.trim(), "{}", path.display());
 }
+
+#[test]
+fn shared_no_rank_matches_current_checker_contract() {
+    let path = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("shared_no_rank.fuse");
+    let (_, expected) = harness::extract_expected_block(&path);
+    let actual = check_path_output(&path);
+    assert_eq!(actual.trim(), expected.trim(), "{}", path.display());
+}
+
+#[test]
+fn shared_rank_violation_matches_current_checker_contract() {
+    let path = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("shared_rank_violation.fuse");
+    let (_, expected) = harness::extract_expected_block(&path);
+    let actual = check_path_output(&path);
+    assert_eq!(actual.trim(), expected.trim(), "{}", path.display());
+}
+
+#[test]
+fn shared_rank_ascending_is_checker_clean() {
+    let path = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("shared_rank_ascending.fuse");
+    let actual = check_path_output(&path);
+    assert!(
+        actual.trim().is_empty(),
+        "{}: expected success, got `{actual}`",
+        path.display()
+    );
+}

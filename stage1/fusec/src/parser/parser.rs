@@ -363,9 +363,14 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<Statement, Diagnostic> {
+        let rank = if self.peek(0).kind == TokenKind::At {
+            Some(self.parse_rank_decorator()?)
+        } else {
+            None
+        };
         let token = self.peek(0).clone();
         match token.kind {
-            TokenKind::Val | TokenKind::Var => Ok(Statement::VarDecl(self.parse_var_decl()?)),
+            TokenKind::Val | TokenKind::Var => Ok(Statement::VarDecl(self.parse_var_decl(rank)?)),
             TokenKind::Return => {
                 self.take();
                 let value = if matches!(self.peek(0).kind, TokenKind::RBrace | TokenKind::Semi) {
@@ -404,7 +409,19 @@ impl Parser {
         }
     }
 
-    fn parse_var_decl(&mut self) -> Result<VarDecl, Diagnostic> {
+    fn parse_rank_decorator(&mut self) -> Result<i64, Diagnostic> {
+        self.expect(TokenKind::At, "expected `@`")?;
+        let name = self.expect(TokenKind::Identifier, "expected decorator name")?;
+        if name.text != "rank" {
+            return Err(self.syntax_error("only `@rank(...)` is supported on statements", name.span));
+        }
+        self.expect(TokenKind::LParen, "expected `(` after `@rank`")?;
+        let value = self.expect(TokenKind::Int, "expected rank integer")?;
+        self.expect(TokenKind::RParen, "expected `)` after rank value")?;
+        Ok(value.text.parse().unwrap_or_default())
+    }
+
+    fn parse_var_decl(&mut self, rank: Option<i64>) -> Result<VarDecl, Diagnostic> {
         let start = self.take();
         let name = self.expect(TokenKind::Identifier, "expected binding name")?.text;
         let type_name = if self.match_kind(TokenKind::Colon).is_some() {
@@ -415,6 +432,7 @@ impl Parser {
         self.expect(TokenKind::Eq, "expected `=` in binding")?;
         let value = self.parse_expression()?;
         Ok(VarDecl {
+            rank,
             mutable: start.kind == TokenKind::Var,
             name,
             type_name,

@@ -1,8 +1,9 @@
 // EXPECTED ERROR:
 // error: Shared<T> requires @rank annotation
-//   --> shared_no_rank.fuse:8:3
+//   --> shared_no_rank.fuse:7:3
 
 @entrypoint
 fn main() {
-  // placeholder Fuse Full test contract
+  val cache: Shared<Int> = Shared::<Int>.new()
+  println("ok")
 }

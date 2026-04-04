@@ -3,5 +3,9 @@
 
 @entrypoint
 fn main() {
-  // placeholder Fuse Full test contract
+  @rank(1) val config: Shared<Int> = Shared::<Int>.new()
+  @rank(2) val metrics: Shared<Int> = Shared::<Int>.new()
+  val c = config.read()
+  val m = metrics.write()
+  println("ok")
 }

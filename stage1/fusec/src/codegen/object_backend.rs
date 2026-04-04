@@ -194,6 +194,9 @@ struct RuntimeFns {
     chan_new: FuncId,
     chan_send: FuncId,
     chan_recv: FuncId,
+    shared_new: FuncId,
+    shared_read: FuncId,
+    shared_write: FuncId,
     data_new: FuncId,
     data_set_field: FuncId,
     data_get_field: FuncId,
@@ -539,6 +542,9 @@ fn declare_runtime_functions(
         chan_new: declare(module, "fuse_chan_runtime_new", &[], &[pointer_type])?,
         chan_send: declare(module, "fuse_chan_runtime_send", &[pointer_type, pointer_type], &[])?,
         chan_recv: declare(module, "fuse_chan_runtime_recv", &[pointer_type], &[pointer_type])?,
+        shared_new: declare(module, "fuse_shared_runtime_new", &[pointer_type], &[pointer_type])?,
+        shared_read: declare(module, "fuse_shared_runtime_read", &[pointer_type], &[pointer_type])?,
+        shared_write: declare(module, "fuse_shared_runtime_write", &[pointer_type], &[pointer_type])?,
         data_new: declare(module, "fuse_data_new", &[pointer_type, pointer_type, pointer_type, pointer_type], &[pointer_type])?,
         data_set_field: declare(module, "fuse_data_set_field", &[pointer_type, pointer_type, pointer_type], &[])?,
         data_get_field: declare(module, "fuse_data_get_field", &[pointer_type, pointer_type], &[pointer_type])?,
@@ -1449,6 +1455,22 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     ty: Some(namespace.replace("::", "")),
                 })
             }
+            ("Shared", "new") => {
+                let init = if let Some(arg) = _args.first() {
+                    self.compile_expr(builder, arg)?.value
+                } else {
+                    self.runtime_nullary(builder, self.compiler.runtime.unit)
+                };
+                Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.shared_new,
+                        &[init],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some(namespace.replace("::", "")),
+                })
+            }
             _ => Err(format!("unsupported type namespace call `{namespace}.{member}`")),
         }
     }
@@ -1493,6 +1515,29 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     ty: chan_inner_type(&receiver_type),
                 }),
                 other => Err(format!("unsupported Chan member call `{other}`")),
+            };
+        }
+        if layout::canonical_type_name(&receiver_type) == "Shared" {
+            return match member.name.as_str() {
+                "read" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.shared_read,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: option_inner_type(&receiver_type).or(Some("Unit".to_string())),
+                }),
+                "write" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.shared_write,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: option_inner_type(&receiver_type).or(Some("Unit".to_string())),
+                }),
+                other => Err(format!("unsupported Shared member call `{other}`")),
             };
         }
         if layout::canonical_type_name(&receiver_type) == "String" {
@@ -2219,6 +2264,8 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                             Some(data_name.to_string())
                         } else if layout::canonical_type_name(data_name) == "Chan" {
                             Some(data_name.replace("::", ""))
+                        } else if layout::canonical_type_name(data_name) == "Shared" {
+                            Some(data_name.replace("::", ""))
                         } else {
                             self.compiler
                                 .session
@@ -2233,6 +2280,12 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         return match member.name.as_str() {
                             "send" => Some("Unit".to_string()),
                             "recv" => chan_inner_type(&receiver_type),
+                            _ => None,
+                        };
+                    }
+                    if layout::canonical_type_name(&receiver_type) == "Shared" {
+                        return match member.name.as_str() {
+                            "read" | "write" => option_inner_type(&receiver_type).or(Some("Unit".to_string())),
                             _ => None,
                         };
                     }

@@ -207,7 +207,7 @@ Current repo evidence:
 
 ### Unit 7 — `Shared<T>` Runtime Core
 
-- Status: `not started`
+- Status: `in progress`
 - Dependencies: Unit 3
 - Likely files:
   - `stage1/fuse-runtime/src/shared.rs`
@@ -222,7 +222,7 @@ Current repo evidence:
 
 ### Unit 8 — `@rank` Checker Enforcement
 
-- Status: `not started`
+- Status: `complete`
 - Dependencies: Unit 7
 - Likely files:
   - `stage1/fusec/src/checker/rank.rs`
@@ -379,3 +379,5 @@ Current repo evidence:
 Units 1 through 4 are complete: the Phase 8 ledger exists, the Full harness now classifies and parses current Full fixtures, minimal `spawn` runtime/codegen support is in place, and `spawn_mutref_rejected` is enforced as a real checker contract. Unit 5 is in progress, with `chan_basic` already compiling and running through Stage 1 while bounded-channel behavior remains to be implemented.
 
 The latest checkpoint advanced Unit 5 further: `Chan::<T>.bounded(n)` now exists, the first real Full channel fixture is no longer a placeholder, and the compile-run smoke harness was stabilized to avoid wrapper-build races. Bounded backpressure behavior is still the remaining gap before Unit 5 can be marked complete.
+
+The current checkpoint also closes the checker side of `@rank`: `shared_no_rank` and `shared_rank_violation` are now real compile-error fixtures, `shared_rank_ascending` is checker-clean, and a minimal Shared runtime hook is sufficient for the positive smoke path. At this point Units 5 and 7 remain open only for deeper runtime semantics, while Unit 8 is complete.

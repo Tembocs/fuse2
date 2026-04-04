@@ -70,6 +70,37 @@ fn bounded_chan_smoke_compiles_and_runs() {
 }
 
 #[test]
+fn shared_rank_ascending_fixture_compiles_and_runs() {
+    let _guard = COMPILE_LOCK.lock().expect("compile lock");
+    let fixture = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("shared_rank_ascending.fuse");
+    let output = harness::unique_output_path("shared_rank_ascending_full");
+    let compile = harness::compile_fixture(&fixture, &output);
+    assert!(
+        compile.status.success(),
+        "compile failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&compile.stdout),
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let run = harness::run_compiled_binary(&output);
+    assert!(
+        run.status.success(),
+        "binary failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let actual = String::from_utf8(run.stdout).expect("utf-8 stdout");
+    let (_, expected) = harness::extract_expected_block(&fixture);
+    assert_eq!(actual.trim(), expected.trim(), "{}", fixture.display());
+}
+
+#[test]
 fn full_fixture_files_are_present() {
     let root = harness::repo_root().join("tests").join("fuse").join("full");
     let count = walk(&root);

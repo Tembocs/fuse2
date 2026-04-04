@@ -16,6 +16,8 @@ struct BindingInfo {
     mutable: bool,
     param_convention: Option<String>,
     type_name: Option<String>,
+    rank: Option<i64>,
+    held_rank: Option<i64>,
     moved: bool,
 }
 
@@ -188,6 +190,8 @@ impl Checker {
                     mutable: true,
                     param_convention: param.convention.clone(),
                     type_name: param.type_name.clone(),
+                    rank: None,
+                    held_rank: None,
                     moved: false,
                 },
             );
@@ -242,12 +246,39 @@ impl Checker {
                     .clone()
                     .or_else(|| self.infer_expr_type(module, &var_decl.value, scope, owner_name));
                 self.check_expr(module, &var_decl.value, scope, owner_name, loop_depth);
+                let held_rank = self.held_rank_from_expr(scope, &var_decl.value);
+                if let Some(type_name) = ty.as_deref() {
+                    if type_name.starts_with("Shared") && var_decl.rank.is_none() {
+                        self.add_error(
+                            &display_name(&module.path),
+                            var_decl.span,
+                            "Shared<T> requires @rank annotation",
+                            None,
+                        );
+                    }
+                }
+                if let Some(acquired_rank) = held_rank {
+                    if let Some(current_max) = scope.values().filter_map(|binding| binding.held_rank).max() {
+                        if acquired_rank < current_max {
+                            self.add_error(
+                                &display_name(&module.path),
+                                var_decl.span,
+                                format!(
+                                    "cannot acquire @rank({acquired_rank}) while holding @rank({current_max})"
+                                ),
+                                None,
+                            );
+                        }
+                    }
+                }
                 scope.insert(
                     var_decl.name.clone(),
                     BindingInfo {
                         mutable: var_decl.mutable,
                         param_convention: None,
                         type_name: ty,
+                        rank: var_decl.rank,
+                        held_rank,
                         moved: false,
                     },
                 );
@@ -277,6 +308,8 @@ impl Checker {
                         mutable: true,
                         param_convention: None,
                         type_name: None,
+                        rank: None,
+                        held_rank: None,
                         moved: false,
                     },
                 );
@@ -729,6 +762,26 @@ impl Checker {
                 let _ = owner_name;
             }
         }
+    }
+
+    fn held_rank_from_expr(
+        &self,
+        scope: &HashMap<String, BindingInfo>,
+        expr: &hir::Expr,
+    ) -> Option<i64> {
+        let hir::Expr::Call(call) = expr else {
+            return None;
+        };
+        let hir::Expr::Member(member) = call.callee.as_ref() else {
+            return None;
+        };
+        if !matches!(member.name.as_str(), "read" | "write" | "try_write") {
+            return None;
+        }
+        let hir::Expr::Name(name) = member.object.as_ref() else {
+            return None;
+        };
+        scope.get(&name.value)?.rank
     }
 
     fn resolve_function(&self, name: &str) -> Option<hir::FunctionDecl> {
