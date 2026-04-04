@@ -270,6 +270,14 @@ impl<'a> BackendCompiler<'a> {
                     .map_err(|error| error.to_string())?;
                 self.function_ids.insert(name, func_id);
             }
+            for function in loaded.extensions.values() {
+                let name = layout::function_symbol(loaded.path.as_path(), &function.name);
+                let func_id = self
+                    .module
+                    .declare_function(&name, Linkage::Local, &self.handle_signature(function.params.len()))
+                    .map_err(|error| error.to_string())?;
+                self.function_ids.insert(name, func_id);
+            }
             for data in loaded.data_classes.values() {
                 for method in &data.methods {
                     let name = layout::function_symbol(loaded.path.as_path(), &method.name);
@@ -299,6 +307,17 @@ impl<'a> BackendCompiler<'a> {
         for loaded in self.session.modules.values() {
             for function in loaded.functions.values() {
                 self.compile_function(loaded.path.as_path(), function)?;
+            }
+            for function in loaded.extensions.values() {
+                let mut function = function.clone();
+                if let Some(receiver_type) = &function.receiver_type {
+                    if let Some(param) = function.params.first_mut() {
+                        if param.name == "self" && param.type_name.is_none() {
+                            param.type_name = Some(receiver_type.clone());
+                        }
+                    }
+                }
+                self.compile_function(loaded.path.as_path(), &function)?;
             }
             for data in loaded.data_classes.values() {
                 for method in &data.methods {
@@ -389,16 +408,34 @@ impl<'a> BackendCompiler<'a> {
                 },
             );
         }
-        lowering.compile_statements(&mut builder, &function.body.statements)?;
-        if !lowering.has_explicit_return {
-            let result = lowering.runtime_nullary(&mut builder, lowering.compiler.runtime.unit);
-            if function.return_type.is_none() {
+        let (prefix_statements, final_expr) = match function.body.statements.split_last() {
+            Some((fa::Statement::Expr(expr_stmt), prefix)) if function.return_type.is_some() => {
+                (prefix, Some(expr_stmt.expr.clone()))
+            }
+            _ => (function.body.statements.as_slice(), None),
+        };
+        lowering.compile_statements(&mut builder, prefix_statements)?;
+        if !lowering.current_block_is_terminated(&builder) {
+            let result = if let Some(expr) = final_expr.as_ref() {
+                lowering.compile_expr(&mut builder, expr)?.value
+            } else {
+                lowering.runtime_nullary(&mut builder, lowering.compiler.runtime.unit)
+            };
+            if function.return_type.is_none() && final_expr.is_none() {
                 lowering.release_remaining(&mut builder);
             }
             builder.ins().return_(&[result]);
         }
         builder.seal_all_blocks();
         builder.finalize();
+        let flags = settings::Flags::new(settings::builder());
+        if let Err(err) = cranelift_codegen::verify_function(&ctx.func, &flags) {
+            return Err(cranelift_codegen::print_errors::pretty_verifier_error(
+                &ctx.func,
+                None,
+                err,
+            ));
+        }
         self.module
             .define_function(func_id, &mut ctx)
             .map_err(|error| error.to_string())
@@ -628,7 +665,6 @@ struct LoweringState<'a, 'b> {
     locals: HashMap<String, LocalBinding>,
     next_var: usize,
     loops: Vec<LoopFrame>,
-    has_explicit_return: bool,
 }
 
 impl<'a, 'b> LoweringState<'a, 'b> {
@@ -644,7 +680,6 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             locals: HashMap::new(),
             next_var: 0,
             loops: Vec::new(),
-            has_explicit_return: false,
         }
     }
 
@@ -662,7 +697,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         let future = compute_future_uses(statements);
         for (index, statement) in statements.iter().enumerate() {
             self.compile_statement(builder, statement)?;
-            if builder.is_unreachable() {
+            if self.current_block_is_terminated(builder) {
                 break;
             }
             self.release_dead(builder, &future[index]);
@@ -696,7 +731,6 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 } else {
                     self.runtime_nullary(builder, self.compiler.runtime.unit)
                 };
-                self.has_explicit_return = true;
                 builder.ins().return_(&[value]);
             }
             fa::Statement::Break(_) => {
@@ -790,7 +824,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         });
         self.compile_statements(builder, &while_stmt.body.statements)?;
         self.loops.pop();
-        if !builder.is_unreachable() {
+        if !self.current_block_is_terminated(builder) {
             builder.ins().jump(cond_block, &[]);
         }
         builder.switch_to_block(exit_block);
@@ -841,7 +875,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         });
         self.compile_statements(builder, &for_stmt.body.statements)?;
         self.loops.pop();
-        if !builder.is_unreachable() {
+        if !self.current_block_is_terminated(builder) {
             let next = builder.ins().iadd_imm(index, 1);
             builder.def_var(index_var, next);
             builder.ins().jump(cond_block, &[]);
@@ -865,7 +899,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         });
         self.compile_statements(builder, statements)?;
         self.loops.pop();
-        if !builder.is_unreachable() {
+        if !self.current_block_is_terminated(builder) {
             builder.ins().jump(body_block, &[]);
         }
         builder.switch_to_block(exit_block);
@@ -1512,6 +1546,28 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             .ty
             .clone()
             .ok_or_else(|| format!("cannot infer receiver type for `{}`", member.name))?;
+        if let Some((target_module, function)) = self
+            .compiler
+            .session
+            .resolve_extension(&receiver_type, &member.name)
+        {
+            let symbol = layout::function_symbol(target_module, &function.name);
+            let func_id = *self
+                .compiler
+                .function_ids
+                .get(&symbol)
+                .ok_or_else(|| format!("missing function id for `{symbol}`"))?;
+            let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
+            let mut lowered_args = vec![receiver.value];
+            for arg in args {
+                lowered_args.push(self.compile_expr(builder, arg)?.value);
+            }
+            let call = builder.ins().call(local, &lowered_args);
+            return Ok(TypedValue {
+                value: builder.inst_results(call)[0],
+                ty: function.return_type.clone(),
+            });
+        }
         if layout::canonical_type_name(&receiver_type) == "Chan" {
             return match member.name.as_str() {
                 "send" => {
@@ -1585,27 +1641,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             };
         }
 
-        let (target_module, function) = self
-            .compiler
-            .session
-            .resolve_extension(&receiver_type, &member.name)
-            .ok_or_else(|| format!("unknown extension `{receiver_type}.{}`", member.name))?;
-        let symbol = layout::function_symbol(target_module, &function.name);
-        let func_id = *self
-            .compiler
-            .function_ids
-            .get(&symbol)
-            .ok_or_else(|| format!("missing function id for `{symbol}`"))?;
-        let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
-        let mut lowered_args = vec![receiver.value];
-        for arg in args {
-            lowered_args.push(self.compile_expr(builder, arg)?.value);
-        }
-        let call = builder.ins().call(local, &lowered_args);
-        Ok(TypedValue {
-            value: builder.inst_results(call)[0],
-            ty: function.return_type.clone(),
-        })
+        Err(format!("unknown extension `{receiver_type}.{}`", member.name))
     }
 
     fn compile_data_constructor(
@@ -1616,7 +1652,9 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         args: &[fa::Expr],
     ) -> Result<TypedValue, String> {
         let full_name = layout::data_type_name(module_path, &data.name);
-        let type_name = self.string_value(builder, &full_name)?;
+        let data_id = self.compiler.string_data_id(&full_name)?;
+        let local = self.compiler.module.declare_data_in_func(data_id, builder.func);
+        let type_name_ptr = builder.ins().symbol_value(self.compiler.pointer_type, local);
         let destructor_ptr = if data.methods.iter().any(|method| method.name == "__del__") {
             let symbol = layout::destructor_symbol(module_path, &data.name);
             let func_id = *self
@@ -1635,7 +1673,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             builder,
             self.compiler.runtime.data_new,
             &[
-                type_name,
+                type_name_ptr,
                 name_len,
                 field_count,
                 destructor_ptr,
@@ -1806,8 +1844,10 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 types::I8,
             );
             let cont = builder.create_block();
+            let fail = builder.create_block();
             let cond = builder.ins().icmp_imm(IntCC::NotEqual, some, 0);
-            builder.ins().brif(cond, cont, &[], cont, &[]);
+            builder.ins().brif(cond, cont, &[], fail, &[]);
+            builder.switch_to_block(fail);
             let none = self.runtime_nullary(builder, self.compiler.runtime.none);
             builder.ins().return_(&[none]);
             builder.switch_to_block(cont);
@@ -1828,8 +1868,10 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             types::I8,
         );
         let cont = builder.create_block();
+        let fail = builder.create_block();
         let cond = builder.ins().icmp_imm(IntCC::NotEqual, ok, 0);
-        builder.ins().brif(cond, cont, &[], cont, &[]);
+        builder.ins().brif(cond, cont, &[], fail, &[]);
+        builder.switch_to_block(fail);
         let err_value = self.runtime(
             builder,
             self.compiler.runtime.result_unwrap,
@@ -1872,7 +1914,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
 
         builder.switch_to_block(then_block);
         self.compile_statements(builder, &if_expr.then_branch.statements)?;
-        if !builder.is_unreachable() {
+        if !self.current_block_is_terminated(builder) {
             let value = self.runtime_nullary(builder, self.compiler.runtime.unit);
             self.jump_value(builder, done, value);
         }
@@ -1882,14 +1924,14 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         match &if_expr.else_branch {
             Some(fa::ElseBranch::Block(block)) => {
                 self.compile_statements(builder, &block.statements)?;
-                if !builder.is_unreachable() {
+                if !self.current_block_is_terminated(builder) {
                     let value = self.runtime_nullary(builder, self.compiler.runtime.unit);
                     self.jump_value(builder, done, value);
                 }
             }
             Some(fa::ElseBranch::IfExpr(expr)) => {
                 let value = self.compile_if(builder, expr)?;
-                if !builder.is_unreachable() {
+                if !self.current_block_is_terminated(builder) {
                     self.jump_value(builder, done, value.value);
                 }
             }
@@ -1917,6 +1959,11 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             .ty
             .clone()
             .unwrap_or_else(|| "Result<Unknown, Unknown>".to_string());
+        if matches!(layout::canonical_type_name(&subject_type), "Result" | "Option")
+            && match_expr.arms.len() == 2
+        {
+            return self.compile_two_arm_match(builder, subject, &subject_type, match_expr);
+        }
         let done = builder.create_block();
         builder.append_block_param(done, self.compiler.pointer_type);
         let mut next = builder.create_block();
@@ -1943,7 +1990,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     }
                 }
             };
-            if !builder.is_unreachable() {
+            if !self.current_block_is_terminated(builder) {
                 self.jump_value(builder, done, value.value);
             }
             next = miss_block;
@@ -1952,6 +1999,67 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         builder.switch_to_block(next);
         let value = self.runtime_nullary(builder, self.compiler.runtime.unit);
         self.jump_value(builder, done, value);
+        builder.switch_to_block(done);
+        self.locals = base_locals;
+        Ok(TypedValue {
+            value: builder.block_params(done)[0],
+            ty: match_expr.arms.iter().find_map(|arm| match &arm.body {
+                fa::ArmBody::Expr(expr) => self.infer_expr_type(expr),
+                fa::ArmBody::Block(_) => Some("Unit".to_string()),
+            }),
+        })
+    }
+
+    fn compile_two_arm_match(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        subject: TypedValue,
+        subject_type: &str,
+        match_expr: &fa::MatchExpr,
+    ) -> Result<TypedValue, String> {
+        let done = builder.create_block();
+        builder.append_block_param(done, self.compiler.pointer_type);
+        let first_block = builder.create_block();
+        let second_block = builder.create_block();
+        let matched = self.pattern_matches(builder, subject.value, subject_type, &match_expr.arms[0].pattern)?;
+        builder.ins().brif(matched, first_block, &[], second_block, &[]);
+
+        let base_locals = self.locals.clone();
+
+        builder.switch_to_block(first_block);
+        self.locals = base_locals.clone();
+        self.bind_pattern(builder, subject.value, subject_type, &match_expr.arms[0].pattern)?;
+        let first_value = match &match_expr.arms[0].body {
+            fa::ArmBody::Expr(expr) => self.compile_expr(builder, expr)?,
+            fa::ArmBody::Block(block) => {
+                self.compile_statements(builder, &block.statements)?;
+                TypedValue {
+                    value: self.runtime_nullary(builder, self.compiler.runtime.unit),
+                    ty: Some("Unit".to_string()),
+                }
+            }
+        };
+        if !self.current_block_is_terminated(builder) {
+            self.jump_value(builder, done, first_value.value);
+        }
+
+        builder.switch_to_block(second_block);
+        self.locals = base_locals.clone();
+        self.bind_pattern(builder, subject.value, subject_type, &match_expr.arms[1].pattern)?;
+        let second_value = match &match_expr.arms[1].body {
+            fa::ArmBody::Expr(expr) => self.compile_expr(builder, expr)?,
+            fa::ArmBody::Block(block) => {
+                self.compile_statements(builder, &block.statements)?;
+                TypedValue {
+                    value: self.runtime_nullary(builder, self.compiler.runtime.unit),
+                    ty: Some("Unit".to_string()),
+                }
+            }
+        };
+        if !self.current_block_is_terminated(builder) {
+            self.jump_value(builder, done, second_value.value);
+        }
+
         builder.switch_to_block(done);
         self.locals = base_locals;
         Ok(TypedValue {
@@ -1994,7 +2102,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     }
                 }
             };
-            if !builder.is_unreachable() {
+            if !self.current_block_is_terminated(builder) {
                 self.jump_value(builder, done, value.value);
             }
             next = miss_block;
@@ -2044,11 +2152,12 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         &[subject],
                         types::I8,
                     );
-                    Ok(self.truthy_value(builder, value))
+                    Ok(builder.ins().icmp_imm(IntCC::NotEqual, value, 0))
                 }
                 ("Result", "Err") => {
                     let is_ok = self.runtime_value(builder, self.compiler.runtime.result_is_ok, &[subject], types::I8);
-                    Ok(builder.ins().bxor_imm(is_ok, 1))
+                    let inverted = builder.ins().bxor_imm(is_ok, 1);
+                    Ok(builder.ins().icmp_imm(IntCC::NotEqual, inverted, 0))
                 }
                 ("Option", "Some") => {
                     let value = self.runtime_value(
@@ -2057,11 +2166,12 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         &[subject],
                         types::I8,
                     );
-                    Ok(self.truthy_value(builder, value))
+                    Ok(builder.ins().icmp_imm(IntCC::NotEqual, value, 0))
                 }
                 ("Option", "None") => {
                     let is_some = self.runtime_value(builder, self.compiler.runtime.option_is_some, &[subject], types::I8);
-                    Ok(builder.ins().bxor_imm(is_some, 1))
+                    let inverted = builder.ins().bxor_imm(is_some, 1);
+                    Ok(builder.ins().icmp_imm(IntCC::NotEqual, inverted, 0))
                 }
                 (base, name) => Err(format!("unsupported match pattern `{name}` on `{base}`")),
             },
@@ -2204,6 +2314,16 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         builder.ins().icmp_imm(IntCC::NotEqual, truthy, 0)
     }
 
+    fn current_block_is_terminated(&self, builder: &FunctionBuilder) -> bool {
+        let Some(block) = builder.current_block() else {
+            return true;
+        };
+        let Some(inst) = builder.func.layout.last_inst(block) else {
+            return false;
+        };
+        builder.func.dfg.insts[inst].opcode().is_terminator()
+    }
+
     fn usize_const(&self, builder: &mut FunctionBuilder, value: i64) -> Value {
         builder.ins().iconst(self.compiler.pointer_type, value)
     }
@@ -2297,6 +2417,13 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 },
                 fa::Expr::Member(member) => {
                     let receiver_type = self.infer_expr_type(&member.object)?;
+                    if let Some((_, function)) = self
+                        .compiler
+                        .session
+                        .resolve_extension(&receiver_type, &member.name)
+                    {
+                        return function.return_type.clone();
+                    }
                     if layout::canonical_type_name(&receiver_type) == "Chan" {
                         return match member.name.as_str() {
                             "send" => Some("Unit".to_string()),
@@ -2317,10 +2444,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                             _ => None,
                         };
                     }
-                    self.compiler
-                        .session
-                        .resolve_extension(&receiver_type, &member.name)
-                        .and_then(|(_, function)| function.return_type.clone())
+                    None
                 }
                 _ => None,
             },

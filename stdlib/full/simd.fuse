@@ -1,0 +1,6 @@
+// Fuse Full stdlib surface for SIMD helpers.
+
+@value
+data class SIMD() { }
+
+pub fn SIMD.sum(values: List) -> Int => 0

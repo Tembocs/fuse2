@@ -80,7 +80,8 @@ pub fn destructor_symbol(module_path: &Path, type_name: &str) -> String {
 }
 
 pub fn data_type_name(module_path: &Path, type_name: &str) -> String {
-    format!("{}::{}", sanitize_path(module_path), type_name)
+    let _ = module_path;
+    type_name.to_string()
 }
 
 fn sanitize_path(path: &Path) -> String {

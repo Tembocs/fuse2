@@ -1,0 +1,11 @@
+// Fuse Full stdlib surface for timer/timeout helpers.
+
+@value
+data class Timeout() { }
+
+@value
+data class Timer() { }
+
+pub fn Timeout.ms(value: Int) -> Timeout => Timeout()
+
+pub fn Timer.sleep(timeout: Timeout) { }

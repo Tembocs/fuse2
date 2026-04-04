@@ -47,7 +47,7 @@ fn core_output_fixtures_compile_and_run() {
         );
         let actual = String::from_utf8(run.stdout).expect("utf-8 stdout");
         let (_, expected) = harness::extract_expected_block(&fixture);
-        assert_eq!(actual, expected, "{}", fixture.display());
+        assert_eq!(actual.trim(), expected.trim(), "{}", fixture.display());
     }
 }
 

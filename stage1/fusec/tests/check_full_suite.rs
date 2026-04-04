@@ -122,23 +122,38 @@ fn write_guard_across_await_matches_current_warning_contract() {
 
 #[test]
 fn full_channel_stdlib_surface_is_present_and_parseable() {
-    let path = harness::repo_root()
-        .join("stdlib")
-        .join("full")
-        .join("chan.fuse");
-    let source = fs::read_to_string(&path).expect("read stdlib/full/chan.fuse");
-    parser::parse_source(&source, "chan.fuse")
-        .unwrap_or_else(|error| panic!("stdlib/full/chan.fuse: {}", error.render()));
-
+    let stdlib = harness::repo_root().join("stdlib").join("full");
     let importer = harness::repo_root()
         .join("tests")
         .join("fuse")
         .join("full")
         .join("concurrency")
         .join("chan_basic.fuse");
-    let resolved = common::resolve_import_path(&importer, "full.chan");
-    assert!(
-        resolved.as_deref() == Some(path.as_path()),
-        "expected full.chan to resolve to stdlib/full/chan.fuse"
-    );
+
+    let expected = [
+        ("chan", stdlib.join("chan.fuse")),
+        ("shared", stdlib.join("shared.fuse")),
+        ("timer", stdlib.join("timer.fuse")),
+        ("simd", stdlib.join("simd.fuse")),
+        ("http", stdlib.join("http.fuse")),
+    ];
+
+    for (module_name, path) in expected {
+        let source = fs::read_to_string(&path)
+            .unwrap_or_else(|_| panic!("read {}", path.display()));
+        parser::parse_source(
+            &source,
+            path.file_name()
+                .and_then(|part| part.to_str())
+                .unwrap_or("fixture.fuse"),
+        )
+        .unwrap_or_else(|error| panic!("{}: {}", path.display(), error.render()));
+
+        let resolved = common::resolve_import_path(&importer, &format!("full.{module_name}"));
+        assert!(
+            resolved.as_deref() == Some(path.as_path()),
+            "expected full.{module_name} to resolve to {}",
+            path.display()
+        );
+    }
 }

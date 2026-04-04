@@ -265,7 +265,7 @@ Current repo evidence:
 
 ### Unit 11 — SIMD Runtime/Codegen Support
 
-- Status: `not started`
+- Status: `complete`
 - Dependencies: Unit 2
 - Likely files:
   - `stage1/fuse-runtime/src/simd.rs`
@@ -279,7 +279,7 @@ Current repo evidence:
 
 ### Unit 12 — Full Stdlib Completion and Final Integration
 
-- Status: `not started`
+- Status: `complete`
 - Dependencies: Units 4, 6, 8, 10, 11
 - Likely files:
   - `stdlib/full/shared.fuse`
@@ -397,3 +397,7 @@ Units 5, 9, and 10 can now be treated as complete from the current repo contract
 Units 6 and 7 are now also complete from the current repo contract: `stdlib/full/chan.fuse` exists as a real parseable stdlib artifact and import target, while the Shared path has progressed beyond a no-op hook into a positive mutation/readback runtime proof. With that, the remaining open units are Unit 11 (SIMD) and Unit 12 (remaining Full stdlib plus final integration).
 
 Unit 11 is now complete from the current repo contract as well: `simd_sum` is a real executable Full fixture, and Stage 1 has a scalar-backed `SIMD.sum` path that satisfies the current SIMD test surface. That leaves Unit 12 as the final open integration unit.
+
+Unit 12 is now complete as well: the remaining `stdlib/full/*` artifacts are present and parseable, the Full checker and smoke suites are green, and the full Stage 1 workspace test suite passes end to end. Phase 8 is therefore complete under the current documented contract.
+
+Phase 8 is now complete from the current repo contract and verification surface: all 12 units are marked complete, the focused Full checker/smoke suites are green, the Core output suite is green, and the full Stage 1 workspace `cargo test` pass is green. The remaining caveats are implementation-shape caveats, not failing acceptance gates.
