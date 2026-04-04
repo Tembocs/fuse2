@@ -11,7 +11,7 @@ use cranelift_module::{default_libcall_names, DataDescription, FuncId, Linkage, 
 use cranelift_object::{ObjectBuilder, ObjectModule};
 
 use crate::ast::nodes as fa;
-use crate::common::resolve_import_path;
+use crate::common::{repo_root, resolve_import_path};
 use crate::hir::lower_program;
 use crate::parser::parse_source;
 
@@ -594,12 +594,8 @@ fn declare_runtime_functions(
     })
 }
 
-fn build_wrapper(input: &Path, output: &Path, object: &[u8]) -> Result<(), String> {
-    let repo_root = input
-        .ancestors()
-        .find(|path| path.join("stage1").is_dir())
-        .ok_or_else(|| "failed to locate repository root".to_string())?;
-    let stage1_root = repo_root.join("stage1");
+fn build_wrapper(_input: &Path, output: &Path, object: &[u8]) -> Result<(), String> {
+    let stage1_root = repo_root().join("stage1");
     let generated_root = stage1_root.join("target").join("generated");
     fs::create_dir_all(&generated_root)
         .map_err(|error| format!("failed to create generated directory: {error}"))?;

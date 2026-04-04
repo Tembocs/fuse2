@@ -2,11 +2,29 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub fn repo_root() -> PathBuf {
+    if let Ok(root) = std::env::var("FUSE_STAGE1_ROOT") {
+        let root = PathBuf::from(root);
+        if looks_like_repo_root(&root) {
+            return root;
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        for ancestor in exe.ancestors() {
+            let candidate = ancestor.to_path_buf();
+            if looks_like_repo_root(&candidate) {
+                return candidate;
+            }
+        }
+    }
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|path| path.parent())
         .expect("stage1/fusec must be nested under the repository root")
         .to_path_buf()
+}
+
+fn looks_like_repo_root(path: &Path) -> bool {
+    path.join("stage1").is_dir() && path.join("stdlib").is_dir()
 }
 
 pub fn resolve_import_path(current_file: &Path, module_path: &str) -> Option<PathBuf> {
