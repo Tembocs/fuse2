@@ -381,3 +381,7 @@ Units 1 through 4 are complete: the Phase 8 ledger exists, the Full harness now 
 The latest checkpoint advanced Unit 5 further: `Chan::<T>.bounded(n)` now exists, the first real Full channel fixture is no longer a placeholder, and the compile-run smoke harness was stabilized to avoid wrapper-build races. Bounded backpressure behavior is still the remaining gap before Unit 5 can be marked complete.
 
 The current checkpoint also closes the checker side of `@rank`: `shared_no_rank` and `shared_rank_violation` are now real compile-error fixtures, `shared_rank_ascending` is checker-clean, and a minimal Shared runtime hook is sufficient for the positive smoke path. At this point Units 5 and 7 remain open only for deeper runtime semantics, while Unit 8 is complete.
+
+The newest groundwork keeps the frontend coherent for later async work: the AST/parser/evaluator/checker/object backend now recognize `await` as a first-class expression shape, and the positive Shared fixture remains real code rather than placeholder text. This does not complete the async runtime path yet, but it removes a syntax-level blocker before the async checkpoints begin.
+
+The current green state is stable again after threading `await` through the remaining frontend/backend match arms. Units 5 and 7 still have unfinished runtime semantics, but the checker contracts and positive smoke paths for channels and the initial Shared flow are now holding together under the fast verification set.

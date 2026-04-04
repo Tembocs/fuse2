@@ -514,6 +514,9 @@ impl Checker {
             hir::Expr::Ref(reference) => {
                 self.check_spawn_expr(module, &reference.value, outer_names, local_names);
             }
+            hir::Expr::Await(await_expr) => {
+                self.check_spawn_expr(module, &await_expr.value, outer_names, local_names);
+            }
             hir::Expr::Question(question) => {
                 self.check_spawn_expr(module, &question.value, outer_names, local_names);
             }
@@ -645,6 +648,7 @@ impl Checker {
             }
             hir::Expr::Ref(expr) => self.check_expr(module, &expr.value, scope, owner_name, loop_depth),
             hir::Expr::MutRef(expr) => self.check_expr(module, &expr.value, scope, owner_name, loop_depth),
+            hir::Expr::Await(expr) => self.check_expr(module, &expr.value, scope, owner_name, loop_depth),
             hir::Expr::Question(expr) => self.check_expr(module, &expr.value, scope, owner_name, loop_depth),
             hir::Expr::If(if_expr) => {
                 self.check_expr(module, &if_expr.condition, scope, owner_name, loop_depth);
@@ -981,6 +985,7 @@ impl Checker {
             hir::Expr::Move(move_expr) => self.infer_expr_type(module, &move_expr.value, scope, owner_name),
             hir::Expr::Ref(expr) => self.infer_expr_type(module, &expr.value, scope, owner_name),
             hir::Expr::MutRef(expr) => self.infer_expr_type(module, &expr.value, scope, owner_name),
+            hir::Expr::Await(expr) => self.infer_expr_type(module, &expr.value, scope, owner_name),
             hir::Expr::When(_) => None,
         }
     }

@@ -51,3 +51,9 @@ pub fn chan_inner_type(type_name: &str) -> Option<String> {
     (type_name.trim().trim_end_matches('>').contains("Chan") && args.len() == 1)
         .then(|| args[0].clone())
 }
+
+pub fn shared_inner_type(type_name: &str) -> Option<String> {
+    let args = split_generic_args(type_name)?;
+    (type_name.trim().trim_end_matches('>').contains("Shared") && args.len() == 1)
+        .then(|| args[0].clone())
+}

@@ -3,8 +3,8 @@
 
 @entrypoint
 fn main() {
-  @rank(1) val config: Shared<Int> = Shared::<Int>.new()
-  @rank(2) val metrics: Shared<Int> = Shared::<Int>.new()
+  @rank(1) val config: Shared<Int> = Shared::<Int>.new(1)
+  @rank(2) val metrics: Shared<Int> = Shared::<Int>.new(2)
   val c = config.read()
   val m = metrics.write()
   println("ok")

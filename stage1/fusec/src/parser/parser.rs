@@ -560,6 +560,10 @@ impl Parser {
                 self.take();
                 Ok(Expr::MutRef(MutRefExpr { value: Box::new(self.parse_unary()?), span: token.span }))
             }
+            TokenKind::Await => {
+                self.take();
+                Ok(Expr::Await(AwaitExpr { value: Box::new(self.parse_unary()?), span: token.span }))
+            }
             _ => self.parse_postfix(),
         }
     }

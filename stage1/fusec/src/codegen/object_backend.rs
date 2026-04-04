@@ -16,7 +16,7 @@ use crate::hir::lower_program;
 use crate::parser::parse_source;
 
 use super::layout::{self, ProgramLayout};
-use super::type_names::{chan_inner_type, option_inner_type, result_err_type, result_ok_type};
+use super::type_names::{chan_inner_type, option_inner_type, result_err_type, result_ok_type, shared_inner_type};
 
 pub fn backend_name() -> &'static str {
     "cranelift-object"
@@ -884,6 +884,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             fa::Expr::Move(move_expr) => self.compile_move(builder, move_expr),
             fa::Expr::Ref(reference) => self.compile_expr(builder, &reference.value),
             fa::Expr::MutRef(reference) => self.compile_expr(builder, &reference.value),
+            fa::Expr::Await(await_expr) => self.compile_expr(builder, &await_expr.value),
             fa::Expr::Question(question) => self.compile_question(builder, question),
             fa::Expr::If(if_expr) => self.compile_if(builder, if_expr),
             fa::Expr::Match(match_expr) => self.compile_match(builder, match_expr),
@@ -1526,7 +1527,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         &[receiver.value],
                         self.compiler.pointer_type,
                     ),
-                    ty: option_inner_type(&receiver_type).or(Some("Unit".to_string())),
+                    ty: shared_inner_type(&receiver_type).or(Some("Unit".to_string())),
                 }),
                 "write" => Ok(TypedValue {
                     value: self.runtime(
@@ -1535,7 +1536,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         &[receiver.value],
                         self.compiler.pointer_type,
                     ),
-                    ty: option_inner_type(&receiver_type).or(Some("Unit".to_string())),
+                    ty: shared_inner_type(&receiver_type).or(Some("Unit".to_string())),
                 }),
                 other => Err(format!("unsupported Shared member call `{other}`")),
             };
@@ -2285,7 +2286,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     }
                     if layout::canonical_type_name(&receiver_type) == "Shared" {
                         return match member.name.as_str() {
-                            "read" | "write" => option_inner_type(&receiver_type).or(Some("Unit".to_string())),
+                            "read" | "write" => shared_inner_type(&receiver_type).or(Some("Unit".to_string())),
                             _ => None,
                         };
                     }
@@ -2318,6 +2319,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             fa::Expr::Move(move_expr) => self.infer_expr_type(&move_expr.value),
             fa::Expr::Ref(reference) => self.infer_expr_type(&reference.value),
             fa::Expr::MutRef(reference) => self.infer_expr_type(&reference.value),
+            fa::Expr::Await(await_expr) => self.infer_expr_type(&await_expr.value),
             fa::Expr::Question(question) => self
                 .infer_expr_type(&question.value)
                 .as_deref()
@@ -2436,6 +2438,7 @@ fn collect_expr_names(expr: &fa::Expr) -> HashSet<String> {
         fa::Expr::Move(value) => collect_expr_names(&value.value),
         fa::Expr::Ref(value) => collect_expr_names(&value.value),
         fa::Expr::MutRef(value) => collect_expr_names(&value.value),
+        fa::Expr::Await(value) => collect_expr_names(&value.value),
         fa::Expr::Question(value) => collect_expr_names(&value.value),
         fa::Expr::If(if_expr) => {
             let mut names = collect_expr_names(&if_expr.condition);
