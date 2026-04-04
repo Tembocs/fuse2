@@ -290,6 +290,13 @@ impl Checker {
                     self.check_statement(module, inner, &mut child, loop_depth + 1, owner_name);
                 }
             }
+            hir::Statement::Spawn(spawn_stmt) => {
+                self.check_spawn_mutref_capture(module, &spawn_stmt.body.statements, scope);
+                let mut child = scope.clone();
+                for inner in &spawn_stmt.body.statements {
+                    self.check_statement(module, inner, &mut child, loop_depth, owner_name);
+                }
+            }
             hir::Statement::Break(span) => {
                 if loop_depth == 0 {
                     self.add_error(&display_name(&module.path), *span, "`break` outside loop", None);
@@ -358,6 +365,181 @@ impl Checker {
                 self.check_expr(module, &member.object, scope, owner_name, loop_depth);
             }
             _ => self.check_expr(module, target, scope, owner_name, loop_depth),
+        }
+    }
+
+    fn check_spawn_mutref_capture(
+        &mut self,
+        module: &ModuleInfo,
+        statements: &[hir::Statement],
+        outer_scope: &HashMap<String, BindingInfo>,
+    ) {
+        let outer_names = outer_scope.keys().cloned().collect::<HashSet<_>>();
+        let mut local_names = HashSet::new();
+        for statement in statements {
+            self.check_spawn_statement(module, statement, &outer_names, &mut local_names);
+        }
+    }
+
+    fn check_spawn_statement(
+        &mut self,
+        module: &ModuleInfo,
+        statement: &hir::Statement,
+        outer_names: &HashSet<String>,
+        local_names: &mut HashSet<String>,
+    ) {
+        match statement {
+            hir::Statement::VarDecl(var_decl) => {
+                self.check_spawn_expr(module, &var_decl.value, outer_names, local_names);
+                local_names.insert(var_decl.name.clone());
+            }
+            hir::Statement::Assign(assign) => {
+                self.check_spawn_expr(module, &assign.target, outer_names, local_names);
+                self.check_spawn_expr(module, &assign.value, outer_names, local_names);
+            }
+            hir::Statement::Return(ret) => {
+                if let Some(value) = &ret.value {
+                    self.check_spawn_expr(module, value, outer_names, local_names);
+                }
+            }
+            hir::Statement::Spawn(spawn_stmt) => {
+                for inner in &spawn_stmt.body.statements {
+                    self.check_spawn_statement(module, inner, outer_names, local_names);
+                }
+            }
+            hir::Statement::While(while_stmt) => {
+                self.check_spawn_expr(module, &while_stmt.condition, outer_names, local_names);
+                for inner in &while_stmt.body.statements {
+                    self.check_spawn_statement(module, inner, outer_names, local_names);
+                }
+            }
+            hir::Statement::For(for_stmt) => {
+                self.check_spawn_expr(module, &for_stmt.iterable, outer_names, local_names);
+                let inserted = local_names.insert(for_stmt.name.clone());
+                for inner in &for_stmt.body.statements {
+                    self.check_spawn_statement(module, inner, outer_names, local_names);
+                }
+                if inserted {
+                    local_names.remove(&for_stmt.name);
+                }
+            }
+            hir::Statement::Loop(loop_stmt) => {
+                for inner in &loop_stmt.body.statements {
+                    self.check_spawn_statement(module, inner, outer_names, local_names);
+                }
+            }
+            hir::Statement::Defer(stmt) => {
+                self.check_spawn_expr(module, &stmt.expr, outer_names, local_names);
+            }
+            hir::Statement::Expr(stmt) => {
+                self.check_spawn_expr(module, &stmt.expr, outer_names, local_names);
+            }
+            hir::Statement::Break(_) | hir::Statement::Continue(_) => {}
+        }
+    }
+
+    fn check_spawn_expr(
+        &mut self,
+        module: &ModuleInfo,
+        expr: &hir::Expr,
+        outer_names: &HashSet<String>,
+        local_names: &HashSet<String>,
+    ) {
+        match expr {
+            hir::Expr::MutRef(reference) => {
+                if let hir::Expr::Name(name) = reference.value.as_ref() {
+                    if outer_names.contains(&name.value) && !local_names.contains(&name.value) {
+                        self.add_error(
+                            &display_name(&module.path),
+                            reference.span,
+                            "cannot capture mutref across spawn boundary",
+                            None,
+                        );
+                    }
+                }
+                self.check_spawn_expr(module, &reference.value, outer_names, local_names);
+            }
+            hir::Expr::Unary(unary) => {
+                self.check_spawn_expr(module, &unary.value, outer_names, local_names);
+            }
+            hir::Expr::Binary(binary) => {
+                self.check_spawn_expr(module, &binary.left, outer_names, local_names);
+                self.check_spawn_expr(module, &binary.right, outer_names, local_names);
+            }
+            hir::Expr::Call(call) => {
+                self.check_spawn_expr(module, &call.callee, outer_names, local_names);
+                for arg in &call.args {
+                    self.check_spawn_expr(module, arg, outer_names, local_names);
+                }
+            }
+            hir::Expr::Member(member) => {
+                self.check_spawn_expr(module, &member.object, outer_names, local_names);
+            }
+            hir::Expr::Move(move_expr) => {
+                self.check_spawn_expr(module, &move_expr.value, outer_names, local_names);
+            }
+            hir::Expr::Ref(reference) => {
+                self.check_spawn_expr(module, &reference.value, outer_names, local_names);
+            }
+            hir::Expr::Question(question) => {
+                self.check_spawn_expr(module, &question.value, outer_names, local_names);
+            }
+            hir::Expr::If(if_expr) => {
+                self.check_spawn_expr(module, &if_expr.condition, outer_names, local_names);
+                for statement in &if_expr.then_branch.statements {
+                    self.check_spawn_statement(module, statement, outer_names, &mut local_names.clone());
+                }
+                if let Some(else_branch) = &if_expr.else_branch {
+                    match else_branch {
+                        hir::ElseBranch::Block(block) => {
+                            for statement in &block.statements {
+                                self.check_spawn_statement(module, statement, outer_names, &mut local_names.clone());
+                            }
+                        }
+                        hir::ElseBranch::IfExpr(expr) => {
+                            self.check_spawn_expr(module, &hir::Expr::If(*expr.clone()), outer_names, local_names);
+                        }
+                    }
+                }
+            }
+            hir::Expr::Match(match_expr) => {
+                self.check_spawn_expr(module, &match_expr.subject, outer_names, local_names);
+                for arm in &match_expr.arms {
+                    match &arm.body {
+                        hir::ArmBody::Block(block) => {
+                            for statement in &block.statements {
+                                self.check_spawn_statement(module, statement, outer_names, &mut local_names.clone());
+                            }
+                        }
+                        hir::ArmBody::Expr(expr) => {
+                            self.check_spawn_expr(module, expr, outer_names, local_names);
+                        }
+                    }
+                }
+            }
+            hir::Expr::When(when_expr) => {
+                for arm in &when_expr.arms {
+                    if let Some(condition) = &arm.condition {
+                        self.check_spawn_expr(module, condition, outer_names, local_names);
+                    }
+                    match &arm.body {
+                        hir::ArmBody::Block(block) => {
+                            for statement in &block.statements {
+                                self.check_spawn_statement(module, statement, outer_names, &mut local_names.clone());
+                            }
+                        }
+                        hir::ArmBody::Expr(expr) => {
+                            self.check_spawn_expr(module, expr, outer_names, local_names);
+                        }
+                    }
+                }
+            }
+            hir::Expr::List(list) => {
+                for item in &list.items {
+                    self.check_spawn_expr(module, item, outer_names, local_names);
+                }
+            }
+            hir::Expr::Literal(_) | hir::Expr::FString(_) | hir::Expr::Name(_) => {}
         }
     }
 

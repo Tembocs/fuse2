@@ -1,5 +1,6 @@
 pub mod object_backend;
 pub mod layout;
+pub mod type_names;
 pub use object_backend as cranelift;
 
 pub fn backend_name() -> &'static str {

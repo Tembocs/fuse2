@@ -657,6 +657,12 @@ impl Evaluator {
             )),
             fa::Statement::Break(_) => Err(ControlFlow::Break),
             fa::Statement::Continue(_) => Err(ControlFlow::Continue),
+            fa::Statement::Spawn(_) => Err(ControlFlow::Abort(runtime_error(
+                "`spawn` is not implemented yet",
+                &display_name(module_path),
+                statement_span(statement).line,
+                statement_span(statement).column,
+            ))),
             fa::Statement::While(while_stmt) => {
                 while truthy(
                     &self.eval_expr(module_path, &while_stmt.condition, env)?,
@@ -1361,9 +1367,32 @@ fn collect_stmt_names(statement: &fa::Statement) -> HashSet<String> {
             }
             names
         }
+        fa::Statement::Spawn(spawn_stmt) => {
+            let mut names = HashSet::new();
+            for statement in &spawn_stmt.body.statements {
+                names.extend(collect_stmt_names(statement));
+            }
+            names
+        }
         fa::Statement::Defer(defer_stmt) => collect_expr_names(&defer_stmt.expr),
         fa::Statement::Expr(expr_stmt) => collect_expr_names(&expr_stmt.expr),
         fa::Statement::Break(_) | fa::Statement::Continue(_) => HashSet::new(),
+    }
+}
+
+fn statement_span(statement: &fa::Statement) -> crate::error::Span {
+    match statement {
+        fa::Statement::VarDecl(node) => node.span,
+        fa::Statement::Assign(node) => node.span,
+        fa::Statement::Return(node) => node.span,
+        fa::Statement::Break(span) => *span,
+        fa::Statement::Continue(span) => *span,
+        fa::Statement::Spawn(node) => node.span,
+        fa::Statement::While(node) => node.span,
+        fa::Statement::For(node) => node.span,
+        fa::Statement::Loop(node) => node.span,
+        fa::Statement::Defer(node) => node.span,
+        fa::Statement::Expr(node) => node.span,
     }
 }
 

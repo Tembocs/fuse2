@@ -78,7 +78,7 @@ impl Parser {
         let is_pub = self.match_kind(TokenKind::Pub).is_some();
         match self.peek(0).kind {
             TokenKind::Import => Ok(Declaration::Import(self.parse_import()?)),
-            TokenKind::Fn => {
+            TokenKind::Fn | TokenKind::Async | TokenKind::Suspend => {
                 let mut function = self.parse_function()?;
                 function.decorators = decorators;
                 function.is_pub = is_pub;
@@ -138,6 +138,15 @@ impl Parser {
     }
 
     fn parse_function(&mut self) -> Result<FunctionDecl, Diagnostic> {
+        let mut is_async = false;
+        let mut is_suspend = false;
+        while matches!(self.peek(0).kind, TokenKind::Async | TokenKind::Suspend) {
+            match self.take().kind {
+                TokenKind::Async => is_async = true,
+                TokenKind::Suspend => is_suspend = true,
+                _ => unreachable!(),
+            }
+        }
         let start = self.expect(TokenKind::Fn, "expected `fn`")?;
         let first =
             self.expect(TokenKind::Identifier, "expected function name or receiver type")?;
@@ -183,6 +192,8 @@ impl Parser {
             body,
             is_pub: false,
             decorators: Vec::new(),
+            is_async,
+            is_suspend,
             receiver_type,
             span: start.span,
         })
@@ -372,6 +383,7 @@ impl Parser {
                 self.take();
                 Ok(Statement::Continue(token.span))
             }
+            TokenKind::Spawn => Ok(Statement::Spawn(self.parse_spawn()?)),
             TokenKind::While => Ok(Statement::While(self.parse_while()?)),
             TokenKind::For => Ok(Statement::For(self.parse_for()?)),
             TokenKind::Loop => Ok(Statement::Loop(self.parse_loop()?)),
@@ -430,6 +442,16 @@ impl Parser {
     fn parse_loop(&mut self) -> Result<LoopStmt, Diagnostic> {
         let start = self.expect(TokenKind::Loop, "expected `loop`")?;
         Ok(LoopStmt { body: self.parse_block()?, span: start.span })
+    }
+
+    fn parse_spawn(&mut self) -> Result<SpawnStmt, Diagnostic> {
+        let start = self.expect(TokenKind::Spawn, "expected `spawn`")?;
+        let is_async = self.match_kind(TokenKind::Async).is_some();
+        Ok(SpawnStmt {
+            body: self.parse_block()?,
+            is_async,
+            span: start.span,
+        })
     }
 
     fn parse_expression(&mut self) -> Result<Expr, Diagnostic> { self.parse_elvis() }
@@ -588,8 +610,20 @@ impl Parser {
                 Ok(Expr::Literal(Literal { value: LiteralValue::Bool(false), span: token.span }))
             }
             TokenKind::Identifier => {
-                self.take();
-                Ok(Expr::Name(Name { value: token.text, span: token.span }))
+                let mut value = self.take().text;
+                if self.peek(0).kind == TokenKind::ColonColon {
+                    while matches!(
+                        self.peek(0).kind,
+                        TokenKind::ColonColon
+                            | TokenKind::Lt
+                            | TokenKind::Gt
+                            | TokenKind::Comma
+                            | TokenKind::Identifier
+                    ) {
+                        value.push_str(&self.take().text);
+                    }
+                }
+                Ok(Expr::Name(Name { value, span: token.span }))
             }
             TokenKind::LParen => {
                 self.take();

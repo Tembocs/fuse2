@@ -60,7 +60,11 @@ pub fn abi_name() -> &'static str {
 }
 
 pub fn canonical_type_name(type_name: &str) -> &str {
-    type_name.split('<').next().unwrap_or(type_name)
+    type_name
+        .split('<')
+        .next()
+        .unwrap_or(type_name)
+        .trim_end_matches("::")
 }
 
 pub fn function_symbol(module_path: &Path, name: &str) -> String {

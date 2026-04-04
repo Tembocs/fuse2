@@ -45,6 +45,8 @@ pub struct FunctionDecl {
     pub body: Block,
     pub is_pub: bool,
     pub decorators: Vec<String>,
+    pub is_async: bool,
+    pub is_suspend: bool,
     pub receiver_type: Option<String>,
     pub span: Span,
 }
@@ -87,6 +89,7 @@ pub enum Statement {
     Return(ReturnStmt),
     Break(Span),
     Continue(Span),
+    Spawn(SpawnStmt),
     While(WhileStmt),
     For(ForStmt),
     Loop(LoopStmt),
@@ -113,6 +116,13 @@ pub struct Assign {
 #[derive(Clone, Debug)]
 pub struct ReturnStmt {
     pub value: Option<Expr>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct SpawnStmt {
+    pub body: Block,
+    pub is_async: bool,
     pub span: Span,
 }
 

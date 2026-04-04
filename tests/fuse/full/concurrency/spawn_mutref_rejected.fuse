@@ -1,8 +1,17 @@
 // EXPECTED ERROR:
 // error: cannot capture mutref across spawn boundary
-//   --> spawn_mutref_rejected.fuse:9:3
+//   --> spawn_mutref_rejected.fuse:15:10
+
+data class Counter(var value: Int)
+
+fn bump(mutref counter: Counter) {
+  counter.value = counter.value + 1
+}
 
 @entrypoint
 fn main() {
-  // placeholder Fuse Full test contract
+  var counter = Counter(0)
+  spawn {
+    bump(mutref counter)
+  }
 }

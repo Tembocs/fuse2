@@ -67,6 +67,14 @@ pub fn core_test_files() -> Vec<PathBuf> {
     files
 }
 
+pub fn full_test_files() -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    collect_fuse_files(&repo_root().join("tests").join("fuse").join("full"), &mut files);
+    files.retain(|path| !path.components().any(|component| component.as_os_str() == "src"));
+    files.sort();
+    files
+}
+
 fn collect_fuse_files(path: &Path, files: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(path) else {
         return;

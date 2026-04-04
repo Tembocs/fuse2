@@ -1,6 +1,7 @@
 use std::fmt::Write;
 use std::ptr;
 use std::slice;
+use std::collections::VecDeque;
 
 pub type FuseHandle = *mut FuseValue;
 
@@ -17,6 +18,7 @@ enum ValueKind {
     Bool(bool),
     String(String),
     List(Vec<FuseHandle>),
+    Channel(VecDeque<FuseHandle>),
     Data(DataValue),
     Option(Option<FuseHandle>),
     Result { is_ok: bool, value: FuseHandle },
@@ -77,6 +79,7 @@ unsafe fn clone_to_string(handle: FuseHandle) -> String {
             rendered.push(']');
             rendered
         }
+        ValueKind::Channel(_) => "Chan(..)".to_string(),
         ValueKind::Data(data) => {
             let mut rendered = String::new();
             let _ = write!(&mut rendered, "{}(", data.type_name);
@@ -244,6 +247,7 @@ pub unsafe extern "C" fn fuse_is_truthy(handle: FuseHandle) -> bool {
             ValueKind::Float(value) => *value != 0.0,
             ValueKind::String(value) => !value.is_empty(),
             ValueKind::List(value) => !value.is_empty(),
+            ValueKind::Channel(value) => !value.is_empty(),
             ValueKind::Data(_) => true,
             ValueKind::Unit => false,
         }
@@ -345,6 +349,30 @@ pub unsafe extern "C" fn fuse_list_get(list: FuseHandle, index: usize) -> FuseHa
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_chan_new() -> FuseHandle {
+    FuseValue::new(ValueKind::Channel(VecDeque::new()))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_chan_send(chan: FuseHandle, value: FuseHandle) {
+    unsafe {
+        if let ValueKind::Channel(items) = &mut value_mut(chan).kind {
+            items.push_back(value);
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_chan_recv(chan: FuseHandle) -> FuseHandle {
+    unsafe {
+        match &mut value_mut(chan).kind {
+            ValueKind::Channel(items) => items.pop_front().unwrap_or(ptr::null_mut()),
+            _ => ptr::null_mut(),
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_data_new(
     type_name_ptr: *const u8,
     type_name_len: usize,
@@ -389,9 +417,17 @@ pub unsafe extern "C" fn fuse_release(handle: FuseHandle) {
         return;
     }
     value.released = true;
-    if let ValueKind::Data(data) = &value.kind {
-        if let Some(destructor) = data.destructor {
-            unsafe { destructor(handle) };
+    match &mut value.kind {
+        ValueKind::Data(data) => {
+            if let Some(destructor) = data.destructor {
+                unsafe { destructor(handle) };
+            }
         }
+        ValueKind::Channel(items) => {
+            while let Some(item) = items.pop_front() {
+                unsafe { fuse_release(item) };
+            }
+        }
+        _ => {}
     }
 }

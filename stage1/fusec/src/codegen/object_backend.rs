@@ -16,6 +16,7 @@ use crate::hir::lower_program;
 use crate::parser::parse_source;
 
 use super::layout::{self, ProgramLayout};
+use super::type_names::{chan_inner_type, option_inner_type, result_err_type, result_ok_type};
 
 pub fn backend_name() -> &'static str {
     "cranelift-object"
@@ -189,6 +190,9 @@ struct RuntimeFns {
     list_push: FuncId,
     list_len: FuncId,
     list_get: FuncId,
+    chan_new: FuncId,
+    chan_send: FuncId,
+    chan_recv: FuncId,
     data_new: FuncId,
     data_set_field: FuncId,
     data_get_field: FuncId,
@@ -530,6 +534,9 @@ fn declare_runtime_functions(
         list_push: declare(module, "fuse_list_push", &[pointer_type, pointer_type], &[])?,
         list_len: declare(module, "fuse_list_len", &[pointer_type], &[types::I64])?,
         list_get: declare(module, "fuse_list_get", &[pointer_type, pointer_type], &[pointer_type])?,
+        chan_new: declare(module, "fuse_chan_runtime_new", &[], &[pointer_type])?,
+        chan_send: declare(module, "fuse_chan_runtime_send", &[pointer_type, pointer_type], &[])?,
+        chan_recv: declare(module, "fuse_chan_runtime_recv", &[pointer_type], &[pointer_type])?,
         data_new: declare(module, "fuse_data_new", &[pointer_type, pointer_type, pointer_type, pointer_type], &[pointer_type])?,
         data_set_field: declare(module, "fuse_data_set_field", &[pointer_type, pointer_type, pointer_type], &[])?,
         data_get_field: declare(module, "fuse_data_get_field", &[pointer_type, pointer_type], &[pointer_type])?,
@@ -592,14 +599,9 @@ fn build_wrapper(input: &Path, output: &Path, object: &[u8]) -> Result<(), Strin
     if !status.success() {
         return Err("generated wrapper build failed".to_string());
     }
-    let built = target_dir.join("release").join(format!(
-        "{}{}",
-        workdir
-            .file_name()
-            .and_then(|part| part.to_str())
-            .unwrap_or("fuse_generated"),
-        std::env::consts::EXE_SUFFIX
-    ));
+    let built = target_dir
+        .join("release")
+        .join(format!("fuse_generated_wrapper{}", std::env::consts::EXE_SUFFIX));
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create output directory: {error}"))?;
@@ -691,6 +693,16 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             fa::Statement::Continue(_) => {
                 let frame = self.loops.last().ok_or_else(|| "`continue` outside loop".to_string())?;
                 builder.ins().jump(frame.continue_block, &[]);
+            }
+            fa::Statement::Spawn(spawn_stmt) => {
+                let snapshot = self.locals.clone();
+                let mut child_locals = snapshot.clone();
+                for binding in child_locals.values_mut() {
+                    binding.destroy = false;
+                }
+                self.locals = child_locals;
+                self.compile_statements(builder, &spawn_stmt.body.statements)?;
+                self.locals = snapshot;
             }
             fa::Statement::While(while_stmt) => self.compile_while(builder, while_stmt)?,
             fa::Statement::For(for_stmt) => self.compile_for(builder, for_stmt)?,
@@ -934,7 +946,11 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             let mut value =
                 self.compile_name(builder, placeholder.split('.').next().unwrap_or_default())?;
             for segment in placeholder.split('.').skip(1) {
-                value = self.member_access(builder, value, segment, false)?;
+                if let Some(name) = segment.strip_suffix("()") {
+                    value = self.call_zero_arg_member(builder, value, name)?;
+                } else {
+                    value = self.member_access(builder, value, segment, false)?;
+                }
             }
             let rendered = self.runtime(
                 builder,
@@ -963,6 +979,58 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             value: current,
             ty: Some("String".to_string()),
         })
+    }
+
+    fn call_zero_arg_member(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        receiver: TypedValue,
+        name: &str,
+    ) -> Result<TypedValue, String> {
+        let receiver_type = receiver
+            .ty
+            .clone()
+            .ok_or_else(|| format!("cannot infer receiver type for `{name}()`"))?;
+        if layout::canonical_type_name(&receiver_type) == "Chan" {
+            return match name {
+                "recv" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.chan_recv,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: chan_inner_type(&receiver_type),
+                }),
+                other => Err(format!("unsupported Chan zero-arg member `{other}()`")),
+            };
+        }
+        if layout::canonical_type_name(&receiver_type) == "String" {
+            return match name {
+                "toUpper" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.to_upper,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some("String".to_string()),
+                }),
+                "isEmpty" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.string_is_empty,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some("Bool".to_string()),
+                }),
+                other => Err(format!("unsupported String zero-arg member `{other}()`")),
+            };
+        }
+        Err(format!(
+            "unsupported zero-arg member call `{name}()` on `{receiver_type}`"
+        ))
     }
 
     fn compile_name(
@@ -1351,17 +1419,65 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         })
     }
 
+    fn compile_type_namespace_call(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        namespace: &str,
+        member: &str,
+        _args: &[fa::Expr],
+    ) -> Result<TypedValue, String> {
+        let base = layout::canonical_type_name(namespace);
+        match (base, member) {
+            ("Chan", "new") => Ok(TypedValue {
+                value: self.runtime_nullary(builder, self.compiler.runtime.chan_new),
+                ty: Some(namespace.replace("::", "")),
+            }),
+            _ => Err(format!("unsupported type namespace call `{namespace}.{member}`")),
+        }
+    }
+
     fn compile_member_call(
         &mut self,
         builder: &mut FunctionBuilder,
         member: &fa::Member,
         args: &[fa::Expr],
     ) -> Result<TypedValue, String> {
+        if let fa::Expr::Name(name) = member.object.as_ref() {
+            if !self.locals.contains_key(&name.value) {
+                return self.compile_type_namespace_call(builder, &name.value, &member.name, args);
+            }
+        }
         let receiver = self.compile_expr(builder, &member.object)?;
         let receiver_type = receiver
             .ty
             .clone()
             .ok_or_else(|| format!("cannot infer receiver type for `{}`", member.name))?;
+        if layout::canonical_type_name(&receiver_type) == "Chan" {
+            return match member.name.as_str() {
+                "send" => {
+                    let value = self.compile_expr(builder, &args[0])?;
+                    self.runtime_void(
+                        builder,
+                        self.compiler.runtime.chan_send,
+                        &[receiver.value, value.value],
+                    );
+                    Ok(TypedValue {
+                        value: self.runtime_nullary(builder, self.compiler.runtime.unit),
+                        ty: Some("Unit".to_string()),
+                    })
+                }
+                "recv" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.chan_recv,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: chan_inner_type(&receiver_type),
+                }),
+                other => Err(format!("unsupported Chan member call `{other}`")),
+            };
+        }
         if layout::canonical_type_name(&receiver_type) == "String" {
             return match member.name.as_str() {
                 "toUpper" => Ok(TypedValue {
@@ -2084,6 +2200,8 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     data_name => {
                         if self.compiler.session.find_data(data_name).is_some() {
                             Some(data_name.to_string())
+                        } else if layout::canonical_type_name(data_name) == "Chan" {
+                            Some(data_name.replace("::", ""))
                         } else {
                             self.compiler
                                 .session
@@ -2094,6 +2212,13 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 },
                 fa::Expr::Member(member) => {
                     let receiver_type = self.infer_expr_type(&member.object)?;
+                    if layout::canonical_type_name(&receiver_type) == "Chan" {
+                        return match member.name.as_str() {
+                            "send" => Some("Unit".to_string()),
+                            "recv" => chan_inner_type(&receiver_type),
+                            _ => None,
+                        };
+                    }
                     if layout::canonical_type_name(&receiver_type) == "String" {
                         return match member.name.as_str() {
                             "toUpper" => Some("String".to_string()),
@@ -2135,54 +2260,6 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             }),
         }
     }
-}
-
-fn option_inner_type(type_name: &str) -> Option<String> {
-    let args = split_generic_args(type_name)?;
-    (layout::canonical_type_name(type_name) == "Option" && args.len() == 1)
-        .then(|| args[0].clone())
-}
-
-fn result_ok_type(type_name: &str) -> Option<String> {
-    let args = split_generic_args(type_name)?;
-    (layout::canonical_type_name(type_name) == "Result" && args.len() == 2)
-        .then(|| args[0].clone())
-}
-
-fn result_err_type(type_name: &str) -> Option<String> {
-    let args = split_generic_args(type_name)?;
-    (layout::canonical_type_name(type_name) == "Result" && args.len() == 2)
-        .then(|| args[1].clone())
-}
-
-fn split_generic_args(type_name: &str) -> Option<Vec<String>> {
-    let start = type_name.find('<')?;
-    let end = type_name.rfind('>')?;
-    let inner = &type_name[start + 1..end];
-    let mut args = Vec::new();
-    let mut depth = 0usize;
-    let mut current = String::new();
-    for ch in inner.chars() {
-        match ch {
-            '<' => {
-                depth += 1;
-                current.push(ch);
-            }
-            '>' => {
-                depth = depth.saturating_sub(1);
-                current.push(ch);
-            }
-            ',' if depth == 0 => {
-                args.push(current.trim().to_string());
-                current.clear();
-            }
-            _ => current.push(ch),
-        }
-    }
-    if !current.trim().is_empty() {
-        args.push(current.trim().to_string());
-    }
-    Some(args)
 }
 
 fn display_name(path: &Path) -> String {
@@ -2247,6 +2324,12 @@ fn collect_stmt_names(statement: &fa::Statement) -> HashSet<String> {
             .iter()
             .flat_map(collect_stmt_names)
             .collect(),
+        fa::Statement::Spawn(spawn_stmt) => spawn_stmt
+            .body
+            .statements
+            .iter()
+            .flat_map(collect_stmt_names)
+            .collect(),
         fa::Statement::Defer(defer_stmt) => collect_expr_names(&defer_stmt.expr),
         fa::Statement::Expr(expr_stmt) => collect_expr_names(&expr_stmt.expr),
         fa::Statement::Break(_) | fa::Statement::Continue(_) => HashSet::new(),
@@ -2255,7 +2338,15 @@ fn collect_stmt_names(statement: &fa::Statement) -> HashSet<String> {
 
 fn collect_expr_names(expr: &fa::Expr) -> HashSet<String> {
     match expr {
-        fa::Expr::Literal(_) | fa::Expr::FString(_) => HashSet::new(),
+        fa::Expr::Literal(_) => HashSet::new(),
+        fa::Expr::FString(fstring) => fstring
+            .template
+            .split('{')
+            .skip(1)
+            .filter_map(|part| part.split('}').next())
+            .map(|part| part.trim().split('.').next().unwrap_or_default().to_string())
+            .filter(|part| !part.is_empty())
+            .collect(),
         fa::Expr::Name(name) => HashSet::from([name.value.clone()]),
         fa::Expr::List(list) => list.items.iter().flat_map(collect_expr_names).collect(),
         fa::Expr::Unary(unary) => collect_expr_names(&unary.value),
