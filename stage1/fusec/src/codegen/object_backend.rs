@@ -389,7 +389,7 @@ impl<'a> BackendCompiler<'a> {
             );
         }
         lowering.compile_statements(&mut builder, &function.body.statements)?;
-        if !builder.is_unreachable() {
+        if !lowering.has_explicit_return {
             let result = lowering.runtime_nullary(&mut builder, lowering.compiler.runtime.unit);
             if function.return_type.is_none() {
                 lowering.release_remaining(&mut builder);
@@ -626,6 +626,7 @@ struct LoweringState<'a, 'b> {
     locals: HashMap<String, LocalBinding>,
     next_var: usize,
     loops: Vec<LoopFrame>,
+    has_explicit_return: bool,
 }
 
 impl<'a, 'b> LoweringState<'a, 'b> {
@@ -641,6 +642,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             locals: HashMap::new(),
             next_var: 0,
             loops: Vec::new(),
+            has_explicit_return: false,
         }
     }
 
@@ -692,6 +694,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 } else {
                     self.runtime_nullary(builder, self.compiler.runtime.unit)
                 };
+                self.has_explicit_return = true;
                 builder.ins().return_(&[value]);
             }
             fa::Statement::Break(_) => {

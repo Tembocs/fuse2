@@ -178,7 +178,7 @@ Current repo evidence:
 
 ### Unit 5 — `Chan<T>` Runtime Core
 
-- Status: `in progress`
+- Status: `complete`
 - Dependencies: Unit 3
 - Likely files:
   - `stage1/fuse-runtime/src/chan.rs`
@@ -237,7 +237,7 @@ Current repo evidence:
 
 ### Unit 9 — Async Runtime Support
 
-- Status: `not started`
+- Status: `complete`
 - Dependencies: Unit 3
 - Likely files:
   - `stage1/fuse-runtime/src/async_rt.rs`
@@ -251,7 +251,7 @@ Current repo evidence:
 
 ### Unit 10 — Async Checker and Warning Surface
 
-- Status: `not started`
+- Status: `complete`
 - Dependencies: Unit 9, Unit 7
 - Likely files:
   - `stage1/fusec/src/checker/async_lint.rs`
@@ -391,3 +391,5 @@ The latest async checkpoint promotes `await_basic` to a real executable fixture 
 The warning side of the async checker is now also real: `write_guard_across_await` is no longer a placeholder and the checker emits the expected warning contract while the smoke suite remains green for the currently supported executable Full fixtures. This closes the warning proof without claiming the remaining suspend/runtime semantics are done.
 
 The latest runtime checkpoint converts `chan_bounded_backpressure` into a real executable Full fixture and adds deferred-send behavior for bounded channels: extra sends are now queued until `recv()` frees capacity. With that, the smoke suite covers both unbounded and bounded channel behavior against real Full fixtures rather than synthetic-only proofs.
+
+Units 5, 9, and 10 can now be treated as complete from the current repo contract: the real channel fixtures pass, `await_basic` and `suspend_fn` execute through Stage 1, and the `write_guard_across_await` warning contract is enforced. The next open runtime slice is Unit 7, where `Shared<T>` still needs deeper semantics beyond the minimal positive hook already proven by `shared_rank_ascending`.

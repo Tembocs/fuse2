@@ -163,7 +163,6 @@ fn await_basic_fixture_compiles_and_runs() {
 }
 
 #[test]
-#[ignore = "suspend execution remains part of the later async-runtime checkpoint"]
 fn suspend_fn_fixture_compiles_and_runs() {
     let _guard = COMPILE_LOCK.lock().expect("compile lock");
     let fixture = harness::repo_root()
