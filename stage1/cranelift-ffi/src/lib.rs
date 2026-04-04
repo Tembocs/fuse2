@@ -3,11 +3,11 @@ use cranelift_module::default_libcall_names;
 use cranelift_object::{ObjectBuilder, ObjectModule};
 
 pub struct CraneliftFfiModule {
-    module: ObjectModule,
+    _module: ObjectModule,
 }
 
 pub struct CraneliftFfiFunction {
-    function: Function,
+    _function: Function,
 }
 
 #[unsafe(no_mangle)]
@@ -26,7 +26,7 @@ pub extern "C" fn cranelift_ffi_module_new() -> *mut CraneliftFfiModule {
     let builder =
         ObjectBuilder::new(isa, "fuse_stage1", default_libcall_names()).expect("object builder");
     Box::into_raw(Box::new(CraneliftFfiModule {
-        module: ObjectModule::new(builder),
+        _module: ObjectModule::new(builder),
     }))
 }
 
@@ -40,7 +40,7 @@ pub unsafe extern "C" fn cranelift_ffi_module_free(module: *mut CraneliftFfiModu
 #[unsafe(no_mangle)]
 pub extern "C" fn cranelift_ffi_function_new() -> *mut CraneliftFfiFunction {
     Box::into_raw(Box::new(CraneliftFfiFunction {
-        function: Function::new(),
+        _function: Function::new(),
     }))
 }
 

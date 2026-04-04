@@ -1,0 +1,2330 @@
+use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use cranelift_codegen::ir::condcodes::IntCC;
+use cranelift_codegen::ir::{types, AbiParam, BlockArg, Function, InstBuilder, UserFuncName, Value};
+use cranelift_codegen::settings;
+use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
+use cranelift_module::{default_libcall_names, DataDescription, FuncId, Linkage, Module};
+use cranelift_object::{ObjectBuilder, ObjectModule};
+
+use crate::ast::nodes as fa;
+use crate::common::resolve_import_path;
+use crate::hir::lower_program;
+use crate::parser::parse_source;
+
+use super::layout::{self, ProgramLayout};
+
+pub fn backend_name() -> &'static str {
+    "cranelift-object"
+}
+
+pub fn run_host_entry(entry: extern "C" fn() -> i32) -> Result<i32, String> {
+    Ok(entry())
+}
+
+pub fn compile_path_to_native(input: &Path, output: &Path) -> Result<(), String> {
+    let input = input.canonicalize().unwrap_or_else(|_| input.to_path_buf());
+    let session = BuildSession::load(&input)?;
+    let object = BackendCompiler::new(&session)?.emit_object()?;
+    build_wrapper(&input, output, &object)
+}
+
+#[derive(Clone)]
+struct LoadedModule {
+    path: PathBuf,
+    functions: HashMap<String, fa::FunctionDecl>,
+    extensions: HashMap<(String, String), fa::FunctionDecl>,
+    data_classes: HashMap<String, fa::DataClassDecl>,
+}
+
+struct BuildSession {
+    root_path: PathBuf,
+    modules: HashMap<PathBuf, LoadedModule>,
+    layout: ProgramLayout,
+}
+
+impl BuildSession {
+    fn load(root_path: &Path) -> Result<Self, String> {
+        let mut modules = HashMap::new();
+        load_module_recursive(root_path, &mut modules)?;
+        let layout = ProgramLayout::new(
+            modules
+                .values()
+                .flat_map(|module| module.data_classes.values().cloned()),
+        );
+        Ok(Self {
+            root_path: root_path.to_path_buf(),
+            modules,
+            layout,
+        })
+    }
+
+    fn entry_function(&self) -> Result<fa::FunctionDecl, String> {
+        self.modules
+            .get(&self.root_path)
+            .and_then(|module| {
+                module
+                    .functions
+                    .values()
+                    .find(|function| {
+                        function
+                            .decorators
+                            .iter()
+                            .any(|decorator| decorator == "entrypoint")
+                    })
+                    .cloned()
+            })
+            .ok_or_else(|| format!("missing @entrypoint in `{}`", self.root_path.display()))
+    }
+
+    fn resolve_function(&self, name: &str) -> Option<(&Path, &fa::FunctionDecl)> {
+        self.modules.values().find_map(|module| {
+            module
+                .functions
+                .get(name)
+                .map(|function| (module.path.as_path(), function))
+        })
+    }
+
+    fn resolve_extension(&self, receiver_type: &str, name: &str) -> Option<(&Path, &fa::FunctionDecl)> {
+        let key = (
+            layout::canonical_type_name(receiver_type).to_string(),
+            name.to_string(),
+        );
+        self.modules.values().find_map(|module| {
+            module
+                .extensions
+                .get(&key)
+                .map(|function| (module.path.as_path(), function))
+        })
+    }
+
+    fn find_data(&self, type_name: &str) -> Option<(&Path, &fa::DataClassDecl)> {
+        let key = layout::canonical_type_name(type_name);
+        self.modules.values().find_map(|module| {
+            module
+                .data_classes
+                .get(key)
+                .map(|data| (module.path.as_path(), data))
+        })
+    }
+
+    fn field_type(&self, type_name: &str, field: &str) -> Option<String> {
+        self.find_data(type_name)?
+            .1
+            .fields
+            .iter()
+            .find(|item| item.name == field)
+            .and_then(|item| item.type_name.clone())
+    }
+}
+
+fn load_module_recursive(
+    path: &Path,
+    modules: &mut HashMap<PathBuf, LoadedModule>,
+) -> Result<(), String> {
+    let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    if modules.contains_key(&path) {
+        return Ok(());
+    }
+    let source = fs::read_to_string(&path)
+        .map_err(|error| format!("failed to read `{}`: {error}", path.display()))?;
+    let filename = display_name(&path);
+    let parsed = parse_source(&source, &filename).map_err(|diag| diag.render())?;
+    let module = lower_program(&parsed, path.clone());
+    let loaded = LoadedModule {
+        path: path.clone(),
+        functions: module
+            .functions
+            .iter()
+            .map(|function| (function.name.clone(), function.clone()))
+            .collect(),
+        extensions: module.extension_functions.clone(),
+        data_classes: module
+            .data_classes
+            .iter()
+            .map(|data| (data.name.clone(), data.clone()))
+            .collect(),
+    };
+    modules.insert(path.clone(), loaded);
+    for import in &module.imports {
+        let target = resolve_import_path(&path, &import.module_path)
+            .ok_or_else(|| format!("cannot resolve import `{}`", import.module_path))?;
+        load_module_recursive(&target, modules)?;
+    }
+    Ok(())
+}
+
+struct RuntimeFns {
+    unit: FuncId,
+    int: FuncId,
+    bool_: FuncId,
+    string_new_utf8: FuncId,
+    to_string: FuncId,
+    concat: FuncId,
+    add: FuncId,
+    sub: FuncId,
+    mul: FuncId,
+    div: FuncId,
+    mod_: FuncId,
+    eq: FuncId,
+    lt: FuncId,
+    le: FuncId,
+    gt: FuncId,
+    ge: FuncId,
+    truthy: FuncId,
+    println: FuncId,
+    none: FuncId,
+    some: FuncId,
+    option_is_some: FuncId,
+    option_unwrap: FuncId,
+    ok: FuncId,
+    err: FuncId,
+    result_is_ok: FuncId,
+    result_unwrap: FuncId,
+    list_new: FuncId,
+    list_push: FuncId,
+    list_len: FuncId,
+    list_get: FuncId,
+    data_new: FuncId,
+    data_set_field: FuncId,
+    data_get_field: FuncId,
+    release: FuncId,
+    asap_release: FuncId,
+    to_upper: FuncId,
+    string_is_empty: FuncId,
+}
+
+struct BackendCompiler<'a> {
+    session: &'a BuildSession,
+    module: ObjectModule,
+    pointer_type: cranelift_codegen::ir::Type,
+    runtime: RuntimeFns,
+    function_ids: HashMap<String, FuncId>,
+    destructor_ids: HashMap<String, FuncId>,
+    string_ids: HashMap<String, cranelift_module::DataId>,
+}
+
+#[derive(Clone)]
+struct LocalBinding {
+    var: Variable,
+    ty: Option<String>,
+    destroy: bool,
+}
+
+#[derive(Clone)]
+struct TypedValue {
+    value: Value,
+    ty: Option<String>,
+}
+
+struct LoopFrame {
+    break_block: cranelift_codegen::ir::Block,
+    continue_block: cranelift_codegen::ir::Block,
+}
+
+impl<'a> BackendCompiler<'a> {
+    fn new(session: &'a BuildSession) -> Result<Self, String> {
+        let isa_builder = cranelift_native::builder().map_err(|error| error.to_string())?;
+        let isa = isa_builder
+            .finish(settings::Flags::new(settings::builder()))
+            .map_err(|error| error.to_string())?;
+        let mut module = ObjectModule::new(
+            ObjectBuilder::new(isa, "fuse_stage1", default_libcall_names())
+                .map_err(|error| error.to_string())?,
+        );
+        let pointer_type = module.target_config().pointer_type();
+        let runtime = declare_runtime_functions(&mut module, pointer_type)?;
+        let mut compiler = Self {
+            session,
+            module,
+            pointer_type,
+            runtime,
+            function_ids: HashMap::new(),
+            destructor_ids: HashMap::new(),
+            string_ids: HashMap::new(),
+        };
+        compiler.declare_user_surface()?;
+        Ok(compiler)
+    }
+
+    fn declare_user_surface(&mut self) -> Result<(), String> {
+        for loaded in self.session.modules.values() {
+            for function in loaded.functions.values() {
+                let name = layout::function_symbol(loaded.path.as_path(), &function.name);
+                let func_id = self
+                    .module
+                    .declare_function(&name, Linkage::Local, &self.handle_signature(function.params.len()))
+                    .map_err(|error| error.to_string())?;
+                self.function_ids.insert(name, func_id);
+            }
+            for data in loaded.data_classes.values() {
+                for method in &data.methods {
+                    let name = layout::function_symbol(loaded.path.as_path(), &method.name);
+                    let func_id = self
+                        .module
+                        .declare_function(&name, Linkage::Local, &self.handle_signature(method.params.len()))
+                        .map_err(|error| error.to_string())?;
+                    self.function_ids.insert(name, func_id);
+                }
+                if data.methods.iter().any(|method| method.name == "__del__") {
+                    let name = layout::destructor_symbol(loaded.path.as_path(), &data.name);
+                    let func_id = self
+                        .module
+                        .declare_function(&name, Linkage::Local, &self.destructor_signature())
+                        .map_err(|error| error.to_string())?;
+                    self.destructor_ids.insert(name, func_id);
+                }
+            }
+        }
+        self.module
+            .declare_function(layout::ENTRY_SYMBOL, Linkage::Export, &self.entry_signature())
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    fn emit_object(mut self) -> Result<Vec<u8>, String> {
+        for loaded in self.session.modules.values() {
+            for function in loaded.functions.values() {
+                self.compile_function(loaded.path.as_path(), function)?;
+            }
+            for data in loaded.data_classes.values() {
+                for method in &data.methods {
+                    let mut method = method.clone();
+                    if let Some(param) = method.params.first_mut() {
+                        if param.name == "self" && param.type_name.is_none() {
+                            param.type_name = Some(data.name.clone());
+                        }
+                    }
+                    self.compile_function(loaded.path.as_path(), &method)?;
+                }
+                if data.methods.iter().any(|method| method.name == "__del__") {
+                    self.compile_destructor(loaded.path.as_path(), data)?;
+                }
+            }
+        }
+        self.compile_entry()?;
+        let product = self.module.finish();
+        product.emit().map_err(|error| error.to_string())
+    }
+
+    fn handle_signature(&self, arity: usize) -> cranelift_codegen::ir::Signature {
+        let mut sig = self.module.make_signature();
+        for _ in 0..arity {
+            sig.params.push(AbiParam::new(self.pointer_type));
+        }
+        sig.returns.push(AbiParam::new(self.pointer_type));
+        sig
+    }
+
+    fn destructor_signature(&self) -> cranelift_codegen::ir::Signature {
+        let mut sig = self.module.make_signature();
+        sig.params.push(AbiParam::new(self.pointer_type));
+        sig
+    }
+
+    fn entry_signature(&self) -> cranelift_codegen::ir::Signature {
+        let mut sig = self.module.make_signature();
+        sig.returns.push(AbiParam::new(types::I32));
+        sig
+    }
+
+    fn string_data_id(&mut self, text: &str) -> Result<cranelift_module::DataId, String> {
+        if let Some(id) = self.string_ids.get(text) {
+            return Ok(*id);
+        }
+        let name = format!("fuse_str_{}", self.string_ids.len());
+        let id = self
+            .module
+            .declare_data(&name, Linkage::Local, false, false)
+            .map_err(|error| error.to_string())?;
+        let mut data = DataDescription::new();
+        data.define(text.as_bytes().to_vec().into_boxed_slice());
+        self.module
+            .define_data(id, &data)
+            .map_err(|error| error.to_string())?;
+        self.string_ids.insert(text.to_string(), id);
+        Ok(id)
+    }
+
+    fn compile_function(&mut self, module_path: &Path, function: &fa::FunctionDecl) -> Result<(), String> {
+        let name = layout::function_symbol(module_path, &function.name);
+        let func_id = *self
+            .function_ids
+            .get(&name)
+            .ok_or_else(|| format!("missing function id for `{name}`"))?;
+        let sig = self.handle_signature(function.params.len());
+        let mut ctx = self.module.make_context();
+        ctx.func = Function::with_name_signature(UserFuncName::user(0, func_id.as_u32()), sig);
+        let mut builder_ctx = FunctionBuilderContext::new();
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
+        let entry = builder.create_block();
+        builder.append_block_params_for_function_params(entry);
+        builder.switch_to_block(entry);
+        builder.seal_block(entry);
+
+        let mut lowering = LoweringState::new(self, module_path, function);
+        for (index, param) in function.params.iter().enumerate() {
+            let variable = lowering.new_var(&mut builder, lowering.compiler.pointer_type);
+            let value = builder.block_params(entry)[index];
+            builder.def_var(variable, value);
+            lowering.locals.insert(
+                param.name.clone(),
+                LocalBinding {
+                    var: variable,
+                    ty: param.type_name.clone(),
+                    destroy: param.convention.as_deref() == Some("owned"),
+                },
+            );
+        }
+        lowering.compile_statements(&mut builder, &function.body.statements)?;
+        if !builder.is_unreachable() {
+            let result = lowering.runtime_nullary(&mut builder, lowering.compiler.runtime.unit);
+            if function.return_type.is_none() {
+                lowering.release_remaining(&mut builder);
+            }
+            builder.ins().return_(&[result]);
+        }
+        builder.seal_all_blocks();
+        builder.finalize();
+        self.module
+            .define_function(func_id, &mut ctx)
+            .map_err(|error| error.to_string())
+    }
+
+    fn compile_destructor(&mut self, module_path: &Path, data: &fa::DataClassDecl) -> Result<(), String> {
+        let destructor_method = data
+            .methods
+            .iter()
+            .find(|method| method.name == "__del__")
+            .ok_or_else(|| format!("missing destructor method for `{}`", data.name))?;
+        let bridge_name = layout::destructor_symbol(module_path, &data.name);
+        let bridge_id = *self
+            .destructor_ids
+            .get(&bridge_name)
+            .ok_or_else(|| format!("missing destructor bridge `{bridge_name}`"))?;
+        let target_name = layout::function_symbol(module_path, &destructor_method.name);
+        let target_id = *self
+            .function_ids
+            .get(&target_name)
+            .ok_or_else(|| format!("missing destructor impl `{target_name}`"))?;
+        let mut ctx = self.module.make_context();
+        ctx.func = Function::with_name_signature(
+            UserFuncName::user(0, bridge_id.as_u32()),
+            self.destructor_signature(),
+        );
+        let mut builder_ctx = FunctionBuilderContext::new();
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
+        let entry = builder.create_block();
+        builder.append_block_params_for_function_params(entry);
+        builder.switch_to_block(entry);
+        builder.seal_block(entry);
+        let arg = builder.block_params(entry)[0];
+        let local = self.module.declare_func_in_func(target_id, builder.func);
+        builder.ins().call(local, &[arg]);
+        builder.ins().return_(&[]);
+        builder.seal_all_blocks();
+        builder.finalize();
+        self.module
+            .define_function(bridge_id, &mut ctx)
+            .map_err(|error| error.to_string())
+    }
+
+    fn compile_entry(&mut self) -> Result<(), String> {
+        let entry_func = self.session.entry_function()?;
+        let entry_id = self
+            .module
+            .declare_function(layout::ENTRY_SYMBOL, Linkage::Export, &self.entry_signature())
+            .map_err(|error| error.to_string())?;
+        let mut ctx = self.module.make_context();
+        ctx.func = Function::with_name_signature(
+            UserFuncName::user(0, entry_id.as_u32()),
+            self.entry_signature(),
+        );
+        let mut builder_ctx = FunctionBuilderContext::new();
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
+        let entry = builder.create_block();
+        builder.switch_to_block(entry);
+        builder.seal_block(entry);
+        let target = *self
+            .function_ids
+            .get(&layout::function_symbol(self.session.root_path.as_path(), &entry_func.name))
+            .ok_or_else(|| format!("missing entrypoint function `{}`", entry_func.name))?;
+        let local = self.module.declare_func_in_func(target, builder.func);
+        let call = builder.ins().call(local, &[]);
+        let result = builder.inst_results(call)[0];
+        let release = self.module.declare_func_in_func(self.runtime.release, builder.func);
+        builder.ins().call(release, &[result]);
+        let zero = builder.ins().iconst(types::I32, 0);
+        builder.ins().return_(&[zero]);
+        builder.seal_all_blocks();
+        builder.finalize();
+        self.module
+            .define_function(entry_id, &mut ctx)
+            .map_err(|error| error.to_string())
+    }
+}
+
+fn declare_runtime_functions(
+    module: &mut ObjectModule,
+    pointer_type: cranelift_codegen::ir::Type,
+) -> Result<RuntimeFns, String> {
+    fn sig(
+        module: &mut ObjectModule,
+        params: &[cranelift_codegen::ir::Type],
+        returns: &[cranelift_codegen::ir::Type],
+    ) -> cranelift_codegen::ir::Signature {
+        let mut sig = module.make_signature();
+        for ty in params {
+            sig.params.push(AbiParam::new(*ty));
+        }
+        for ty in returns {
+            sig.returns.push(AbiParam::new(*ty));
+        }
+        sig
+    }
+
+    fn declare(
+        module: &mut ObjectModule,
+        name: &str,
+        params: &[cranelift_codegen::ir::Type],
+        returns: &[cranelift_codegen::ir::Type],
+    ) -> Result<FuncId, String> {
+        let signature = sig(module, params, returns);
+        module
+            .declare_function(name, Linkage::Import, &signature)
+            .map_err(|error| error.to_string())
+    }
+
+    Ok(RuntimeFns {
+        unit: declare(module, "fuse_unit", &[], &[pointer_type])?,
+        int: declare(module, "fuse_int", &[types::I64], &[pointer_type])?,
+        bool_: declare(module, "fuse_bool", &[types::I8], &[pointer_type])?,
+        string_new_utf8: declare(module, "fuse_string_new_utf8", &[pointer_type, pointer_type], &[pointer_type])?,
+        to_string: declare(module, "fuse_to_string", &[pointer_type], &[pointer_type])?,
+        concat: declare(module, "fuse_concat", &[pointer_type, pointer_type], &[pointer_type])?,
+        add: declare(module, "fuse_add", &[pointer_type, pointer_type], &[pointer_type])?,
+        sub: declare(module, "fuse_sub", &[pointer_type, pointer_type], &[pointer_type])?,
+        mul: declare(module, "fuse_mul", &[pointer_type, pointer_type], &[pointer_type])?,
+        div: declare(module, "fuse_div", &[pointer_type, pointer_type], &[pointer_type])?,
+        mod_: declare(module, "fuse_mod", &[pointer_type, pointer_type], &[pointer_type])?,
+        eq: declare(module, "fuse_eq", &[pointer_type, pointer_type], &[pointer_type])?,
+        lt: declare(module, "fuse_lt", &[pointer_type, pointer_type], &[pointer_type])?,
+        le: declare(module, "fuse_le", &[pointer_type, pointer_type], &[pointer_type])?,
+        gt: declare(module, "fuse_gt", &[pointer_type, pointer_type], &[pointer_type])?,
+        ge: declare(module, "fuse_ge", &[pointer_type, pointer_type], &[pointer_type])?,
+        truthy: declare(module, "fuse_is_truthy", &[pointer_type], &[types::I8])?,
+        println: declare(module, "fuse_builtin_println", &[pointer_type], &[])?,
+        none: declare(module, "fuse_none", &[], &[pointer_type])?,
+        some: declare(module, "fuse_some", &[pointer_type], &[pointer_type])?,
+        option_is_some: declare(module, "fuse_option_is_some", &[pointer_type], &[types::I8])?,
+        option_unwrap: declare(module, "fuse_option_unwrap", &[pointer_type], &[pointer_type])?,
+        ok: declare(module, "fuse_ok", &[pointer_type], &[pointer_type])?,
+        err: declare(module, "fuse_err", &[pointer_type], &[pointer_type])?,
+        result_is_ok: declare(module, "fuse_result_is_ok", &[pointer_type], &[types::I8])?,
+        result_unwrap: declare(module, "fuse_result_unwrap", &[pointer_type], &[pointer_type])?,
+        list_new: declare(module, "fuse_list_new", &[], &[pointer_type])?,
+        list_push: declare(module, "fuse_list_push", &[pointer_type, pointer_type], &[])?,
+        list_len: declare(module, "fuse_list_len", &[pointer_type], &[types::I64])?,
+        list_get: declare(module, "fuse_list_get", &[pointer_type, pointer_type], &[pointer_type])?,
+        data_new: declare(module, "fuse_data_new", &[pointer_type, pointer_type, pointer_type, pointer_type], &[pointer_type])?,
+        data_set_field: declare(module, "fuse_data_set_field", &[pointer_type, pointer_type, pointer_type], &[])?,
+        data_get_field: declare(module, "fuse_data_get_field", &[pointer_type, pointer_type], &[pointer_type])?,
+        release: declare(module, "fuse_release", &[pointer_type], &[])?,
+        asap_release: declare(module, "fuse_asap_release", &[pointer_type], &[])?,
+        to_upper: declare(module, "fuse_to_upper", &[pointer_type], &[pointer_type])?,
+        string_is_empty: declare(module, "fuse_string_is_empty", &[pointer_type], &[pointer_type])?,
+    })
+}
+
+fn build_wrapper(input: &Path, output: &Path, object: &[u8]) -> Result<(), String> {
+    let repo_root = input
+        .ancestors()
+        .find(|path| path.join("stage1").is_dir())
+        .ok_or_else(|| "failed to locate repository root".to_string())?;
+    let stage1_root = repo_root.join("stage1");
+    let generated_root = stage1_root.join("target").join("generated");
+    fs::create_dir_all(&generated_root)
+        .map_err(|error| format!("failed to create generated directory: {error}"))?;
+    let workdir = generated_root.join("wrapper");
+    let src_dir = workdir.join("src");
+    fs::create_dir_all(&src_dir)
+        .map_err(|error| format!("failed to create wrapper directory: {error}"))?;
+    let object_name = if cfg!(windows) { "program.obj" } else { "program.o" };
+    let object_path = workdir.join(object_name);
+    fs::write(&object_path, object)
+        .map_err(|error| format!("failed to write object file: {error}"))?;
+    let runtime_path = escape_path(&stage1_root.join("fuse-runtime"));
+    fs::write(
+        workdir.join("Cargo.toml"),
+        format!(
+            "[package]\nname = \"fuse_generated_wrapper\"\nversion = \"0.1.0\"\nedition = \"2024\"\nbuild = \"build.rs\"\n\n[workspace]\n\n[dependencies]\nfuse-runtime = {{ path = \"{runtime_path}\" }}\n"
+        ),
+    )
+    .map_err(|error| format!("failed to write wrapper Cargo.toml: {error}"))?;
+    let object_literal = escape_string(&object_path);
+    fs::write(
+        workdir.join("build.rs"),
+        format!(
+            "fn main() {{\n    println!(\"cargo:rerun-if-changed={object_literal}\");\n    println!(\"cargo:rustc-link-arg={object_literal}\");\n    if cfg!(target_os = \"windows\") {{\n        println!(\"cargo:rustc-link-arg=/STACK:8388608\");\n    }}\n}}\n"
+        ),
+    )
+    .map_err(|error| format!("failed to write wrapper build.rs: {error}"))?;
+    fs::write(
+        src_dir.join("main.rs"),
+        "use fuse_runtime as _;\n\nunsafe extern \"C\" {\n    fn fuse_user_entry() -> i32;\n}\n\nfn main() {\n    std::process::exit(unsafe { fuse_user_entry() });\n}\n",
+    )
+    .map_err(|error| format!("failed to write wrapper main.rs: {error}"))?;
+    let target_dir = stage1_root.join("target").join("generated-target");
+    fs::create_dir_all(&target_dir)
+        .map_err(|error| format!("failed to create shared wrapper target dir: {error}"))?;
+    let status = Command::new("cargo")
+        .arg("build")
+        .arg("--release")
+        .arg("--target-dir")
+        .arg(&target_dir)
+        .current_dir(&workdir)
+        .status()
+        .map_err(|error| format!("failed to launch cargo build: {error}"))?;
+    if !status.success() {
+        return Err("generated wrapper build failed".to_string());
+    }
+    let built = target_dir.join("release").join(format!(
+        "{}{}",
+        workdir
+            .file_name()
+            .and_then(|part| part.to_str())
+            .unwrap_or("fuse_generated"),
+        std::env::consts::EXE_SUFFIX
+    ));
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create output directory: {error}"))?;
+    }
+    fs::copy(&built, output)
+        .map_err(|error| format!("failed to copy generated executable: {error}"))?;
+    Ok(())
+}
+
+struct LoweringState<'a, 'b> {
+    compiler: &'a mut BackendCompiler<'b>,
+    _module_path: &'a Path,
+    _function: &'a fa::FunctionDecl,
+    locals: HashMap<String, LocalBinding>,
+    next_var: usize,
+    loops: Vec<LoopFrame>,
+}
+
+impl<'a, 'b> LoweringState<'a, 'b> {
+    fn new(
+        compiler: &'a mut BackendCompiler<'b>,
+        module_path: &'a Path,
+        function: &'a fa::FunctionDecl,
+    ) -> Self {
+        Self {
+            compiler,
+            _module_path: module_path,
+            _function: function,
+            locals: HashMap::new(),
+            next_var: 0,
+            loops: Vec::new(),
+        }
+    }
+
+    fn new_var(&mut self, builder: &mut FunctionBuilder, ty: cranelift_codegen::ir::Type) -> Variable {
+        let variable = builder.declare_var(ty);
+        self.next_var += 1;
+        variable
+    }
+
+    fn compile_statements(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        statements: &[fa::Statement],
+    ) -> Result<(), String> {
+        let future = compute_future_uses(statements);
+        for (index, statement) in statements.iter().enumerate() {
+            self.compile_statement(builder, statement)?;
+            if builder.is_unreachable() {
+                break;
+            }
+            self.release_dead(builder, &future[index]);
+        }
+        Ok(())
+    }
+
+    fn compile_statement(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        statement: &fa::Statement,
+    ) -> Result<(), String> {
+        match statement {
+            fa::Statement::VarDecl(var_decl) => {
+                let value = self.compile_expr(builder, &var_decl.value)?;
+                let variable = self.new_var(builder, self.compiler.pointer_type);
+                builder.def_var(variable, value.value);
+                self.locals.insert(
+                    var_decl.name.clone(),
+                    LocalBinding {
+                        var: variable,
+                        ty: var_decl.type_name.clone().or_else(|| value.ty.clone()),
+                        destroy: true,
+                    },
+                );
+            }
+            fa::Statement::Assign(assign) => self.compile_assign(builder, assign)?,
+            fa::Statement::Return(ret) => {
+                let value = if let Some(expr) = &ret.value {
+                    self.compile_expr(builder, expr)?.value
+                } else {
+                    self.runtime_nullary(builder, self.compiler.runtime.unit)
+                };
+                builder.ins().return_(&[value]);
+            }
+            fa::Statement::Break(_) => {
+                let frame = self.loops.last().ok_or_else(|| "`break` outside loop".to_string())?;
+                builder.ins().jump(frame.break_block, &[]);
+            }
+            fa::Statement::Continue(_) => {
+                let frame = self.loops.last().ok_or_else(|| "`continue` outside loop".to_string())?;
+                builder.ins().jump(frame.continue_block, &[]);
+            }
+            fa::Statement::While(while_stmt) => self.compile_while(builder, while_stmt)?,
+            fa::Statement::For(for_stmt) => self.compile_for(builder, for_stmt)?,
+            fa::Statement::Loop(loop_stmt) => self.compile_loop(builder, &loop_stmt.body.statements)?,
+            fa::Statement::Defer(_) => {}
+            fa::Statement::Expr(expr_stmt) => {
+                let _ = self.compile_expr(builder, &expr_stmt.expr)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn compile_assign(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        assign: &fa::Assign,
+    ) -> Result<(), String> {
+        let value = self.compile_expr(builder, &assign.value)?;
+        match &assign.target {
+            fa::Expr::Name(name) => {
+                let binding = self
+                    .locals
+                    .get(&name.value)
+                    .cloned()
+                    .ok_or_else(|| format!("unknown binding `{}`", name.value))?;
+                builder.def_var(binding.var, value.value);
+            }
+            fa::Expr::Member(member) => {
+                let object = self.compile_expr(builder, &member.object)?;
+                let object_type = object
+                    .ty
+                    .clone()
+                    .ok_or_else(|| format!("cannot infer member target `{}`", member.name))?;
+                let layout = self
+                    .compiler
+                    .session
+                    .layout
+                    .data_layout(&object_type)
+                    .ok_or_else(|| format!("missing layout for `{object_type}`"))?;
+                let field_index = layout
+                    .field_index(&member.name)
+                    .ok_or_else(|| format!("unknown field `{}`", member.name))?;
+                let field_index = self.usize_const(builder, field_index as i64);
+                self.runtime_void(
+                    builder,
+                    self.compiler.runtime.data_set_field,
+                    &[object.value, field_index, value.value],
+                );
+            }
+            other => return Err(format!("unsupported assignment target `{:?}`", other)),
+        }
+        Ok(())
+    }
+
+    fn compile_while(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        while_stmt: &fa::WhileStmt,
+    ) -> Result<(), String> {
+        let cond_block = builder.create_block();
+        let body_block = builder.create_block();
+        let exit_block = builder.create_block();
+        builder.ins().jump(cond_block, &[]);
+        builder.switch_to_block(cond_block);
+        let condition = self.compile_expr(builder, &while_stmt.condition)?;
+        let truthy = self.truthy_value(builder, condition.value);
+        builder.ins().brif(truthy, body_block, &[], exit_block, &[]);
+        builder.switch_to_block(body_block);
+        self.loops.push(LoopFrame {
+            break_block: exit_block,
+            continue_block: cond_block,
+        });
+        self.compile_statements(builder, &while_stmt.body.statements)?;
+        self.loops.pop();
+        if !builder.is_unreachable() {
+            builder.ins().jump(cond_block, &[]);
+        }
+        builder.switch_to_block(exit_block);
+        Ok(())
+    }
+
+    fn compile_for(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        for_stmt: &fa::ForStmt,
+    ) -> Result<(), String> {
+        let iterable = self.compile_expr(builder, &for_stmt.iterable)?;
+        let list_var = self.new_var(builder, self.compiler.pointer_type);
+        builder.def_var(list_var, iterable.value);
+        let index_var = self.new_var(builder, types::I64);
+        let zero = builder.ins().iconst(types::I64, 0);
+        builder.def_var(index_var, zero);
+        let cond_block = builder.create_block();
+        let body_block = builder.create_block();
+        let exit_block = builder.create_block();
+        builder.ins().jump(cond_block, &[]);
+        builder.switch_to_block(cond_block);
+        let list = builder.use_var(list_var);
+        let len = self.runtime_value(builder, self.compiler.runtime.list_len, &[list], types::I64);
+        let index = builder.use_var(index_var);
+        let cond = builder.ins().icmp(IntCC::UnsignedLessThan, index, len);
+        builder.ins().brif(cond, body_block, &[], exit_block, &[]);
+        builder.switch_to_block(body_block);
+        let item = self.runtime(
+            builder,
+            self.compiler.runtime.list_get,
+            &[list, index],
+            self.compiler.pointer_type,
+        );
+        let item_var = self.new_var(builder, self.compiler.pointer_type);
+        builder.def_var(item_var, item);
+        self.locals.insert(
+            for_stmt.name.clone(),
+            LocalBinding {
+                var: item_var,
+                ty: Some("String".to_string()),
+                destroy: false,
+            },
+        );
+        self.loops.push(LoopFrame {
+            break_block: exit_block,
+            continue_block: cond_block,
+        });
+        self.compile_statements(builder, &for_stmt.body.statements)?;
+        self.loops.pop();
+        if !builder.is_unreachable() {
+            let next = builder.ins().iadd_imm(index, 1);
+            builder.def_var(index_var, next);
+            builder.ins().jump(cond_block, &[]);
+        }
+        builder.switch_to_block(exit_block);
+        Ok(())
+    }
+
+    fn compile_loop(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        statements: &[fa::Statement],
+    ) -> Result<(), String> {
+        let body_block = builder.create_block();
+        let exit_block = builder.create_block();
+        builder.ins().jump(body_block, &[]);
+        builder.switch_to_block(body_block);
+        self.loops.push(LoopFrame {
+            break_block: exit_block,
+            continue_block: body_block,
+        });
+        self.compile_statements(builder, statements)?;
+        self.loops.pop();
+        if !builder.is_unreachable() {
+            builder.ins().jump(body_block, &[]);
+        }
+        builder.switch_to_block(exit_block);
+        Ok(())
+    }
+
+    fn compile_expr(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        expr: &fa::Expr,
+    ) -> Result<TypedValue, String> {
+        match expr {
+            fa::Expr::Literal(literal) => self.compile_literal(builder, literal),
+            fa::Expr::FString(fstring) => self.compile_fstring(builder, &fstring.template),
+            fa::Expr::Name(name) => self.compile_name(builder, &name.value),
+            fa::Expr::List(list) => self.compile_list(builder, list),
+            fa::Expr::Unary(unary) => self.compile_unary(builder, unary),
+            fa::Expr::Binary(binary) => self.compile_binary(builder, binary),
+            fa::Expr::Call(call) => self.compile_call(builder, call),
+            fa::Expr::Member(member) => self.compile_member(builder, member),
+            fa::Expr::Move(move_expr) => self.compile_move(builder, move_expr),
+            fa::Expr::Ref(reference) => self.compile_expr(builder, &reference.value),
+            fa::Expr::MutRef(reference) => self.compile_expr(builder, &reference.value),
+            fa::Expr::Question(question) => self.compile_question(builder, question),
+            fa::Expr::If(if_expr) => self.compile_if(builder, if_expr),
+            fa::Expr::Match(match_expr) => self.compile_match(builder, match_expr),
+            fa::Expr::When(when_expr) => self.compile_when(builder, when_expr),
+        }
+    }
+
+    fn compile_literal(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        literal: &fa::Literal,
+    ) -> Result<TypedValue, String> {
+        let (value, ty) = match &literal.value {
+            fa::LiteralValue::Int(value) => (
+                {
+                    let raw = builder.ins().iconst(types::I64, *value);
+                    self.runtime(
+                        builder,
+                        self.compiler.runtime.int,
+                        &[raw],
+                        self.compiler.pointer_type,
+                    )
+                },
+                Some("Int".to_string()),
+            ),
+            fa::LiteralValue::Bool(value) => (
+                {
+                    let raw = builder.ins().iconst(types::I8, i64::from(*value));
+                    self.runtime(
+                        builder,
+                        self.compiler.runtime.bool_,
+                        &[raw],
+                        self.compiler.pointer_type,
+                    )
+                },
+                Some("Bool".to_string()),
+            ),
+            fa::LiteralValue::String(value) => (self.string_value(builder, value)?, Some("String".to_string())),
+            fa::LiteralValue::Float(_) => {
+                return Err("float literals are not implemented in the real backend yet".to_string())
+            }
+        };
+        Ok(TypedValue { value, ty })
+    }
+
+    fn compile_fstring(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        template: &str,
+    ) -> Result<TypedValue, String> {
+        let mut current = self.string_value(builder, "")?;
+        let mut rest = template;
+        while let Some(start) = rest.find('{') {
+            if start > 0 {
+                let piece = self.string_value(builder, &rest[..start])?;
+                current = self.runtime(
+                    builder,
+                    self.compiler.runtime.concat,
+                    &[current, piece],
+                    self.compiler.pointer_type,
+                );
+            }
+            let after = &rest[start + 1..];
+            let end = after
+                .find('}')
+                .ok_or_else(|| "unterminated f-string".to_string())?;
+            let placeholder = after[..end].trim();
+            let mut value =
+                self.compile_name(builder, placeholder.split('.').next().unwrap_or_default())?;
+            for segment in placeholder.split('.').skip(1) {
+                value = self.member_access(builder, value, segment, false)?;
+            }
+            let rendered = self.runtime(
+                builder,
+                self.compiler.runtime.to_string,
+                &[value.value],
+                self.compiler.pointer_type,
+            );
+            current = self.runtime(
+                builder,
+                self.compiler.runtime.concat,
+                &[current, rendered],
+                self.compiler.pointer_type,
+            );
+            rest = &after[end + 1..];
+        }
+        if !rest.is_empty() {
+            let piece = self.string_value(builder, rest)?;
+            current = self.runtime(
+                builder,
+                self.compiler.runtime.concat,
+                &[current, piece],
+                self.compiler.pointer_type,
+            );
+        }
+        Ok(TypedValue {
+            value: current,
+            ty: Some("String".to_string()),
+        })
+    }
+
+    fn compile_name(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        name: &str,
+    ) -> Result<TypedValue, String> {
+        if name == "None" {
+            return Ok(TypedValue {
+                value: self.runtime_nullary(builder, self.compiler.runtime.none),
+                ty: Some("Option<Unknown>".to_string()),
+            });
+        }
+        let binding = self
+            .locals
+            .get(name)
+            .cloned()
+            .ok_or_else(|| format!("unknown binding `{name}`"))?;
+        Ok(TypedValue {
+            value: builder.use_var(binding.var),
+            ty: binding.ty,
+        })
+    }
+
+    fn compile_list(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        list: &fa::ListExpr,
+    ) -> Result<TypedValue, String> {
+        let handle = self.runtime_nullary(builder, self.compiler.runtime.list_new);
+        let mut item_type = None;
+        for item in &list.items {
+            let item_value = self.compile_expr(builder, item)?;
+            if item_type.is_none() {
+                item_type = item_value.ty.clone();
+            }
+            self.runtime_void(builder, self.compiler.runtime.list_push, &[handle, item_value.value]);
+        }
+        Ok(TypedValue {
+            value: handle,
+            ty: Some(format!(
+                "List<{}>",
+                item_type.unwrap_or_else(|| "Unknown".to_string())
+            )),
+        })
+    }
+
+    fn compile_unary(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        unary: &fa::UnaryOp,
+    ) -> Result<TypedValue, String> {
+        match unary.op.as_str() {
+            "-" => {
+                let value = self.compile_expr(builder, &unary.value)?;
+                let raw_zero = builder.ins().iconst(types::I64, 0);
+                let zero =
+                    self.runtime(builder, self.compiler.runtime.int, &[raw_zero], self.compiler.pointer_type);
+                Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.sub,
+                        &[zero, value.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: value.ty,
+                })
+            }
+            "not" => {
+                let value = self.compile_expr(builder, &unary.value)?;
+                let truthy = self.truthy_value(builder, value.value);
+                let inverted = builder.ins().bxor_imm(truthy, 1);
+                Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.bool_,
+                        &[inverted],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some("Bool".to_string()),
+                })
+            }
+            other => Err(format!("unsupported unary operator `{other}`")),
+        }
+    }
+
+    fn compile_binary(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        binary: &fa::BinaryOp,
+    ) -> Result<TypedValue, String> {
+        match binary.op.as_str() {
+            "?:" => self.compile_elvis(builder, binary),
+            "and" | "or" => self.compile_short_circuit(builder, binary),
+            _ => {
+                let left = self.compile_expr(builder, &binary.left)?;
+                let right = self.compile_expr(builder, &binary.right)?;
+                let (value, ty) = match binary.op.as_str() {
+                    "+" => (
+                        self.runtime(
+                            builder,
+                            self.compiler.runtime.add,
+                            &[left.value, right.value],
+                            self.compiler.pointer_type,
+                        ),
+                        if left.ty.as_deref() == Some("String")
+                            || right.ty.as_deref() == Some("String")
+                        {
+                            Some("String".to_string())
+                        } else {
+                            Some("Int".to_string())
+                        },
+                    ),
+                    "-" => (
+                        self.runtime(
+                            builder,
+                            self.compiler.runtime.sub,
+                            &[left.value, right.value],
+                            self.compiler.pointer_type,
+                        ),
+                        Some("Int".to_string()),
+                    ),
+                    "*" => (
+                        self.runtime(
+                            builder,
+                            self.compiler.runtime.mul,
+                            &[left.value, right.value],
+                            self.compiler.pointer_type,
+                        ),
+                        Some("Int".to_string()),
+                    ),
+                    "/" => (
+                        self.runtime(
+                            builder,
+                            self.compiler.runtime.div,
+                            &[left.value, right.value],
+                            self.compiler.pointer_type,
+                        ),
+                        Some("Int".to_string()),
+                    ),
+                    "%" => (
+                        self.runtime(
+                            builder,
+                            self.compiler.runtime.mod_,
+                            &[left.value, right.value],
+                            self.compiler.pointer_type,
+                        ),
+                        Some("Int".to_string()),
+                    ),
+                    "==" => (
+                        self.runtime(
+                            builder,
+                            self.compiler.runtime.eq,
+                            &[left.value, right.value],
+                            self.compiler.pointer_type,
+                        ),
+                        Some("Bool".to_string()),
+                    ),
+                    "!=" => {
+                        let eq = self.runtime(
+                            builder,
+                            self.compiler.runtime.eq,
+                            &[left.value, right.value],
+                            self.compiler.pointer_type,
+                        );
+                        let truthy = self.truthy_value(builder, eq);
+                        let inverted = builder.ins().bxor_imm(truthy, 1);
+                        (
+                            self.runtime(
+                                builder,
+                                self.compiler.runtime.bool_,
+                                &[inverted],
+                                self.compiler.pointer_type,
+                            ),
+                            Some("Bool".to_string()),
+                        )
+                    }
+                    "<" => (self.compare(builder, self.compiler.runtime.lt, left.value, right.value), Some("Bool".to_string())),
+                    "<=" => (self.compare(builder, self.compiler.runtime.le, left.value, right.value), Some("Bool".to_string())),
+                    ">" => (self.compare(builder, self.compiler.runtime.gt, left.value, right.value), Some("Bool".to_string())),
+                    ">=" => (self.compare(builder, self.compiler.runtime.ge, left.value, right.value), Some("Bool".to_string())),
+                    other => return Err(format!("unsupported binary operator `{other}`")),
+                };
+                Ok(TypedValue { value, ty })
+            }
+        }
+    }
+
+    fn compare(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        func_id: FuncId,
+        left: Value,
+        right: Value,
+    ) -> Value {
+        self.runtime(builder, func_id, &[left, right], self.compiler.pointer_type)
+    }
+
+    fn jump_value(&mut self, builder: &mut FunctionBuilder, block: cranelift_codegen::ir::Block, value: Value) {
+        let args = [BlockArg::Value(value)];
+        builder.ins().jump(block, &args);
+    }
+
+    fn compile_short_circuit(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        binary: &fa::BinaryOp,
+    ) -> Result<TypedValue, String> {
+        let left = self.compile_expr(builder, &binary.left)?;
+        let left_truthy = self.truthy_value(builder, left.value);
+        let rhs_block = builder.create_block();
+        let fallback_block = builder.create_block();
+        let done = builder.create_block();
+        builder.append_block_param(done, self.compiler.pointer_type);
+        match binary.op.as_str() {
+            "and" => builder.ins().brif(left_truthy, rhs_block, &[], fallback_block, &[]),
+            "or" => builder.ins().brif(left_truthy, fallback_block, &[], rhs_block, &[]),
+            _ => unreachable!(),
+        };
+
+        builder.switch_to_block(rhs_block);
+        let right = self.compile_expr(builder, &binary.right)?;
+        let right_truthy = self.truthy_value(builder, right.value);
+        let right_bool = self.runtime(
+            builder,
+            self.compiler.runtime.bool_,
+            &[right_truthy],
+            self.compiler.pointer_type,
+        );
+        self.jump_value(builder, done, right_bool);
+
+        builder.switch_to_block(fallback_block);
+        let raw = builder
+            .ins()
+            .iconst(types::I8, if binary.op == "or" { 1 } else { 0 });
+        let fallback = self.runtime(
+            builder,
+            self.compiler.runtime.bool_,
+            &[raw],
+            self.compiler.pointer_type,
+        );
+        self.jump_value(builder, done, fallback);
+
+        builder.switch_to_block(done);
+        Ok(TypedValue {
+            value: builder.block_params(done)[0],
+            ty: Some("Bool".to_string()),
+        })
+    }
+
+    fn compile_elvis(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        binary: &fa::BinaryOp,
+    ) -> Result<TypedValue, String> {
+        let left = self.compile_expr(builder, &binary.left)?;
+        let some = self.runtime_value(builder, self.compiler.runtime.option_is_some, &[left.value], types::I8);
+        let then_block = builder.create_block();
+        let else_block = builder.create_block();
+        let done = builder.create_block();
+        builder.append_block_param(done, self.compiler.pointer_type);
+        let cond = builder.ins().icmp_imm(IntCC::NotEqual, some, 0);
+        builder.ins().brif(cond, then_block, &[], else_block, &[]);
+
+        builder.switch_to_block(then_block);
+        let inner = self.runtime(
+            builder,
+            self.compiler.runtime.option_unwrap,
+            &[left.value],
+            self.compiler.pointer_type,
+        );
+        self.jump_value(builder, done, inner);
+
+        builder.switch_to_block(else_block);
+        let right = self.compile_expr(builder, &binary.right)?;
+        let right_value = right.value;
+        let right_ty = right.ty.clone();
+        self.jump_value(builder, done, right_value);
+
+        builder.switch_to_block(done);
+        Ok(TypedValue {
+            value: builder.block_params(done)[0],
+            ty: left
+                .ty
+                .as_deref()
+                .and_then(option_inner_type)
+                .or(right_ty)
+                .map(|value| value.to_string()),
+        })
+    }
+
+    fn compile_call(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        call: &fa::Call,
+    ) -> Result<TypedValue, String> {
+        match call.callee.as_ref() {
+            fa::Expr::Name(name) => self.compile_named_call(builder, &name.value, &call.args),
+            fa::Expr::Member(member) => self.compile_member_call(builder, member, &call.args),
+            _ => Err("unsupported call target".to_string()),
+        }
+    }
+
+    fn compile_named_call(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        name: &str,
+        args: &[fa::Expr],
+    ) -> Result<TypedValue, String> {
+        match name {
+            "println" => {
+                let value = self.compile_expr(
+                    builder,
+                    args.first()
+                        .ok_or_else(|| "println requires an argument".to_string())?,
+                )?;
+                self.runtime_void(builder, self.compiler.runtime.println, &[value.value]);
+                return Ok(TypedValue {
+                    value: self.runtime_nullary(builder, self.compiler.runtime.unit),
+                    ty: Some("Unit".to_string()),
+                });
+            }
+            "Some" => {
+                let value = self.compile_expr(builder, &args[0])?;
+                return Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.some,
+                        &[value.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: value.ty.map(|inner| format!("Option<{inner}>")),
+                });
+            }
+            "Ok" => {
+                let value = self.compile_expr(builder, &args[0])?;
+                return Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.ok,
+                        &[value.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: value.ty.map(|inner| format!("Result<{inner}, Unknown>")),
+                });
+            }
+            "Err" => {
+                let value = self.compile_expr(builder, &args[0])?;
+                return Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.err,
+                        &[value.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: value.ty.map(|inner| format!("Result<Unknown, {inner}>")),
+                });
+            }
+            _ => {}
+        }
+
+        if let Some((data_module, data)) = self.compiler.session.find_data(name) {
+            return self.compile_data_constructor(builder, data_module, data, args);
+        }
+
+        let (target_module, function) = self
+            .compiler
+            .session
+            .resolve_function(name)
+            .ok_or_else(|| format!("unknown function `{name}`"))?;
+        let symbol = layout::function_symbol(target_module, &function.name);
+        let func_id = *self
+            .compiler
+            .function_ids
+            .get(&symbol)
+            .ok_or_else(|| format!("missing function id for `{symbol}`"))?;
+        let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
+        let mut lowered_args = Vec::with_capacity(args.len());
+        for arg in args {
+            lowered_args.push(self.compile_expr(builder, arg)?.value);
+        }
+        let call = builder.ins().call(local, &lowered_args);
+        Ok(TypedValue {
+            value: builder.inst_results(call)[0],
+            ty: function.return_type.clone(),
+        })
+    }
+
+    fn compile_member_call(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        member: &fa::Member,
+        args: &[fa::Expr],
+    ) -> Result<TypedValue, String> {
+        let receiver = self.compile_expr(builder, &member.object)?;
+        let receiver_type = receiver
+            .ty
+            .clone()
+            .ok_or_else(|| format!("cannot infer receiver type for `{}`", member.name))?;
+        if layout::canonical_type_name(&receiver_type) == "String" {
+            return match member.name.as_str() {
+                "toUpper" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.to_upper,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some("String".to_string()),
+                }),
+                "isEmpty" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.string_is_empty,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some("Bool".to_string()),
+                }),
+                other => Err(format!("unsupported String member call `{other}`")),
+            };
+        }
+
+        let (target_module, function) = self
+            .compiler
+            .session
+            .resolve_extension(&receiver_type, &member.name)
+            .ok_or_else(|| format!("unknown extension `{receiver_type}.{}`", member.name))?;
+        let symbol = layout::function_symbol(target_module, &function.name);
+        let func_id = *self
+            .compiler
+            .function_ids
+            .get(&symbol)
+            .ok_or_else(|| format!("missing function id for `{symbol}`"))?;
+        let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
+        let mut lowered_args = vec![receiver.value];
+        for arg in args {
+            lowered_args.push(self.compile_expr(builder, arg)?.value);
+        }
+        let call = builder.ins().call(local, &lowered_args);
+        Ok(TypedValue {
+            value: builder.inst_results(call)[0],
+            ty: function.return_type.clone(),
+        })
+    }
+
+    fn compile_data_constructor(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        module_path: &Path,
+        data: &fa::DataClassDecl,
+        args: &[fa::Expr],
+    ) -> Result<TypedValue, String> {
+        let full_name = layout::data_type_name(module_path, &data.name);
+        let type_name = self.string_value(builder, &full_name)?;
+        let destructor_ptr = if data.methods.iter().any(|method| method.name == "__del__") {
+            let symbol = layout::destructor_symbol(module_path, &data.name);
+            let func_id = *self
+                .compiler
+                .destructor_ids
+                .get(&symbol)
+                .ok_or_else(|| format!("missing destructor bridge `{symbol}`"))?;
+            let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
+            builder.ins().func_addr(self.compiler.pointer_type, local)
+        } else {
+            builder.ins().iconst(self.compiler.pointer_type, 0)
+        };
+        let name_len = self.usize_const(builder, full_name.len() as i64);
+        let field_count = self.usize_const(builder, data.fields.len() as i64);
+        let handle = self.runtime(
+            builder,
+            self.compiler.runtime.data_new,
+            &[
+                type_name,
+                name_len,
+                field_count,
+                destructor_ptr,
+            ],
+            self.compiler.pointer_type,
+        );
+        for (index, arg) in args.iter().enumerate() {
+            let value = self.compile_expr(builder, arg)?;
+            let field_index = self.usize_const(builder, index as i64);
+            self.runtime_void(
+                builder,
+                self.compiler.runtime.data_set_field,
+                &[handle, field_index, value.value],
+            );
+        }
+        Ok(TypedValue {
+            value: handle,
+            ty: Some(data.name.clone()),
+        })
+    }
+
+    fn compile_member(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        member: &fa::Member,
+    ) -> Result<TypedValue, String> {
+        let object = self.compile_expr(builder, &member.object)?;
+        self.member_access(builder, object, &member.name, member.optional)
+    }
+
+    fn member_access(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        object: TypedValue,
+        name: &str,
+        optional: bool,
+    ) -> Result<TypedValue, String> {
+        if optional {
+            let object_type = object
+                .ty
+                .clone()
+                .ok_or_else(|| format!("cannot infer optional member `{name}`"))?;
+            let some = self.runtime_value(
+                builder,
+                self.compiler.runtime.option_is_some,
+                &[object.value],
+                types::I8,
+            );
+            let then_block = builder.create_block();
+            let else_block = builder.create_block();
+            let done = builder.create_block();
+            builder.append_block_param(done, self.compiler.pointer_type);
+            let cond = builder.ins().icmp_imm(IntCC::NotEqual, some, 0);
+            builder.ins().brif(cond, then_block, &[], else_block, &[]);
+
+            builder.switch_to_block(then_block);
+            let inner = self.runtime(
+                builder,
+                self.compiler.runtime.option_unwrap,
+                &[object.value],
+                self.compiler.pointer_type,
+            );
+            let field = self.member_access(
+                builder,
+                TypedValue {
+                    value: inner,
+                    ty: option_inner_type(&object_type),
+                },
+                name,
+                false,
+            )?;
+            let wrapped = self.runtime(
+                builder,
+                self.compiler.runtime.some,
+                &[field.value],
+                self.compiler.pointer_type,
+            );
+            self.jump_value(builder, done, wrapped);
+
+            builder.switch_to_block(else_block);
+            let none = self.runtime_nullary(builder, self.compiler.runtime.none);
+            self.jump_value(builder, done, none);
+
+            builder.switch_to_block(done);
+            return Ok(TypedValue {
+                value: builder.block_params(done)[0],
+                ty: option_inner_type(&object_type)
+                    .and_then(|inner| self.compiler.session.field_type(&inner, name))
+                    .map(|field| format!("Option<{field}>")),
+            });
+        }
+
+        let object_type = object
+            .ty
+            .clone()
+            .ok_or_else(|| format!("cannot infer member `{name}`"))?;
+        if layout::canonical_type_name(&object_type) == "String" {
+            return match name {
+                "isEmpty" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.string_is_empty,
+                        &[object.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some("Bool".to_string()),
+                }),
+                other => Err(format!("unsupported String member `{other}`")),
+            };
+        }
+        let layout = self
+            .compiler
+            .session
+            .layout
+            .data_layout(&object_type)
+            .ok_or_else(|| format!("missing layout for `{object_type}`"))?;
+        let field_index = layout
+            .field_index(name)
+            .ok_or_else(|| format!("unknown field `{name}` on `{object_type}`"))?;
+        Ok(TypedValue {
+            value: {
+                let index = self.usize_const(builder, field_index as i64);
+                self.runtime(
+                    builder,
+                    self.compiler.runtime.data_get_field,
+                    &[object.value, index],
+                    self.compiler.pointer_type,
+                )
+            },
+            ty: self.compiler.session.field_type(&object_type, name),
+        })
+    }
+
+    fn compile_move(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        move_expr: &fa::MoveExpr,
+    ) -> Result<TypedValue, String> {
+        if let fa::Expr::Name(name) = move_expr.value.as_ref() {
+            let binding = self
+                .locals
+                .get_mut(&name.value)
+                .ok_or_else(|| format!("unknown binding `{}`", name.value))?;
+            binding.destroy = false;
+            return Ok(TypedValue {
+                value: builder.use_var(binding.var),
+                ty: binding.ty.clone(),
+            });
+        }
+        self.compile_expr(builder, &move_expr.value)
+    }
+
+    fn compile_question(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        question: &fa::QuestionExpr,
+    ) -> Result<TypedValue, String> {
+        let value = self.compile_expr(builder, &question.value)?;
+        let ty = value
+            .ty
+            .clone()
+            .ok_or_else(|| "cannot infer type for `?` operand".to_string())?;
+        if layout::canonical_type_name(&ty) == "Option" {
+            let some = self.runtime_value(
+                builder,
+                self.compiler.runtime.option_is_some,
+                &[value.value],
+                types::I8,
+            );
+            let cont = builder.create_block();
+            let cond = builder.ins().icmp_imm(IntCC::NotEqual, some, 0);
+            builder.ins().brif(cond, cont, &[], cont, &[]);
+            let none = self.runtime_nullary(builder, self.compiler.runtime.none);
+            builder.ins().return_(&[none]);
+            builder.switch_to_block(cont);
+            return Ok(TypedValue {
+                value: self.runtime(
+                    builder,
+                    self.compiler.runtime.option_unwrap,
+                    &[value.value],
+                    self.compiler.pointer_type,
+                ),
+                ty: option_inner_type(&ty),
+            });
+        }
+        let ok = self.runtime_value(
+            builder,
+            self.compiler.runtime.result_is_ok,
+            &[value.value],
+            types::I8,
+        );
+        let cont = builder.create_block();
+        let cond = builder.ins().icmp_imm(IntCC::NotEqual, ok, 0);
+        builder.ins().brif(cond, cont, &[], cont, &[]);
+        let err_value = self.runtime(
+            builder,
+            self.compiler.runtime.result_unwrap,
+            &[value.value],
+            self.compiler.pointer_type,
+        );
+        let err_handle = self.runtime(
+            builder,
+            self.compiler.runtime.err,
+            &[err_value],
+            self.compiler.pointer_type,
+        );
+        builder.ins().return_(&[err_handle]);
+        builder.switch_to_block(cont);
+        Ok(TypedValue {
+            value: self.runtime(
+                builder,
+                self.compiler.runtime.result_unwrap,
+                &[value.value],
+                self.compiler.pointer_type,
+            ),
+            ty: result_ok_type(&ty),
+        })
+    }
+
+    fn compile_if(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        if_expr: &fa::IfExpr,
+    ) -> Result<TypedValue, String> {
+        let condition = self.compile_expr(builder, &if_expr.condition)?;
+        let cond = self.truthy_value(builder, condition.value);
+        let then_block = builder.create_block();
+        let else_block = builder.create_block();
+        let done = builder.create_block();
+        builder.append_block_param(done, self.compiler.pointer_type);
+        builder.ins().brif(cond, then_block, &[], else_block, &[]);
+
+        let snapshot = self.locals.clone();
+
+        builder.switch_to_block(then_block);
+        self.compile_statements(builder, &if_expr.then_branch.statements)?;
+        if !builder.is_unreachable() {
+            let value = self.runtime_nullary(builder, self.compiler.runtime.unit);
+            self.jump_value(builder, done, value);
+        }
+
+        self.locals = snapshot.clone();
+        builder.switch_to_block(else_block);
+        match &if_expr.else_branch {
+            Some(fa::ElseBranch::Block(block)) => {
+                self.compile_statements(builder, &block.statements)?;
+                if !builder.is_unreachable() {
+                    let value = self.runtime_nullary(builder, self.compiler.runtime.unit);
+                    self.jump_value(builder, done, value);
+                }
+            }
+            Some(fa::ElseBranch::IfExpr(expr)) => {
+                let value = self.compile_if(builder, expr)?;
+                if !builder.is_unreachable() {
+                    self.jump_value(builder, done, value.value);
+                }
+            }
+            None => {
+                let value = self.runtime_nullary(builder, self.compiler.runtime.unit);
+                self.jump_value(builder, done, value);
+            }
+        }
+
+        self.locals = snapshot;
+        builder.switch_to_block(done);
+        Ok(TypedValue {
+            value: builder.block_params(done)[0],
+            ty: Some("Unit".to_string()),
+        })
+    }
+
+    fn compile_match(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        match_expr: &fa::MatchExpr,
+    ) -> Result<TypedValue, String> {
+        let subject = self.compile_expr(builder, &match_expr.subject)?;
+        let subject_type = subject
+            .ty
+            .clone()
+            .unwrap_or_else(|| "Result<Unknown, Unknown>".to_string());
+        let done = builder.create_block();
+        builder.append_block_param(done, self.compiler.pointer_type);
+        let mut next = builder.create_block();
+        builder.ins().jump(next, &[]);
+        let base_locals = self.locals.clone();
+
+        for arm in &match_expr.arms {
+            builder.switch_to_block(next);
+            let body_block = builder.create_block();
+            let miss_block = builder.create_block();
+            let matched = self.pattern_matches(builder, subject.value, &subject_type, &arm.pattern)?;
+            builder.ins().brif(matched, body_block, &[], miss_block, &[]);
+
+            builder.switch_to_block(body_block);
+            self.locals = base_locals.clone();
+            self.bind_pattern(builder, subject.value, &subject_type, &arm.pattern)?;
+            let value = match &arm.body {
+                fa::ArmBody::Expr(expr) => self.compile_expr(builder, expr)?,
+                fa::ArmBody::Block(block) => {
+                    self.compile_statements(builder, &block.statements)?;
+                    TypedValue {
+                        value: self.runtime_nullary(builder, self.compiler.runtime.unit),
+                        ty: Some("Unit".to_string()),
+                    }
+                }
+            };
+            if !builder.is_unreachable() {
+                self.jump_value(builder, done, value.value);
+            }
+            next = miss_block;
+        }
+
+        builder.switch_to_block(next);
+        let value = self.runtime_nullary(builder, self.compiler.runtime.unit);
+        self.jump_value(builder, done, value);
+        builder.switch_to_block(done);
+        self.locals = base_locals;
+        Ok(TypedValue {
+            value: builder.block_params(done)[0],
+            ty: match_expr.arms.iter().find_map(|arm| match &arm.body {
+                fa::ArmBody::Expr(expr) => self.infer_expr_type(expr),
+                fa::ArmBody::Block(_) => Some("Unit".to_string()),
+            }),
+        })
+    }
+
+    fn compile_when(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        when_expr: &fa::WhenExpr,
+    ) -> Result<TypedValue, String> {
+        let done = builder.create_block();
+        builder.append_block_param(done, self.compiler.pointer_type);
+        let mut next = builder.create_block();
+        builder.ins().jump(next, &[]);
+        for arm in &when_expr.arms {
+            builder.switch_to_block(next);
+            let body_block = builder.create_block();
+            let miss_block = builder.create_block();
+            if let Some(condition) = &arm.condition {
+                let value = self.compile_expr(builder, condition)?;
+                let truthy = self.truthy_value(builder, value.value);
+                builder.ins().brif(truthy, body_block, &[], miss_block, &[]);
+            } else {
+                builder.ins().jump(body_block, &[]);
+            }
+            builder.switch_to_block(body_block);
+            let value = match &arm.body {
+                fa::ArmBody::Expr(expr) => self.compile_expr(builder, expr)?,
+                fa::ArmBody::Block(block) => {
+                    self.compile_statements(builder, &block.statements)?;
+                    TypedValue {
+                        value: self.runtime_nullary(builder, self.compiler.runtime.unit),
+                        ty: Some("Unit".to_string()),
+                    }
+                }
+            };
+            if !builder.is_unreachable() {
+                self.jump_value(builder, done, value.value);
+            }
+            next = miss_block;
+        }
+        builder.switch_to_block(next);
+        let unit = self.runtime_nullary(builder, self.compiler.runtime.unit);
+        self.jump_value(builder, done, unit);
+        builder.switch_to_block(done);
+        Ok(TypedValue {
+            value: builder.block_params(done)[0],
+            ty: Some("Unit".to_string()),
+        })
+    }
+
+    fn pattern_matches(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        subject: Value,
+        subject_type: &str,
+        pattern: &fa::Pattern,
+    ) -> Result<Value, String> {
+        match pattern {
+            fa::Pattern::Wildcard(_) | fa::Pattern::Name(_) => {
+                Ok(builder.ins().iconst(types::I8, 1))
+            }
+            fa::Pattern::Literal(literal) => {
+                let expected = self.compile_literal(
+                    builder,
+                    &fa::Literal {
+                        value: literal.value.clone(),
+                        span: literal.span,
+                    },
+                )?;
+                let eq = self.runtime(
+                    builder,
+                    self.compiler.runtime.eq,
+                    &[subject, expected.value],
+                    self.compiler.pointer_type,
+                );
+                Ok(self.truthy_value(builder, eq))
+            }
+            fa::Pattern::Variant(variant) => match (layout::canonical_type_name(subject_type), variant.name.as_str()) {
+                ("Result", "Ok") => {
+                    let value = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.result_is_ok,
+                        &[subject],
+                        types::I8,
+                    );
+                    Ok(self.truthy_value(builder, value))
+                }
+                ("Result", "Err") => {
+                    let is_ok = self.runtime_value(builder, self.compiler.runtime.result_is_ok, &[subject], types::I8);
+                    Ok(builder.ins().bxor_imm(is_ok, 1))
+                }
+                ("Option", "Some") => {
+                    let value = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.option_is_some,
+                        &[subject],
+                        types::I8,
+                    );
+                    Ok(self.truthy_value(builder, value))
+                }
+                ("Option", "None") => {
+                    let is_some = self.runtime_value(builder, self.compiler.runtime.option_is_some, &[subject], types::I8);
+                    Ok(builder.ins().bxor_imm(is_some, 1))
+                }
+                (base, name) => Err(format!("unsupported match pattern `{name}` on `{base}`")),
+            },
+        }
+    }
+
+    fn bind_pattern(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        subject: Value,
+        subject_type: &str,
+        pattern: &fa::Pattern,
+    ) -> Result<(), String> {
+        match pattern {
+            fa::Pattern::Name(name) => {
+                let variable = self.new_var(builder, self.compiler.pointer_type);
+                builder.def_var(variable, subject);
+                self.locals.insert(
+                    name.name.clone(),
+                    LocalBinding {
+                        var: variable,
+                        ty: Some(subject_type.to_string()),
+                        destroy: false,
+                    },
+                );
+            }
+            fa::Pattern::Variant(variant) => {
+                let payload = match layout::canonical_type_name(subject_type) {
+                    "Result" => self.runtime(
+                        builder,
+                        self.compiler.runtime.result_unwrap,
+                        &[subject],
+                        self.compiler.pointer_type,
+                    ),
+                    "Option" => self.runtime(
+                        builder,
+                        self.compiler.runtime.option_unwrap,
+                        &[subject],
+                        self.compiler.pointer_type,
+                    ),
+                    other => return Err(format!("unsupported pattern subject `{other}`")),
+                };
+                if let Some(fa::Pattern::Name(name)) = variant.args.first() {
+                    let variable = self.new_var(builder, self.compiler.pointer_type);
+                    builder.def_var(variable, payload);
+                    self.locals.insert(
+                        name.name.clone(),
+                        LocalBinding {
+                            var: variable,
+                            ty: match variant.name.as_str() {
+                                "Ok" => result_ok_type(subject_type),
+                                "Err" => result_err_type(subject_type),
+                                "Some" => option_inner_type(subject_type),
+                                _ => None,
+                            },
+                            destroy: false,
+                        },
+                    );
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn release_dead(&mut self, builder: &mut FunctionBuilder, future_names: &HashSet<String>) {
+        let names = self.locals.keys().cloned().collect::<Vec<_>>();
+        for name in names {
+            let should_release = self
+                .locals
+                .get(&name)
+                .map(|binding| binding.destroy && !future_names.contains(&name))
+                .unwrap_or(false);
+            if !should_release {
+                continue;
+            }
+            let variable = self.locals.get(&name).expect("binding exists").var;
+            let value = builder.use_var(variable);
+            self.runtime_void(builder, self.compiler.runtime.asap_release, &[value]);
+            self.locals.get_mut(&name).expect("binding exists").destroy = false;
+        }
+    }
+
+    fn release_remaining(&mut self, builder: &mut FunctionBuilder) {
+        let names = self.locals.keys().cloned().collect::<Vec<_>>();
+        for name in names {
+            let should_release = self
+                .locals
+                .get(&name)
+                .map(|binding| binding.destroy)
+                .unwrap_or(false);
+            if !should_release {
+                continue;
+            }
+            let variable = self.locals.get(&name).expect("binding exists").var;
+            let value = builder.use_var(variable);
+            self.runtime_void(builder, self.compiler.runtime.release, &[value]);
+            self.locals.get_mut(&name).expect("binding exists").destroy = false;
+        }
+    }
+
+    fn runtime(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        func_id: FuncId,
+        args: &[Value],
+        _ret_ty: cranelift_codegen::ir::Type,
+    ) -> Value {
+        let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
+        let call = builder.ins().call(local, args);
+        builder.inst_results(call)[0]
+    }
+
+    fn runtime_value(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        func_id: FuncId,
+        args: &[Value],
+        ret_ty: cranelift_codegen::ir::Type,
+    ) -> Value {
+        self.runtime(builder, func_id, args, ret_ty)
+    }
+
+    fn runtime_nullary(&mut self, builder: &mut FunctionBuilder, func_id: FuncId) -> Value {
+        self.runtime(builder, func_id, &[], self.compiler.pointer_type)
+    }
+
+    fn runtime_void(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        func_id: FuncId,
+        args: &[Value],
+    ) {
+        let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
+        builder.ins().call(local, args);
+    }
+
+    fn truthy_value(&mut self, builder: &mut FunctionBuilder, value: Value) -> Value {
+        let truthy = self.runtime_value(builder, self.compiler.runtime.truthy, &[value], types::I8);
+        builder.ins().icmp_imm(IntCC::NotEqual, truthy, 0)
+    }
+
+    fn usize_const(&self, builder: &mut FunctionBuilder, value: i64) -> Value {
+        builder.ins().iconst(self.compiler.pointer_type, value)
+    }
+
+    fn string_value(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        value: &str,
+    ) -> Result<Value, String> {
+        let data_id = self.compiler.string_data_id(value)?;
+        let local = self.compiler.module.declare_data_in_func(data_id, builder.func);
+        let ptr = builder.ins().symbol_value(self.compiler.pointer_type, local);
+        let len = self.usize_const(builder, value.len() as i64);
+        Ok(self.runtime(
+            builder,
+            self.compiler.runtime.string_new_utf8,
+            &[ptr, len],
+            self.compiler.pointer_type,
+        ))
+    }
+
+    fn infer_expr_type(&self, expr: &fa::Expr) -> Option<String> {
+        match expr {
+            fa::Expr::Literal(literal) => match literal.value {
+                fa::LiteralValue::Int(_) => Some("Int".to_string()),
+                fa::LiteralValue::Float(_) => Some("Float".to_string()),
+                fa::LiteralValue::String(_) => Some("String".to_string()),
+                fa::LiteralValue::Bool(_) => Some("Bool".to_string()),
+            },
+            fa::Expr::FString(_) => Some("String".to_string()),
+            fa::Expr::Name(name) => {
+                if name.value == "None" {
+                    Some("Option<Unknown>".to_string())
+                } else {
+                    self.locals.get(&name.value).and_then(|binding| binding.ty.clone())
+                }
+            }
+            fa::Expr::List(list) => Some(format!(
+                "List<{}>",
+                list.items
+                    .first()
+                    .and_then(|item| self.infer_expr_type(item))
+                    .unwrap_or_else(|| "Unknown".to_string())
+            )),
+            fa::Expr::Unary(unary) => self.infer_expr_type(&unary.value),
+            fa::Expr::Binary(binary) => match binary.op.as_str() {
+                "==" | "!=" | "<" | "<=" | ">" | ">=" | "and" | "or" => Some("Bool".to_string()),
+                "?:" => self
+                    .infer_expr_type(&binary.left)
+                    .as_deref()
+                    .and_then(option_inner_type)
+                    .or_else(|| self.infer_expr_type(&binary.right))
+                    .map(|value| value.to_string()),
+                "+" => {
+                    let left = self.infer_expr_type(&binary.left)?;
+                    let right = self.infer_expr_type(&binary.right)?;
+                    if left == "String" || right == "String" {
+                        Some("String".to_string())
+                    } else {
+                        Some("Int".to_string())
+                    }
+                }
+                "-" | "*" | "/" | "%" => Some("Int".to_string()),
+                _ => None,
+            },
+            fa::Expr::Call(call) => match call.callee.as_ref() {
+                fa::Expr::Name(name) => match name.value.as_str() {
+                    "Some" => self
+                        .infer_expr_type(call.args.first()?)
+                        .map(|inner| format!("Option<{inner}>")),
+                    "Ok" => self
+                        .infer_expr_type(call.args.first()?)
+                        .map(|inner| format!("Result<{inner}, Unknown>")),
+                    "Err" => self
+                        .infer_expr_type(call.args.first()?)
+                        .map(|inner| format!("Result<Unknown, {inner}>")),
+                    data_name => {
+                        if self.compiler.session.find_data(data_name).is_some() {
+                            Some(data_name.to_string())
+                        } else {
+                            self.compiler
+                                .session
+                                .resolve_function(data_name)
+                                .and_then(|(_, function)| function.return_type.clone())
+                        }
+                    }
+                },
+                fa::Expr::Member(member) => {
+                    let receiver_type = self.infer_expr_type(&member.object)?;
+                    if layout::canonical_type_name(&receiver_type) == "String" {
+                        return match member.name.as_str() {
+                            "toUpper" => Some("String".to_string()),
+                            "isEmpty" => Some("Bool".to_string()),
+                            _ => None,
+                        };
+                    }
+                    self.compiler
+                        .session
+                        .resolve_extension(&receiver_type, &member.name)
+                        .and_then(|(_, function)| function.return_type.clone())
+                }
+                _ => None,
+            },
+            fa::Expr::Member(member) => {
+                let object_type = self.infer_expr_type(&member.object)?;
+                if member.optional {
+                    let inner = option_inner_type(&object_type)?;
+                    self.compiler
+                        .session
+                        .field_type(&inner, &member.name)
+                        .map(|field| format!("Option<{field}>"))
+                } else {
+                    self.compiler.session.field_type(&object_type, &member.name)
+                }
+            }
+            fa::Expr::Move(move_expr) => self.infer_expr_type(&move_expr.value),
+            fa::Expr::Ref(reference) => self.infer_expr_type(&reference.value),
+            fa::Expr::MutRef(reference) => self.infer_expr_type(&reference.value),
+            fa::Expr::Question(question) => self
+                .infer_expr_type(&question.value)
+                .as_deref()
+                .and_then(result_ok_type)
+                .map(|value| value.to_string()),
+            fa::Expr::If(_) | fa::Expr::When(_) => Some("Unit".to_string()),
+            fa::Expr::Match(match_expr) => match_expr.arms.iter().find_map(|arm| match &arm.body {
+                fa::ArmBody::Expr(expr) => self.infer_expr_type(expr),
+                fa::ArmBody::Block(_) => Some("Unit".to_string()),
+            }),
+        }
+    }
+}
+
+fn option_inner_type(type_name: &str) -> Option<String> {
+    let args = split_generic_args(type_name)?;
+    (layout::canonical_type_name(type_name) == "Option" && args.len() == 1)
+        .then(|| args[0].clone())
+}
+
+fn result_ok_type(type_name: &str) -> Option<String> {
+    let args = split_generic_args(type_name)?;
+    (layout::canonical_type_name(type_name) == "Result" && args.len() == 2)
+        .then(|| args[0].clone())
+}
+
+fn result_err_type(type_name: &str) -> Option<String> {
+    let args = split_generic_args(type_name)?;
+    (layout::canonical_type_name(type_name) == "Result" && args.len() == 2)
+        .then(|| args[1].clone())
+}
+
+fn split_generic_args(type_name: &str) -> Option<Vec<String>> {
+    let start = type_name.find('<')?;
+    let end = type_name.rfind('>')?;
+    let inner = &type_name[start + 1..end];
+    let mut args = Vec::new();
+    let mut depth = 0usize;
+    let mut current = String::new();
+    for ch in inner.chars() {
+        match ch {
+            '<' => {
+                depth += 1;
+                current.push(ch);
+            }
+            '>' => {
+                depth = depth.saturating_sub(1);
+                current.push(ch);
+            }
+            ',' if depth == 0 => {
+                args.push(current.trim().to_string());
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+    if !current.trim().is_empty() {
+        args.push(current.trim().to_string());
+    }
+    Some(args)
+}
+
+fn display_name(path: &Path) -> String {
+    path.file_name()
+        .and_then(|part| part.to_str())
+        .unwrap_or("<input>")
+        .to_string()
+}
+
+fn escape_path(path: &Path) -> String {
+    path.to_string_lossy()
+        .replace("\\\\?\\", "")
+        .replace('\\', "/")
+}
+
+fn escape_string(path: &Path) -> String {
+    path.to_string_lossy()
+        .replace("\\\\?\\", "")
+        .replace('\\', "\\\\")
+}
+
+fn compute_future_uses(statements: &[fa::Statement]) -> Vec<HashSet<String>> {
+    let mut future = vec![HashSet::new(); statements.len()];
+    let mut seen = HashSet::new();
+    for index in (0..statements.len()).rev() {
+        future[index] = seen.clone();
+        seen.extend(collect_stmt_names(&statements[index]));
+    }
+    future
+}
+
+fn collect_stmt_names(statement: &fa::Statement) -> HashSet<String> {
+    match statement {
+        fa::Statement::VarDecl(var_decl) => collect_expr_names(&var_decl.value),
+        fa::Statement::Assign(assign) => {
+            let mut names = collect_expr_names(&assign.target);
+            names.extend(collect_expr_names(&assign.value));
+            names
+        }
+        fa::Statement::Return(ret) => ret
+            .value
+            .as_ref()
+            .map(collect_expr_names)
+            .unwrap_or_default(),
+        fa::Statement::While(while_stmt) => {
+            let mut names = collect_expr_names(&while_stmt.condition);
+            for statement in &while_stmt.body.statements {
+                names.extend(collect_stmt_names(statement));
+            }
+            names
+        }
+        fa::Statement::For(for_stmt) => {
+            let mut names = collect_expr_names(&for_stmt.iterable);
+            for statement in &for_stmt.body.statements {
+                names.extend(collect_stmt_names(statement));
+            }
+            names
+        }
+        fa::Statement::Loop(loop_stmt) => loop_stmt
+            .body
+            .statements
+            .iter()
+            .flat_map(collect_stmt_names)
+            .collect(),
+        fa::Statement::Defer(defer_stmt) => collect_expr_names(&defer_stmt.expr),
+        fa::Statement::Expr(expr_stmt) => collect_expr_names(&expr_stmt.expr),
+        fa::Statement::Break(_) | fa::Statement::Continue(_) => HashSet::new(),
+    }
+}
+
+fn collect_expr_names(expr: &fa::Expr) -> HashSet<String> {
+    match expr {
+        fa::Expr::Literal(_) | fa::Expr::FString(_) => HashSet::new(),
+        fa::Expr::Name(name) => HashSet::from([name.value.clone()]),
+        fa::Expr::List(list) => list.items.iter().flat_map(collect_expr_names).collect(),
+        fa::Expr::Unary(unary) => collect_expr_names(&unary.value),
+        fa::Expr::Binary(binary) => {
+            let mut names = collect_expr_names(&binary.left);
+            names.extend(collect_expr_names(&binary.right));
+            names
+        }
+        fa::Expr::Call(call) => {
+            let mut names = collect_expr_names(&call.callee);
+            for arg in &call.args {
+                names.extend(collect_expr_names(arg));
+            }
+            names
+        }
+        fa::Expr::Member(member) => collect_expr_names(&member.object),
+        fa::Expr::Move(value) => collect_expr_names(&value.value),
+        fa::Expr::Ref(value) => collect_expr_names(&value.value),
+        fa::Expr::MutRef(value) => collect_expr_names(&value.value),
+        fa::Expr::Question(value) => collect_expr_names(&value.value),
+        fa::Expr::If(if_expr) => {
+            let mut names = collect_expr_names(&if_expr.condition);
+            for statement in &if_expr.then_branch.statements {
+                names.extend(collect_stmt_names(statement));
+            }
+            if let Some(else_branch) = &if_expr.else_branch {
+                match else_branch {
+                    fa::ElseBranch::Block(block) => {
+                        for statement in &block.statements {
+                            names.extend(collect_stmt_names(statement));
+                        }
+                    }
+                    fa::ElseBranch::IfExpr(expr) => {
+                        names.extend(collect_expr_names(&fa::Expr::If(*expr.clone())))
+                    }
+                }
+            }
+            names
+        }
+        fa::Expr::Match(match_expr) => {
+            let mut names = collect_expr_names(&match_expr.subject);
+            for arm in &match_expr.arms {
+                match &arm.body {
+                    fa::ArmBody::Block(block) => {
+                        for statement in &block.statements {
+                            names.extend(collect_stmt_names(statement));
+                        }
+                    }
+                    fa::ArmBody::Expr(expr) => names.extend(collect_expr_names(expr)),
+                }
+            }
+            names
+        }
+        fa::Expr::When(when_expr) => {
+            let mut names = HashSet::new();
+            for arm in &when_expr.arms {
+                if let Some(condition) = &arm.condition {
+                    names.extend(collect_expr_names(condition));
+                }
+                match &arm.body {
+                    fa::ArmBody::Block(block) => {
+                        for statement in &block.statements {
+                            names.extend(collect_stmt_names(statement));
+                        }
+                    }
+                    fa::ArmBody::Expr(expr) => names.extend(collect_expr_names(expr)),
+                }
+            }
+            names
+        }
+    }
+}

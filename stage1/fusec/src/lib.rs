@@ -2,7 +2,6 @@ pub mod ast;
 pub mod checker;
 pub mod common;
 pub mod codegen;
-mod evaluator;
 pub mod error;
 pub mod hir;
 pub mod lexer;
@@ -31,8 +30,4 @@ pub fn check_path_output(path: &Path) -> String {
         .map(|diag| diag.render())
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-pub fn run_embedded_source(source: &str, source_path: &str) -> i32 {
-    evaluator::run_embedded_source(source, source_path)
 }
