@@ -119,3 +119,26 @@ fn write_guard_across_await_matches_current_warning_contract() {
     let actual = check_path_output(&path);
     assert_eq!(actual.trim(), expected.trim(), "{}", path.display());
 }
+
+#[test]
+fn full_channel_stdlib_surface_is_present_and_parseable() {
+    let path = harness::repo_root()
+        .join("stdlib")
+        .join("full")
+        .join("chan.fuse");
+    let source = fs::read_to_string(&path).expect("read stdlib/full/chan.fuse");
+    parser::parse_source(&source, "chan.fuse")
+        .unwrap_or_else(|error| panic!("stdlib/full/chan.fuse: {}", error.render()));
+
+    let importer = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("chan_basic.fuse");
+    let resolved = common::resolve_import_path(&importer, "full.chan");
+    assert!(
+        resolved.as_deref() == Some(path.as_path()),
+        "expected full.chan to resolve to stdlib/full/chan.fuse"
+    );
+}

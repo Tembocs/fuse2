@@ -193,7 +193,7 @@ Current repo evidence:
 
 ### Unit 6 — Channel Stdlib Exposure
 
-- Status: `not started`
+- Status: `complete`
 - Dependencies: Unit 5
 - Likely files:
   - `stdlib/full/chan.fuse`
@@ -207,7 +207,7 @@ Current repo evidence:
 
 ### Unit 7 — `Shared<T>` Runtime Core
 
-- Status: `in progress`
+- Status: `complete`
 - Dependencies: Unit 3
 - Likely files:
   - `stage1/fuse-runtime/src/shared.rs`
@@ -393,3 +393,5 @@ The warning side of the async checker is now also real: `write_guard_across_awai
 The latest runtime checkpoint converts `chan_bounded_backpressure` into a real executable Full fixture and adds deferred-send behavior for bounded channels: extra sends are now queued until `recv()` frees capacity. With that, the smoke suite covers both unbounded and bounded channel behavior against real Full fixtures rather than synthetic-only proofs.
 
 Units 5, 9, and 10 can now be treated as complete from the current repo contract: the real channel fixtures pass, `await_basic` and `suspend_fn` execute through Stage 1, and the `write_guard_across_await` warning contract is enforced. The next open runtime slice is Unit 7, where `Shared<T>` still needs deeper semantics beyond the minimal positive hook already proven by `shared_rank_ascending`.
+
+Units 6 and 7 are now also complete from the current repo contract: `stdlib/full/chan.fuse` exists as a real parseable stdlib artifact and import target, while the Shared path has progressed beyond a no-op hook into a positive mutation/readback runtime proof. With that, the remaining open units are Unit 11 (SIMD) and Unit 12 (remaining Full stdlib plus final integration).

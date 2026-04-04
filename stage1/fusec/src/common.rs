@@ -18,6 +18,9 @@ pub fn resolve_import_path(current_file: &Path, module_path: &str) -> Option<Pat
         current_file.parent()?.join(&rel),
         current_file.parent()?.join("src").join(&rel),
         repo_root().join(&rel),
+        repo_root().join("stdlib").join(&rel),
+        repo_root().join("stdlib").join("full").join(&rel),
+        repo_root().join("stdlib").join("core").join(&rel),
         repo_root()
             .join("tests")
             .join("fuse")

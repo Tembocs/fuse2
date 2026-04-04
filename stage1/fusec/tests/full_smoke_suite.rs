@@ -132,6 +132,39 @@ fn shared_rank_ascending_fixture_compiles_and_runs() {
 }
 
 #[test]
+fn shared_write_roundtrip_smoke_compiles_and_runs() {
+    let _guard = COMPILE_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+    let fixture = harness::repo_root()
+        .join("stage1")
+        .join("target")
+        .join("phase8_shared_roundtrip_smoke.fuse");
+    fs::write(
+        &fixture,
+        "@value\ndata class Box(var value: Int)\n\n@entrypoint\nfn main() {\n  @rank(1) val shared: Shared<Box> = Shared::<Box>.new(Box(1))\n  val item = shared.write()\n  item.value = 2\n  println(shared.read().value)\n}\n",
+    )
+    .expect("write shared roundtrip smoke fixture");
+    let output = harness::unique_output_path("shared_roundtrip_full");
+    let compile = harness::compile_fixture(&fixture, &output);
+    assert!(
+        compile.status.success(),
+        "compile failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&compile.stdout),
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let run = harness::run_compiled_binary(&output);
+    assert!(
+        run.status.success(),
+        "binary failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let actual = String::from_utf8(run.stdout).expect("utf-8 stdout");
+    assert_eq!(actual.trim(), "2", "{}", fixture.display());
+}
+
+#[test]
 fn await_basic_fixture_compiles_and_runs() {
     let _guard = COMPILE_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
     let fixture = harness::repo_root()
