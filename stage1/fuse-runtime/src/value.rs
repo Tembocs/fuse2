@@ -28,6 +28,7 @@ enum ValueKind {
 
 struct ChannelValue {
     items: VecDeque<FuseHandle>,
+    pending: VecDeque<FuseHandle>,
     capacity: Option<usize>,
 }
 
@@ -360,6 +361,7 @@ pub unsafe extern "C" fn fuse_list_get(list: FuseHandle, index: usize) -> FuseHa
 pub unsafe extern "C" fn fuse_chan_new() -> FuseHandle {
     FuseValue::new(ValueKind::Channel(ChannelValue {
         items: VecDeque::new(),
+        pending: VecDeque::new(),
         capacity: None,
     }))
 }
@@ -368,6 +370,7 @@ pub unsafe extern "C" fn fuse_chan_new() -> FuseHandle {
 pub unsafe extern "C" fn fuse_chan_bounded(capacity: usize) -> FuseHandle {
     FuseValue::new(ValueKind::Channel(ChannelValue {
         items: VecDeque::new(),
+        pending: VecDeque::new(),
         capacity: Some(capacity),
     }))
 }
@@ -381,6 +384,8 @@ pub unsafe extern "C" fn fuse_chan_send(chan: FuseHandle, value: FuseHandle) {
                 .is_some_and(|capacity| channel.items.len() >= capacity);
             if !is_full {
                 channel.items.push_back(value);
+            } else {
+                channel.pending.push_back(value);
             }
         }
     }
@@ -390,7 +395,18 @@ pub unsafe extern "C" fn fuse_chan_send(chan: FuseHandle, value: FuseHandle) {
 pub unsafe extern "C" fn fuse_chan_recv(chan: FuseHandle) -> FuseHandle {
     unsafe {
         match &mut value_mut(chan).kind {
-            ValueKind::Channel(channel) => channel.items.pop_front().unwrap_or(ptr::null_mut()),
+            ValueKind::Channel(channel) => {
+                let value = channel.items.pop_front().unwrap_or(ptr::null_mut());
+                let can_promote = channel
+                    .capacity
+                    .is_none_or(|capacity| channel.items.len() < capacity);
+                if can_promote {
+                    if let Some(next) = channel.pending.pop_front() {
+                        channel.items.push_back(next);
+                    }
+                }
+                value
+            }
             _ => ptr::null_mut(),
         }
     }
@@ -469,6 +485,9 @@ pub unsafe extern "C" fn fuse_release(handle: FuseHandle) {
         }
         ValueKind::Channel(channel) => {
             while let Some(item) = channel.items.pop_front() {
+                unsafe { fuse_release(item) };
+            }
+            while let Some(item) = channel.pending.pop_front() {
                 unsafe { fuse_release(item) };
             }
         }

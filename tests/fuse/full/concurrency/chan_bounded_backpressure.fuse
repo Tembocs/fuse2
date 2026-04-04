@@ -3,5 +3,10 @@
 
 @entrypoint
 fn main() {
-  // placeholder Fuse Full test contract
+  val ch = Chan::<Int>.bounded(1)
+  ch.send(1)
+  spawn { ch.send(2) }
+  val first = ch.recv()
+  val second = ch.recv()
+  println("blocked until receiver drains")
 }

@@ -389,3 +389,5 @@ The current green state is stable again after threading `await` through the rema
 The latest async checkpoint promotes `await_basic` to a real executable fixture and proves it in the smoke suite, while explicitly deferring `suspend_fn` execution to the later async-runtime checkpoint. This keeps Unit 9 moving without pretending the full async runtime is already complete, and it preserves a green fast-verification surface for the currently supported behavior.
 
 The warning side of the async checker is now also real: `write_guard_across_await` is no longer a placeholder and the checker emits the expected warning contract while the smoke suite remains green for the currently supported executable Full fixtures. This closes the warning proof without claiming the remaining suspend/runtime semantics are done.
+
+The latest runtime checkpoint converts `chan_bounded_backpressure` into a real executable Full fixture and adds deferred-send behavior for bounded channels: extra sends are now queued until `recv()` frees capacity. With that, the smoke suite covers both unbounded and bounded channel behavior against real Full fixtures rather than synthetic-only proofs.
