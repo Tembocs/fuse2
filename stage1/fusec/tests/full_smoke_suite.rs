@@ -1,9 +1,13 @@
 use std::fs;
+use std::sync::Mutex;
 
 mod harness;
 
+static COMPILE_LOCK: Mutex<()> = Mutex::new(());
+
 #[test]
 fn chan_basic_fixture_compiles_and_runs() {
+    let _guard = COMPILE_LOCK.lock().expect("compile lock");
     let fixture = harness::repo_root()
         .join("tests")
         .join("fuse")
@@ -30,6 +34,39 @@ fn chan_basic_fixture_compiles_and_runs() {
     let actual = String::from_utf8(run.stdout).expect("utf-8 stdout");
     let (_, expected) = harness::extract_expected_block(&fixture);
     assert_eq!(actual.trim(), expected.trim(), "{}", fixture.display());
+}
+
+#[test]
+fn bounded_chan_smoke_compiles_and_runs() {
+    let _guard = COMPILE_LOCK.lock().expect("compile lock");
+    let fixture = harness::repo_root()
+        .join("stage1")
+        .join("target")
+        .join("phase8_bounded_chan_smoke.fuse");
+    fs::write(
+        &fixture,
+        "@entrypoint\nfn main() {\n  val ch = Chan::<Int>.bounded(1)\n  ch.send(1)\n  println(ch.recv())\n}\n",
+    )
+    .expect("write bounded smoke fixture");
+    let output = harness::unique_output_path("bounded_chan_full");
+    let compile = harness::compile_fixture(&fixture, &output);
+    assert!(
+        compile.status.success(),
+        "compile failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&compile.stdout),
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let run = harness::run_compiled_binary(&output);
+    assert!(
+        run.status.success(),
+        "binary failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let actual = String::from_utf8(run.stdout).expect("utf-8 stdout");
+    assert_eq!(actual.trim(), "1", "{}", fixture.display());
 }
 
 #[test]

@@ -11,5 +11,5 @@ pub use value::{
     fuse_mod, fuse_mul, fuse_none, fuse_ok, fuse_option_is_some, fuse_option_unwrap,
     fuse_println, fuse_release, fuse_result_is_ok, fuse_result_unwrap, fuse_some,
     fuse_string_is_empty, fuse_string_new_utf8, fuse_sub, fuse_to_string, fuse_to_upper,
-    fuse_unit, fuse_chan_new, fuse_chan_recv, fuse_chan_send, FuseHandle, FuseValue,
+    fuse_unit, fuse_chan_bounded, fuse_chan_new, fuse_chan_recv, fuse_chan_send, FuseHandle, FuseValue,
 };

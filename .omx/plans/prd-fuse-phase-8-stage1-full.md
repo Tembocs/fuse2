@@ -377,3 +377,5 @@ Current repo evidence:
 ## Progress Update
 
 Units 1 through 4 are complete: the Phase 8 ledger exists, the Full harness now classifies and parses current Full fixtures, minimal `spawn` runtime/codegen support is in place, and `spawn_mutref_rejected` is enforced as a real checker contract. Unit 5 is in progress, with `chan_basic` already compiling and running through Stage 1 while bounded-channel behavior remains to be implemented.
+
+The latest checkpoint advanced Unit 5 further: `Chan::<T>.bounded(n)` now exists, the first real Full channel fixture is no longer a placeholder, and the compile-run smoke harness was stabilized to avoid wrapper-build races. Bounded backpressure behavior is still the remaining gap before Unit 5 can be marked complete.

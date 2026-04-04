@@ -190,6 +190,7 @@ struct RuntimeFns {
     list_push: FuncId,
     list_len: FuncId,
     list_get: FuncId,
+    chan_bounded: FuncId,
     chan_new: FuncId,
     chan_send: FuncId,
     chan_recv: FuncId,
@@ -534,6 +535,7 @@ fn declare_runtime_functions(
         list_push: declare(module, "fuse_list_push", &[pointer_type, pointer_type], &[])?,
         list_len: declare(module, "fuse_list_len", &[pointer_type], &[types::I64])?,
         list_get: declare(module, "fuse_list_get", &[pointer_type, pointer_type], &[pointer_type])?,
+        chan_bounded: declare(module, "fuse_chan_runtime_bounded", &[pointer_type], &[pointer_type])?,
         chan_new: declare(module, "fuse_chan_runtime_new", &[], &[pointer_type])?,
         chan_send: declare(module, "fuse_chan_runtime_send", &[pointer_type, pointer_type], &[])?,
         chan_recv: declare(module, "fuse_chan_runtime_recv", &[pointer_type], &[pointer_type])?,
@@ -1432,6 +1434,21 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 value: self.runtime_nullary(builder, self.compiler.runtime.chan_new),
                 ty: Some(namespace.replace("::", "")),
             }),
+            ("Chan", "bounded") => {
+                let arg = self.compile_expr(
+                    builder,
+                    _args.first().ok_or_else(|| "Chan::<T>.bounded requires a capacity".to_string())?,
+                )?;
+                Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.chan_bounded,
+                        &[arg.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some(namespace.replace("::", "")),
+                })
+            }
             _ => Err(format!("unsupported type namespace call `{namespace}.{member}`")),
         }
     }

@@ -60,7 +60,13 @@ pub fn unique_output_path(stem: &str) -> PathBuf {
 }
 
 pub fn compile_fixture(fixture: &Path, output: &Path) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_fusec"))
+    Command::new(
+        repo_root()
+            .join("stage1")
+            .join("target")
+            .join("debug")
+            .join(format!("fusec{}", std::env::consts::EXE_SUFFIX)),
+    )
         .arg(fixture)
         .arg("-o")
         .arg(output)
