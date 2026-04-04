@@ -227,6 +227,37 @@ fn suspend_fn_fixture_compiles_and_runs() {
 }
 
 #[test]
+fn simd_sum_fixture_compiles_and_runs() {
+    let _guard = COMPILE_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+    let fixture = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("simd")
+        .join("simd_sum.fuse");
+    let output = harness::unique_output_path("simd_sum_full");
+    let compile = harness::compile_fixture(&fixture, &output);
+    assert!(
+        compile.status.success(),
+        "compile failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&compile.stdout),
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let run = harness::run_compiled_binary(&output);
+    assert!(
+        run.status.success(),
+        "binary failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let actual = String::from_utf8(run.stdout).expect("utf-8 stdout");
+    let (_, expected) = harness::extract_expected_block(&fixture);
+    assert_eq!(actual.trim(), expected.trim(), "{}", fixture.display());
+}
+
+#[test]
 fn full_fixture_files_are_present() {
     let root = harness::repo_root().join("tests").join("fuse").join("full");
     let count = walk(&root);

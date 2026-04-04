@@ -358,6 +358,35 @@ pub unsafe extern "C" fn fuse_list_get(list: FuseHandle, index: usize) -> FuseHa
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_simd_sum(list: FuseHandle) -> FuseHandle {
+    unsafe {
+        match &value_ref(list).kind {
+            ValueKind::List(items) => {
+                let mut int_total = 0_i64;
+                let mut float_total = 0.0_f64;
+                let mut saw_float = false;
+                for item in items {
+                    match &value_ref(*item).kind {
+                        ValueKind::Int(value) => int_total += *value,
+                        ValueKind::Float(value) => {
+                            saw_float = true;
+                            float_total += *value;
+                        }
+                        _ => {}
+                    }
+                }
+                if saw_float {
+                    fuse_float(float_total + int_total as f64)
+                } else {
+                    fuse_int(int_total)
+                }
+            }
+            _ => fuse_unit(),
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_chan_new() -> FuseHandle {
     FuseValue::new(ValueKind::Channel(ChannelValue {
         items: VecDeque::new(),

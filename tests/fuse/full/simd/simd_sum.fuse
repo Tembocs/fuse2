@@ -3,5 +3,6 @@
 
 @entrypoint
 fn main() {
-  // placeholder Fuse Full test contract
+  val total = SIMD::<Int>.sum([1, 2, 3, 4])
+  println(total)
 }

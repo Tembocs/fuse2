@@ -395,3 +395,5 @@ The latest runtime checkpoint converts `chan_bounded_backpressure` into a real e
 Units 5, 9, and 10 can now be treated as complete from the current repo contract: the real channel fixtures pass, `await_basic` and `suspend_fn` execute through Stage 1, and the `write_guard_across_await` warning contract is enforced. The next open runtime slice is Unit 7, where `Shared<T>` still needs deeper semantics beyond the minimal positive hook already proven by `shared_rank_ascending`.
 
 Units 6 and 7 are now also complete from the current repo contract: `stdlib/full/chan.fuse` exists as a real parseable stdlib artifact and import target, while the Shared path has progressed beyond a no-op hook into a positive mutation/readback runtime proof. With that, the remaining open units are Unit 11 (SIMD) and Unit 12 (remaining Full stdlib plus final integration).
+
+Unit 11 is now complete from the current repo contract as well: `simd_sum` is a real executable Full fixture, and Stage 1 has a scalar-backed `SIMD.sum` path that satisfies the current SIMD test surface. That leaves Unit 12 as the final open integration unit.

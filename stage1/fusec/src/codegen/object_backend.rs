@@ -197,6 +197,7 @@ struct RuntimeFns {
     shared_new: FuncId,
     shared_read: FuncId,
     shared_write: FuncId,
+    simd_sum: FuncId,
     data_new: FuncId,
     data_set_field: FuncId,
     data_get_field: FuncId,
@@ -545,6 +546,7 @@ fn declare_runtime_functions(
         shared_new: declare(module, "fuse_shared_runtime_new", &[pointer_type], &[pointer_type])?,
         shared_read: declare(module, "fuse_shared_runtime_read", &[pointer_type], &[pointer_type])?,
         shared_write: declare(module, "fuse_shared_runtime_write", &[pointer_type], &[pointer_type])?,
+        simd_sum: declare(module, "fuse_simd_runtime_sum", &[pointer_type], &[pointer_type])?,
         data_new: declare(module, "fuse_data_new", &[pointer_type, pointer_type, pointer_type, pointer_type], &[pointer_type])?,
         data_set_field: declare(module, "fuse_data_set_field", &[pointer_type, pointer_type, pointer_type], &[])?,
         data_get_field: declare(module, "fuse_data_get_field", &[pointer_type, pointer_type], &[pointer_type])?,
@@ -1473,6 +1475,21 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         self.compiler.pointer_type,
                     ),
                     ty: Some(namespace.replace("::", "")),
+                })
+            }
+            ("SIMD", "sum") => {
+                let list = self.compile_expr(
+                    builder,
+                    _args.first().ok_or_else(|| "SIMD.sum requires one argument".to_string())?,
+                )?;
+                Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.simd_sum,
+                        &[list.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some("Int".to_string()),
                 })
             }
             _ => Err(format!("unsupported type namespace call `{namespace}.{member}`")),
