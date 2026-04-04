@@ -1,9 +1,11 @@
 // EXPECTED OUTPUT:
 // suspended
 
-suspend fn pause() { }
+suspend fn pause() -> String {
+  return "suspended"
+}
 
 @entrypoint
 fn main() {
-  // placeholder Fuse Full test contract
+  println(pause())
 }

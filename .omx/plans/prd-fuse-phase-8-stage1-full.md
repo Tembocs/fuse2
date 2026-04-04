@@ -385,3 +385,5 @@ The current checkpoint also closes the checker side of `@rank`: `shared_no_rank`
 The newest groundwork keeps the frontend coherent for later async work: the AST/parser/evaluator/checker/object backend now recognize `await` as a first-class expression shape, and the positive Shared fixture remains real code rather than placeholder text. This does not complete the async runtime path yet, but it removes a syntax-level blocker before the async checkpoints begin.
 
 The current green state is stable again after threading `await` through the remaining frontend/backend match arms. Units 5 and 7 still have unfinished runtime semantics, but the checker contracts and positive smoke paths for channels and the initial Shared flow are now holding together under the fast verification set.
+
+The latest async checkpoint promotes `await_basic` to a real executable fixture and proves it in the smoke suite, while explicitly deferring `suspend_fn` execution to the later async-runtime checkpoint. This keeps Unit 9 moving without pretending the full async runtime is already complete, and it preserves a green fast-verification surface for the currently supported behavior.

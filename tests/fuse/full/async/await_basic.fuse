@@ -3,5 +3,6 @@
 
 @entrypoint
 async fn main() {
-  // placeholder Fuse Full test contract
+  val value = await "done"
+  println(value)
 }
