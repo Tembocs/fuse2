@@ -1,8 +1,11 @@
 // EXPECTED WARNING:
 // warning: write guard held across await
-//   --> write_guard_across_await.fuse:7:3
+//   --> write_guard_across_await.fuse:9:15
 
 @entrypoint
 async fn main() {
-  // placeholder Fuse Full test contract
+  @rank(1) val cache: Shared<Int> = Shared::<Int>.new(1)
+  val guard = cache.write()
+  val value = await "ok"
+  println(value)
 }

@@ -387,3 +387,5 @@ The newest groundwork keeps the frontend coherent for later async work: the AST/
 The current green state is stable again after threading `await` through the remaining frontend/backend match arms. Units 5 and 7 still have unfinished runtime semantics, but the checker contracts and positive smoke paths for channels and the initial Shared flow are now holding together under the fast verification set.
 
 The latest async checkpoint promotes `await_basic` to a real executable fixture and proves it in the smoke suite, while explicitly deferring `suspend_fn` execution to the later async-runtime checkpoint. This keeps Unit 9 moving without pretending the full async runtime is already complete, and it preserves a green fast-verification surface for the currently supported behavior.
+
+The warning side of the async checker is now also real: `write_guard_across_await` is no longer a placeholder and the checker emits the expected warning contract while the smoke suite remains green for the currently supported executable Full fixtures. This closes the warning proof without claiming the remaining suspend/runtime semantics are done.

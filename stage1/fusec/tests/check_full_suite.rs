@@ -106,3 +106,16 @@ fn shared_rank_ascending_is_checker_clean() {
         path.display()
     );
 }
+
+#[test]
+fn write_guard_across_await_matches_current_warning_contract() {
+    let path = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("async")
+        .join("write_guard_across_await.fuse");
+    let (_, expected) = harness::extract_expected_block(&path);
+    let actual = check_path_output(&path);
+    assert_eq!(actual.trim(), expected.trim(), "{}", path.display());
+}

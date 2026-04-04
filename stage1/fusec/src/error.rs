@@ -37,6 +37,21 @@ impl Diagnostic {
         }
     }
 
+    pub fn warning(
+        message: impl Into<String>,
+        filename: impl Into<String>,
+        span: Span,
+        hint: Option<String>,
+    ) -> Self {
+        Self {
+            kind: "warning",
+            message: message.into(),
+            filename: filename.into(),
+            span,
+            hint,
+        }
+    }
+
     pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
         self.hint = Some(hint.into());
         self

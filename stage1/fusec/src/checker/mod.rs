@@ -648,7 +648,17 @@ impl Checker {
             }
             hir::Expr::Ref(expr) => self.check_expr(module, &expr.value, scope, owner_name, loop_depth),
             hir::Expr::MutRef(expr) => self.check_expr(module, &expr.value, scope, owner_name, loop_depth),
-            hir::Expr::Await(expr) => self.check_expr(module, &expr.value, scope, owner_name, loop_depth),
+            hir::Expr::Await(expr) => {
+                self.check_expr(module, &expr.value, scope, owner_name, loop_depth);
+                if scope.values().any(|binding| binding.held_rank.is_some()) {
+                    self.diagnostics.push(Diagnostic::warning(
+                        "write guard held across await",
+                        display_name(&module.path),
+                        expr.span,
+                        None,
+                    ));
+                }
+            }
             hir::Expr::Question(expr) => self.check_expr(module, &expr.value, scope, owner_name, loop_depth),
             hir::Expr::If(if_expr) => {
                 self.check_expr(module, &if_expr.condition, scope, owner_name, loop_depth);
