@@ -1,0 +1,20 @@
+// EXPECTED OUTPUT:
+// created
+// hello from struct
+struct Widget { }
+
+fn Widget.create() -> Widget {
+  println("created")
+  val items = [1]
+  return items
+}
+
+fn Widget.greet(ref self) -> String {
+  return "hello from struct"
+}
+
+@entrypoint
+fn main() {
+  val w = Widget.create()
+  println(w.greet())
+}

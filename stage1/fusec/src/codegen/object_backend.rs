@@ -1850,6 +1850,25 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         ty: Some(base.to_string()),
                     });
                 }
+                if let Some((target_module, function)) = self
+                    .compiler
+                    .session
+                    .resolve_extension(base, member)
+                {
+                    let symbol = layout::function_symbol(target_module, &function.name);
+                    let func_id = *self
+                        .compiler
+                        .function_ids
+                        .get(&symbol)
+                        .ok_or_else(|| format!("missing function id for `{symbol}`"))?;
+                    let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
+                    let lowered = self.lower_args_with_variadic(builder, &function.params, _args)?;
+                    let call = builder.ins().call(local, &lowered);
+                    return Ok(TypedValue {
+                        value: builder.inst_results(call)[0],
+                        ty: function.return_type.clone(),
+                    });
+                }
                 Err(format!("unsupported type namespace call `{namespace}.{member}`"))
             }
         }

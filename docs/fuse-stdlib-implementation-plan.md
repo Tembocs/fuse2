@@ -195,18 +195,18 @@ to pass zero or more arguments that are collected into a `List<T>`.
 distinct from `data class` (which exposes fields). Methods are defined
 via extension functions. Construction is via explicit static methods.
 
-- [ ] **0.6.1** Parser: parse `struct Name { }` and
+- [x] **0.6.1** Parser: parse `struct Name { }` and
       `pub struct Name { }` declarations.
-- [ ] **0.6.2** AST/HIR: add `StructDecl` node. Fields are private and
+- [x] **0.6.2** AST/HIR: add `StructDecl` node. Fields are private and
       unnamed from Fuse's perspective — the struct is opaque.
-- [ ] **0.6.3** Checker: register struct types. Prevent direct field
+- [x] **0.6.3** Checker: register struct types. Prevent direct field
       access from outside. Allow extension functions on struct types.
-- [ ] **0.6.4** Codegen: represent struct as a runtime value. Simplest
+- [x] **0.6.4** Codegen: represent struct as a runtime value. Simplest
       approach: wrap a `FuseHandle` (pointer to heap-allocated Rust
       object). The Rust side manages internal state.
-- [ ] **0.6.5** Test: `tests/fuse/core/types/struct_basic.fuse` — define
+- [x] **0.6.5** Test: `tests/fuse/core/types/struct_basic.fuse` — define
       struct, create via static method, call methods.
-- [ ] **0.6.6** Test: direct field access on struct → compile error.
+- [x] **0.6.6** Test: direct field access on struct → compile error.
 
 ---
 

@@ -13,6 +13,14 @@ pub enum Declaration {
     DataClass(DataClassDecl),
     Enum(EnumDecl),
     ExternFn(ExternFnDecl),
+    Struct(StructDecl),
+}
+
+#[derive(Clone, Debug)]
+pub struct StructDecl {
+    pub name: String,
+    pub is_pub: bool,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug)]

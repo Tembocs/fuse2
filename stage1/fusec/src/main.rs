@@ -599,6 +599,12 @@ fn print_ast_decl(decl: &fusec::ast::nodes::Declaration, depth: usize) {
                 e.span.column
             );
         }
+        fusec::ast::nodes::Declaration::Struct(s) => {
+            println!(
+                "{indent}Struct '{}' [{}:{}]",
+                s.name, s.span.line, s.span.column
+            );
+        }
     }
 }
 
@@ -801,6 +807,9 @@ fn print_hir_module(module: &fusec::hir::Module) {
     for ext in &module.extern_fns {
         let ret = ext.return_type.as_deref().unwrap_or("Unit");
         println!("  ExternFn '{}' ({} params) -> {ret}", ext.name, ext.params.len());
+    }
+    for s in &module.structs {
+        println!("  Struct '{}'", s.name);
     }
 }
 

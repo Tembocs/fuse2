@@ -100,6 +100,11 @@ impl Parser {
                 extern_fn.is_pub = is_pub;
                 Ok(Declaration::ExternFn(extern_fn))
             }
+            TokenKind::Struct => {
+                let mut struct_decl = self.parse_struct()?;
+                struct_decl.is_pub = is_pub;
+                Ok(Declaration::Struct(struct_decl))
+            }
             _ => Err(self.syntax_error(
                 format!("unexpected top-level token {}", self.peek(0).text),
                 self.peek(0).span,
@@ -356,6 +361,20 @@ impl Parser {
         Ok(EnumDecl {
             name,
             variants,
+            is_pub: false,
+            span: start.span,
+        })
+    }
+
+    fn parse_struct(&mut self) -> Result<StructDecl, Diagnostic> {
+        let start = self.expect(TokenKind::Struct, "expected `struct`")?;
+        let name = self
+            .expect(TokenKind::Identifier, "expected struct name")?
+            .text;
+        self.expect(TokenKind::LBrace, "expected `{` after struct name")?;
+        self.expect(TokenKind::RBrace, "expected `}` to close struct")?;
+        Ok(StructDecl {
+            name,
             is_pub: false,
             span: start.span,
         })

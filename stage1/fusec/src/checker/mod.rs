@@ -28,6 +28,7 @@ enum Symbol {
     Function { node: hir::FunctionDecl, is_pub: bool },
     Data { node: hir::DataClassDecl, is_pub: bool },
     Enum { node: hir::EnumDecl, is_pub: bool },
+    Struct { node: hir::StructDecl, is_pub: bool },
 }
 
 #[derive(Clone, Debug)]
@@ -120,6 +121,15 @@ impl Checker {
                 },
             );
         }
+        for struct_decl in &info.module.structs {
+            info.symbols.insert(
+                struct_decl.name.clone(),
+                Symbol::Struct {
+                    node: struct_decl.clone(),
+                    is_pub: struct_decl.is_pub,
+                },
+            );
+        }
         for extern_fn in &info.module.extern_fns {
             let synthetic = hir::FunctionDecl {
                 name: extern_fn.name.clone(),
@@ -189,7 +199,8 @@ impl Checker {
                 let visible = target.symbols.get(item).and_then(|symbol| match symbol {
                     Symbol::Function { is_pub, .. }
                     | Symbol::Data { is_pub, .. }
-                    | Symbol::Enum { is_pub, .. } => Some(*is_pub),
+                    | Symbol::Enum { is_pub, .. }
+                    | Symbol::Struct { is_pub, .. } => Some(*is_pub),
                 });
                 if visible != Some(true) {
                     self.add_error(

@@ -466,6 +466,7 @@ impl Evaluator {
                 }
                 fa::Declaration::Enum(_) => {}
                 fa::Declaration::ExternFn(_) => {}
+                fa::Declaration::Struct(_) => {}
             }
         }
         self.modules.insert(canonical, module.clone());
@@ -974,6 +975,20 @@ impl Evaluator {
                 }
             }
             fa::Expr::Call(call) => {
+                if let fa::Expr::Member(member) = call.callee.as_ref() {
+                    if let fa::Expr::Name(name) = member.object.as_ref() {
+                        if env.resolve(&name.value).is_none() {
+                            if let Some(ext) = self.find_extension(&name.value, &member.name) {
+                                let mut args = Vec::new();
+                                for arg in &call.args {
+                                    args.push(self.eval_expr(module_path, arg, env)?);
+                                }
+                                return self.call_user_function(&ext.module_path, &ext.decl, args, None)
+                                    .map_err(ControlFlow::Abort);
+                            }
+                        }
+                    }
+                }
                 let callee = self.eval_expr(module_path, &call.callee, env)?;
                 let mut args = Vec::new();
                 for arg in &call.args {
