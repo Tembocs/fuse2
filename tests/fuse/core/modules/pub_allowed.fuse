@@ -1,0 +1,8 @@
+// EXPECTED OUTPUT:
+// ok
+import src.helpers.private_only.{publicName}
+
+@entrypoint
+fn main() {
+  println(publicName())
+}

@@ -258,15 +258,15 @@ constant associated with a type. Read via `Type.CONSTANT`.
 **What:** Enforce `pub` annotations in codegen and the checker. Non-pub
 declarations in an imported module must not be accessible from outside.
 
-- [ ] **0.9.1** Checker: when resolving a name from an imported module,
+- [x] **0.9.1** Checker: when resolving a name from an imported module,
       verify the declaration is marked `pub`. If not, emit a diagnostic:
       `"error: 'name' is not public in module 'mod'"`.
-- [ ] **0.9.2** Checker: handle selective imports `import mod.{A, B}` —
+- [x] **0.9.2** Checker: handle selective imports `import mod.{A, B}` —
       verify each imported name is `pub`.
-- [ ] **0.9.3** Codegen: no changes needed if checker enforces correctly.
-- [ ] **0.9.4** Test: `tests/fuse/core/modules/pub_enforcement.fuse` —
+- [x] **0.9.3** Codegen: no changes needed if checker enforces correctly.
+- [x] **0.9.4** Test: `tests/fuse/core/modules/pub_enforcement.fuse` —
       import a module, try to access a non-pub function → compile error.
-- [ ] **0.9.5** Test: `tests/fuse/core/modules/pub_allowed.fuse` —
+- [x] **0.9.5** Test: `tests/fuse/core/modules/pub_allowed.fuse` —
       access a `pub` function from imported module → works.
 
 ---

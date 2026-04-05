@@ -919,7 +919,13 @@ impl Checker {
     fn resolve_function(&self, name: &str) -> Option<hir::FunctionDecl> {
         self.module_cache.values().find_map(|module| {
             module.symbols.get(name).and_then(|symbol| match symbol {
-                Symbol::Function { node, .. } => Some(node.clone()),
+                Symbol::Function { node, is_pub } => {
+                    if module.path == self.current_file || *is_pub {
+                        Some(node.clone())
+                    } else {
+                        None
+                    }
+                }
                 _ => None,
             })
         })
