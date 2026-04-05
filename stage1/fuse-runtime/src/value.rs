@@ -23,7 +23,15 @@ enum ValueKind {
     Data(DataValue),
     Option(Option<FuseHandle>),
     Result { is_ok: bool, value: FuseHandle },
+    Enum(EnumValue),
     Unit,
+}
+
+struct EnumValue {
+    type_name: String,
+    variant_tag: i64,
+    variant_name: String,
+    payloads: Vec<FuseHandle>,
 }
 
 struct ChannelValue {
@@ -105,6 +113,21 @@ unsafe fn clone_to_string(handle: FuseHandle) -> String {
         ValueKind::Result { is_ok, value } => {
             let tag = if *is_ok { "Ok" } else { "Err" };
             format!("{tag}({})", unsafe { clone_to_string(*value) })
+        }
+        ValueKind::Enum(e) => {
+            if e.payloads.is_empty() {
+                e.variant_name.clone()
+            } else {
+                let mut rendered = format!("{}(", e.variant_name);
+                for (index, payload) in e.payloads.iter().enumerate() {
+                    if index > 0 {
+                        rendered.push_str(", ");
+                    }
+                    rendered.push_str(&unsafe { clone_to_string(*payload) });
+                }
+                rendered.push(')');
+                rendered
+            }
         }
         ValueKind::Unit => "Unit".to_string(),
     }
@@ -258,6 +281,7 @@ pub unsafe extern "C" fn fuse_is_truthy(handle: FuseHandle) -> bool {
             ValueKind::Channel(value) => !value.items.is_empty(),
             ValueKind::Shared(_) => true,
             ValueKind::Data(_) => true,
+            ValueKind::Enum(_) => true,
             ValueKind::Unit => false,
         }
     }
@@ -318,6 +342,50 @@ pub unsafe extern "C" fn fuse_result_unwrap(handle: FuseHandle) -> FuseHandle {
     unsafe {
         match &value_ref(handle).kind {
             ValueKind::Result { value, .. } => *value,
+            _ => ptr::null_mut(),
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_enum_new(
+    type_name_ptr: *const u8,
+    type_name_len: usize,
+    variant_tag: i64,
+    variant_name_ptr: *const u8,
+    variant_name_len: usize,
+    payload: FuseHandle,
+) -> FuseHandle {
+    let type_name = read_utf8(type_name_ptr, type_name_len);
+    let variant_name = read_utf8(variant_name_ptr, variant_name_len);
+    let payloads = if payload.is_null() {
+        Vec::new()
+    } else {
+        vec![payload]
+    };
+    FuseValue::new(ValueKind::Enum(EnumValue {
+        type_name,
+        variant_tag,
+        variant_name,
+        payloads,
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_enum_tag(handle: FuseHandle) -> i64 {
+    unsafe {
+        match &value_ref(handle).kind {
+            ValueKind::Enum(e) => e.variant_tag,
+            _ => -1,
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_enum_payload(handle: FuseHandle, index: usize) -> FuseHandle {
+    unsafe {
+        match &value_ref(handle).kind {
+            ValueKind::Enum(e) => e.payloads.get(index).copied().unwrap_or(ptr::null_mut()),
             _ => ptr::null_mut(),
         }
     }
@@ -479,6 +547,12 @@ unsafe fn clone_value(handle: FuseHandle) -> FuseHandle {
                 value: *value,
             })
         }
+        ValueKind::Enum(e) => FuseValue::new(ValueKind::Enum(EnumValue {
+            type_name: e.type_name.clone(),
+            variant_tag: e.variant_tag,
+            variant_name: e.variant_name.clone(),
+            payloads: e.payloads.clone(),
+        })),
         // Reference-like types: return the original handle, not a copy.
         ValueKind::Channel(_) => handle,
         ValueKind::Shared(v) => FuseValue::new(ValueKind::Shared(*v)),

@@ -45,6 +45,7 @@ struct LoadedModule {
     functions: HashMap<String, fa::FunctionDecl>,
     extensions: HashMap<(String, String), fa::FunctionDecl>,
     data_classes: HashMap<String, fa::DataClassDecl>,
+    enums: HashMap<String, fa::EnumDecl>,
 }
 
 struct BuildSession {
@@ -119,6 +120,11 @@ impl BuildSession {
         })
     }
 
+    fn find_enum(&self, type_name: &str) -> Option<&fa::EnumDecl> {
+        let key = layout::canonical_type_name(type_name);
+        self.modules.values().find_map(|module| module.enums.get(key))
+    }
+
     fn field_type(&self, type_name: &str, field: &str) -> Option<String> {
         self.find_data(type_name)?
             .1
@@ -154,6 +160,11 @@ fn load_module_recursive(
             .data_classes
             .iter()
             .map(|data| (data.name.clone(), data.clone()))
+            .collect(),
+        enums: module
+            .enums
+            .iter()
+            .map(|e| (e.name.clone(), e.clone()))
             .collect(),
     };
     modules.insert(path.clone(), loaded);
@@ -212,6 +223,9 @@ struct RuntimeFns {
     asap_release: FuncId,
     to_upper: FuncId,
     string_is_empty: FuncId,
+    enum_new: FuncId,
+    enum_tag: FuncId,
+    enum_payload: FuncId,
 }
 
 struct PendingLambda {
@@ -711,6 +725,9 @@ fn declare_runtime_functions(
         asap_release: declare(module, "fuse_asap_release", &[pointer_type], &[])?,
         to_upper: declare(module, "fuse_to_upper", &[pointer_type], &[pointer_type])?,
         string_is_empty: declare(module, "fuse_string_is_empty", &[pointer_type], &[pointer_type])?,
+        enum_new: declare(module, "fuse_enum_new", &[pointer_type, pointer_type, types::I64, pointer_type, pointer_type, pointer_type], &[pointer_type])?,
+        enum_tag: declare(module, "fuse_enum_tag", &[pointer_type], &[types::I64])?,
+        enum_payload: declare(module, "fuse_enum_payload", &[pointer_type, pointer_type], &[pointer_type])?,
     })
 }
 
@@ -1692,7 +1709,40 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     ty: Some(return_type.to_string()),
                 })
             }
-            _ => Err(format!("unsupported type namespace call `{namespace}.{member}`")),
+            _ => {
+                if let Some(enum_decl) = self.compiler.session.find_enum(base) {
+                    let variant_index = enum_decl
+                        .variants
+                        .iter()
+                        .position(|v| v.name == member)
+                        .ok_or_else(|| format!("unknown variant `{member}` on enum `{base}`"))?;
+                    let type_data_id = self.compiler.string_data_id(base)?;
+                    let type_local = self.compiler.module.declare_data_in_func(type_data_id, builder.func);
+                    let type_ptr = builder.ins().symbol_value(self.compiler.pointer_type, type_local);
+                    let type_len = self.usize_const(builder, base.len() as i64);
+                    let variant_data_id = self.compiler.string_data_id(member)?;
+                    let variant_local = self.compiler.module.declare_data_in_func(variant_data_id, builder.func);
+                    let variant_ptr = builder.ins().symbol_value(self.compiler.pointer_type, variant_local);
+                    let variant_len = self.usize_const(builder, member.len() as i64);
+                    let tag = builder.ins().iconst(types::I64, variant_index as i64);
+                    let payload = if _args.is_empty() {
+                        builder.ins().iconst(self.compiler.pointer_type, 0)
+                    } else {
+                        self.compile_expr(builder, &_args[0])?.value
+                    };
+                    let result = self.runtime(
+                        builder,
+                        self.compiler.runtime.enum_new,
+                        &[type_ptr, type_len, tag, variant_ptr, variant_len, payload],
+                        self.compiler.pointer_type,
+                    );
+                    return Ok(TypedValue {
+                        value: result,
+                        ty: Some(base.to_string()),
+                    });
+                }
+                Err(format!("unsupported type namespace call `{namespace}.{member}`"))
+            }
         }
     }
 
@@ -1883,6 +1933,39 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         builder: &mut FunctionBuilder,
         member: &fa::Member,
     ) -> Result<TypedValue, String> {
+        if let fa::Expr::Name(name) = member.object.as_ref() {
+            if !self.locals.contains_key(&name.value) {
+                if let Some(enum_decl) = self.compiler.session.find_enum(&name.value) {
+                    let base = &name.value;
+                    let variant_name = &member.name;
+                    let variant_index = enum_decl
+                        .variants
+                        .iter()
+                        .position(|v| v.name == *variant_name)
+                        .ok_or_else(|| format!("unknown variant `{variant_name}` on enum `{base}`"))?;
+                    let type_data_id = self.compiler.string_data_id(base)?;
+                    let type_local = self.compiler.module.declare_data_in_func(type_data_id, builder.func);
+                    let type_ptr = builder.ins().symbol_value(self.compiler.pointer_type, type_local);
+                    let type_len = self.usize_const(builder, base.len() as i64);
+                    let variant_data_id = self.compiler.string_data_id(variant_name)?;
+                    let variant_local = self.compiler.module.declare_data_in_func(variant_data_id, builder.func);
+                    let variant_ptr = builder.ins().symbol_value(self.compiler.pointer_type, variant_local);
+                    let variant_len = self.usize_const(builder, variant_name.len() as i64);
+                    let tag = builder.ins().iconst(types::I64, variant_index as i64);
+                    let null_payload = builder.ins().iconst(self.compiler.pointer_type, 0);
+                    let result = self.runtime(
+                        builder,
+                        self.compiler.runtime.enum_new,
+                        &[type_ptr, type_len, tag, variant_ptr, variant_len, null_payload],
+                        self.compiler.pointer_type,
+                    );
+                    return Ok(TypedValue {
+                        value: result,
+                        ty: Some(base.to_string()),
+                    });
+                }
+            }
+        }
         let object = self.compile_expr(builder, &member.object)?;
         self.member_access(builder, object, &member.name, member.optional)
     }
@@ -2408,7 +2491,25 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     let inverted = builder.ins().bxor_imm(is_some, 1);
                     Ok(builder.ins().icmp_imm(IntCC::NotEqual, inverted, 0))
                 }
-                (base, name) => Err(format!("unsupported match pattern `{name}` on `{base}`")),
+                (base, variant_name) => {
+                    if let Some(enum_decl) = self.compiler.session.find_enum(base) {
+                        let clean_name = variant_name.rsplit('.').next().unwrap_or(variant_name);
+                        let variant_index = enum_decl
+                            .variants
+                            .iter()
+                            .position(|v| v.name == clean_name)
+                            .ok_or_else(|| format!("unknown variant `{clean_name}` on enum `{base}`"))?;
+                        let tag = self.runtime_value(
+                            builder,
+                            self.compiler.runtime.enum_tag,
+                            &[subject],
+                            types::I64,
+                        );
+                        Ok(builder.ins().icmp_imm(IntCC::Equal, tag, variant_index as i64))
+                    } else {
+                        Err(format!("unsupported match pattern `{variant_name}` on `{base}`"))
+                    }
+                }
             },
         }
     }
@@ -2434,7 +2535,8 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 );
             }
             fa::Pattern::Variant(variant) => {
-                let payload = match layout::canonical_type_name(subject_type) {
+                let base = layout::canonical_type_name(subject_type);
+                let payload = match base {
                     "Result" => self.runtime(
                         builder,
                         self.compiler.runtime.result_unwrap,
@@ -2447,7 +2549,15 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         &[subject],
                         self.compiler.pointer_type,
                     ),
-                    other => return Err(format!("unsupported pattern subject `{other}`")),
+                    _ => {
+                        let index = self.usize_const(builder, 0);
+                        self.runtime(
+                            builder,
+                            self.compiler.runtime.enum_payload,
+                            &[subject, index],
+                            self.compiler.pointer_type,
+                        )
+                    }
                 };
                 if let Some(fa::Pattern::Name(name)) = variant.args.first() {
                     let variable = self.new_var(builder, self.compiler.pointer_type);

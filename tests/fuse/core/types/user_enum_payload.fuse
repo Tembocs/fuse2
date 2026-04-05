@@ -1,0 +1,24 @@
+// EXPECTED OUTPUT:
+// circle with radius 5
+// square with side 4
+// point
+enum Shape {
+  Circle(Int),
+  Square(Int),
+  Point
+}
+
+fn describe(s: Shape) -> String {
+  match s {
+    Shape.Circle(r) => f"circle with radius {r}"
+    Shape.Square(side) => f"square with side {side}"
+    Shape.Point => "point"
+  }
+}
+
+@entrypoint
+fn main() {
+  println(describe(Shape.Circle(5)))
+  println(describe(Shape.Square(4)))
+  println(describe(Shape.Point))
+}

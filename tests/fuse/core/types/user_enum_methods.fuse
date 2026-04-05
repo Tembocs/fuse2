@@ -1,0 +1,20 @@
+// EXPECTED OUTPUT:
+// warm
+// cool
+// neutral
+enum Color { Red, Blue, Gray }
+
+fn Color.warmth(ref self) -> String {
+  match self {
+    Color.Red => "warm"
+    Color.Blue => "cool"
+    Color.Gray => "neutral"
+  }
+}
+
+@entrypoint
+fn main() {
+  println(Color.Red.warmth())
+  println(Color.Blue.warmth())
+  println(Color.Gray.warmth())
+}

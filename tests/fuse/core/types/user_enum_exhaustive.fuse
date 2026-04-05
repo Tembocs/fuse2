@@ -1,0 +1,16 @@
+// EXPECTED ERROR:
+// error: non-exhaustive match for `Direction`
+//   --> user_enum_exhaustive.fuse:7:3
+enum Direction { North, South, East, West }
+
+fn name(d: Direction) -> String {
+  match d {
+    Direction.North => "north"
+    Direction.South => "south"
+  }
+}
+
+@entrypoint
+fn main() {
+  println(name(Direction.North))
+}

@@ -85,29 +85,29 @@ impactful feature — it unblocks `map`, `filter`, `reduce`, `forEach`,
 and codegen so user-defined enums can be constructed, matched, and
 passed around — not just the built-in `Result`/`Option`.
 
-- [ ] **0.2.1** Checker: register user-defined enum types. Track variant
+- [x] **0.2.1** Checker: register user-defined enum types. Track variant
       names, arities, and payload types per enum.
-- [ ] **0.2.2** Checker: validate `match` exhaustiveness against user
+- [x] **0.2.2** Checker: validate `match` exhaustiveness against user
       enum variants (extend existing exhaustiveness checker).
-- [ ] **0.2.3** Checker: validate enum variant construction expressions
+- [x] **0.2.3** Checker: validate enum variant construction expressions
       (e.g., `JsonValue.Str("hello")`) — correct variant name, correct
       arity, correct payload types.
-- [ ] **0.2.4** Codegen: decide runtime representation for user enums.
+- [x] **0.2.4** Codegen: decide runtime representation for user enums.
       Recommended: tag integer + optional payload handle(s). Reuse
       `ValueKind` infrastructure or add a new `Enum` variant.
-- [ ] **0.2.5** Codegen: emit construction code for enum variants.
-- [ ] **0.2.6** Codegen: emit match dispatch on enum tag, binding
+- [x] **0.2.5** Codegen: emit construction code for enum variants.
+- [x] **0.2.6** Codegen: emit match dispatch on enum tag, binding
       payload values to pattern variables.
-- [ ] **0.2.7** Runtime: add `fuse_enum_new(tag, payloads...)` and
+- [x] **0.2.7** Runtime: add `fuse_enum_new(tag, payloads...)` and
       `fuse_enum_tag(handle)` and `fuse_enum_payload(handle, index)`
       to `fuse-runtime` if needed.
-- [ ] **0.2.8** Test: `tests/fuse/core/types/user_enum_basic.fuse` —
+- [x] **0.2.8** Test: `tests/fuse/core/types/user_enum_basic.fuse` —
       define enum, construct variants, match on them.
-- [ ] **0.2.9** Test: `tests/fuse/core/types/user_enum_payload.fuse` —
+- [x] **0.2.9** Test: `tests/fuse/core/types/user_enum_payload.fuse` —
       variants with payloads, extract values via match.
-- [ ] **0.2.10** Test: `tests/fuse/core/types/user_enum_exhaustive.fuse`
+- [x] **0.2.10** Test: `tests/fuse/core/types/user_enum_exhaustive.fuse`
       — missing arm produces compile error.
-- [ ] **0.2.11** Test: `tests/fuse/core/types/user_enum_methods.fuse` —
+- [x] **0.2.11** Test: `tests/fuse/core/types/user_enum_methods.fuse` —
       extension functions on user-defined enums.
 
 ---

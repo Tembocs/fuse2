@@ -1,0 +1,15 @@
+// EXPECTED OUTPUT:
+// Red
+// Green
+// Blue
+enum Color { Red, Green, Blue }
+
+@entrypoint
+fn main() {
+  val r = Color.Red
+  val g = Color.Green
+  val b = Color.Blue
+  println(r)
+  println(g)
+  println(b)
+}
