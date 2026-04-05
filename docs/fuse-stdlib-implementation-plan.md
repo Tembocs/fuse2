@@ -580,23 +580,29 @@ String formatting utilities. Pure Fuse.
 
 Extension methods on `String`.
 
-- [ ] **1.8.1** Create `stdlib/core/string.fuse`.
-- [ ] **1.8.2** Add FFI functions to runtime: `fuse_rt_string_to_lower`,
-      `fuse_rt_string_chars`, `fuse_rt_string_char_count`,
+- [x] **1.8.1** Create `stdlib/core/string.fuse`.
+- [x] **1.8.2** Add FFI functions to runtime: `fuse_rt_string_to_lower`,
+      `fuse_rt_string_chars_list`, `fuse_rt_string_byte_len`,
       `fuse_rt_string_to_bytes`, `fuse_rt_string_from_bytes`,
-      `fuse_rt_string_from_char`.
-- [ ] **1.8.3** Implement search methods: `contains`, `startsWith`,
+      `fuse_rt_string_from_char_code`, plus 12 more string FFI functions.
+- [x] **1.8.3** Implement search methods: `contains`, `startsWith`,
       `endsWith`, `indexOf`, `lastIndexOf`.
-- [ ] **1.8.4** Implement transform methods: `trim`, `trimStart`,
+- [x] **1.8.4** Implement transform methods: `trim`, `trimStart`,
       `trimEnd`, `replace`, `replaceFirst`, `split`, `splitLines`,
       `repeat`, `reverse`.
-- [ ] **1.8.5** Implement `toLower`, `capitalize`, `padStart`, `padEnd`.
-- [ ] **1.8.6** Implement conversion: `toInt`, `toFloat`, `toBool`,
+- [x] **1.8.5** Implement `toLower`, `capitalize`, `padStart`, `padEnd`.
+- [x] **1.8.6** Implement conversion: `toInt`, `toFloat`, `toBool`,
       `toBytes`, `chars`, `charCount`.
-- [ ] **1.8.7** Implement `String.fromBytes`, `String.fromChar`.
-- [ ] **1.8.8** Implement `compareTo`.
-- [ ] **1.8.9** Create `tests/fuse/stdlib/core/string_test.fuse`.
-- [ ] **1.8.10** Run tests. Fix any compiler bugs found.
+- [x] **1.8.7** Implement `string.fromBytes`, `string.fromChar`.
+- [x] **1.8.8** Implement `compareTo`.
+- [x] **1.8.9** Create `tests/fuse/stdlib/core/string_test.fuse`.
+- [x] **1.8.10** Run tests. Fix any compiler bugs found.
+
+**Notes:**
+- Added 20 FFI functions to fuse-runtime for string operations with
+  matching evaluator handlers.
+- Construction functions (`fromBytes`, `fromChar`) are module-level
+  `pub fn` (same checker limitation as int/float parse).
 
 ---
 

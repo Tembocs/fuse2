@@ -893,6 +893,162 @@ pub unsafe extern "C" fn fuse_rt_float_parse(h: FuseHandle) -> FuseHandle {
     let msg = "float: expected string";
     fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()))
 }
+// --- String FFI helpers ---
+
+fn extract_string(handle: FuseHandle) -> &'static str {
+    unsafe { match &(*handle).kind { ValueKind::String(s) => s.as_str(), _ => "" } }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_to_lower(h: FuseHandle) -> FuseHandle {
+    let s = extract_string(h).to_lowercase();
+    fuse_string_new_utf8(s.as_ptr(), s.len())
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_contains(h: FuseHandle, sub: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_string(h).contains(extract_string(sub)))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_starts_with(h: FuseHandle, prefix: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_string(h).starts_with(extract_string(prefix)))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_ends_with(h: FuseHandle, suffix: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_string(h).ends_with(extract_string(suffix)))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_index_of(h: FuseHandle, sub: FuseHandle) -> FuseHandle {
+    let s = extract_string(h);
+    let needle = extract_string(sub);
+    let idx = s.char_indices()
+        .zip(s.char_indices().skip(needle.len()).map(|(i,_)| i).chain(std::iter::once(s.len())))
+        .enumerate()
+        .find(|(_, ((start, _), end))| &s[*start..*end] == needle)
+        .map(|(char_idx, _)| char_idx as i64)
+        .unwrap_or(-1);
+    fuse_int(idx)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_last_index_of(h: FuseHandle, sub: FuseHandle) -> FuseHandle {
+    let s = extract_string(h);
+    let needle = extract_string(sub);
+    let chars: Vec<(usize, char)> = s.char_indices().collect();
+    let mut result: i64 = -1;
+    for (char_idx, (byte_start, _)) in chars.iter().enumerate() {
+        let byte_end = chars.get(char_idx + needle.chars().count()).map(|(b,_)| *b).unwrap_or(s.len());
+        if &s[*byte_start..byte_end] == needle {
+            result = char_idx as i64;
+        }
+    }
+    fuse_int(result)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_trim(h: FuseHandle) -> FuseHandle {
+    let s = extract_string(h).trim();
+    fuse_string_new_utf8(s.as_ptr(), s.len())
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_trim_start(h: FuseHandle) -> FuseHandle {
+    let s = extract_string(h).trim_start();
+    fuse_string_new_utf8(s.as_ptr(), s.len())
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_trim_end(h: FuseHandle) -> FuseHandle {
+    let s = extract_string(h).trim_end();
+    fuse_string_new_utf8(s.as_ptr(), s.len())
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_replace(h: FuseHandle, from: FuseHandle, to: FuseHandle) -> FuseHandle {
+    let s = extract_string(h).replace(extract_string(from), extract_string(to));
+    fuse_string_new_utf8(s.as_ptr(), s.len())
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_replace_first(h: FuseHandle, from: FuseHandle, to: FuseHandle) -> FuseHandle {
+    let s = extract_string(h).replacen(extract_string(from), extract_string(to), 1);
+    fuse_string_new_utf8(s.as_ptr(), s.len())
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_split(h: FuseHandle, sep: FuseHandle) -> FuseHandle {
+    let parts: Vec<&str> = extract_string(h).split(extract_string(sep)).collect();
+    let list = fuse_list_new();
+    for part in parts {
+        fuse_list_push(list, fuse_string_new_utf8(part.as_ptr(), part.len()));
+    }
+    list
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_to_bytes(h: FuseHandle) -> FuseHandle {
+    let list = fuse_list_new();
+    for byte in extract_string(h).as_bytes() {
+        fuse_list_push(list, fuse_int(*byte as i64));
+    }
+    list
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_from_bytes(list: FuseHandle) -> FuseHandle {
+    if let ValueKind::List(items) = &(*list).kind {
+        let bytes: Vec<u8> = items.iter().filter_map(|h| {
+            match &(**h).kind { ValueKind::Int(n) => Some(*n as u8), _ => None }
+        }).collect();
+        match String::from_utf8(bytes) {
+            Ok(s) => return fuse_ok(fuse_string_new_utf8(s.as_ptr(), s.len())),
+            Err(e) => {
+                let msg = format!("string: invalid UTF-8: {e}");
+                return fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()));
+            }
+        }
+    }
+    let msg = "string: expected byte list";
+    fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_from_char_code(code: FuseHandle) -> FuseHandle {
+    if let ValueKind::Int(n) = &(*code).kind {
+        if let Some(ch) = char::from_u32(*n as u32) {
+            let s = ch.to_string();
+            return fuse_string_new_utf8(s.as_ptr(), s.len());
+        }
+    }
+    fuse_string_new_utf8(b"".as_ptr(), 0)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_chars_list(h: FuseHandle) -> FuseHandle {
+    let list = fuse_list_new();
+    for ch in extract_string(h).chars() {
+        let s = ch.to_string();
+        fuse_list_push(list, fuse_string_new_utf8(s.as_ptr(), s.len()));
+    }
+    list
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_reverse(h: FuseHandle) -> FuseHandle {
+    let s: String = extract_string(h).chars().rev().collect();
+    fuse_string_new_utf8(s.as_ptr(), s.len())
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_compare(a: FuseHandle, b: FuseHandle) -> FuseHandle {
+    let result = extract_string(a).cmp(extract_string(b));
+    fuse_int(match result { std::cmp::Ordering::Less => -1, std::cmp::Ordering::Equal => 0, std::cmp::Ordering::Greater => 1 })
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_byte_len(h: FuseHandle) -> FuseHandle {
+    fuse_int(extract_string(h).len() as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_capitalize(h: FuseHandle) -> FuseHandle {
+    let s = extract_string(h);
+    let mut chars = s.chars();
+    let result = match chars.next() {
+        Some(first) => {
+            let upper: String = first.to_uppercase().collect();
+            let lower: String = chars.collect::<String>().to_lowercase();
+            format!("{upper}{lower}")
+        }
+        None => String::new(),
+    };
+    fuse_string_new_utf8(result.as_ptr(), result.len())
+}
+
 // --- Fmt FFI helpers ---
 
 #[unsafe(no_mangle)]

@@ -763,6 +763,128 @@ impl Evaluator {
                     let d = match args.get(1) { Some(Value::Int(n)) => *n as usize, _ => 2 };
                     return Ok(Value::String(format!("{v:.prec$}", prec = d)));
                 }
+                "fuse_rt_string_to_lower" => {
+                    if let Some(Value::String(s)) = args.first() { return Ok(Value::String(s.to_lowercase())); }
+                    return Ok(Value::String(String::new()));
+                }
+                "fuse_rt_string_contains" => {
+                    if let (Some(Value::String(s)), Some(Value::String(sub))) = (args.first(), args.get(1)) {
+                        return Ok(Value::Bool(s.contains(sub.as_str())));
+                    }
+                    return Ok(Value::Bool(false));
+                }
+                "fuse_rt_string_starts_with" => {
+                    if let (Some(Value::String(s)), Some(Value::String(p))) = (args.first(), args.get(1)) {
+                        return Ok(Value::Bool(s.starts_with(p.as_str())));
+                    }
+                    return Ok(Value::Bool(false));
+                }
+                "fuse_rt_string_ends_with" => {
+                    if let (Some(Value::String(s)), Some(Value::String(p))) = (args.first(), args.get(1)) {
+                        return Ok(Value::Bool(s.ends_with(p.as_str())));
+                    }
+                    return Ok(Value::Bool(false));
+                }
+                "fuse_rt_string_index_of" => {
+                    if let (Some(Value::String(s)), Some(Value::String(sub))) = (args.first(), args.get(1)) {
+                        let idx = s.find(sub.as_str()).map(|byte_idx| s[..byte_idx].chars().count() as i64).unwrap_or(-1);
+                        return Ok(Value::Int(idx));
+                    }
+                    return Ok(Value::Int(-1));
+                }
+                "fuse_rt_string_last_index_of" => {
+                    if let (Some(Value::String(s)), Some(Value::String(sub))) = (args.first(), args.get(1)) {
+                        let idx = s.rfind(sub.as_str()).map(|byte_idx| s[..byte_idx].chars().count() as i64).unwrap_or(-1);
+                        return Ok(Value::Int(idx));
+                    }
+                    return Ok(Value::Int(-1));
+                }
+                "fuse_rt_string_trim" => {
+                    if let Some(Value::String(s)) = args.first() { return Ok(Value::String(s.trim().to_string())); }
+                    return Ok(Value::String(String::new()));
+                }
+                "fuse_rt_string_trim_start" => {
+                    if let Some(Value::String(s)) = args.first() { return Ok(Value::String(s.trim_start().to_string())); }
+                    return Ok(Value::String(String::new()));
+                }
+                "fuse_rt_string_trim_end" => {
+                    if let Some(Value::String(s)) = args.first() { return Ok(Value::String(s.trim_end().to_string())); }
+                    return Ok(Value::String(String::new()));
+                }
+                "fuse_rt_string_replace" => {
+                    if let (Some(Value::String(s)), Some(Value::String(from)), Some(Value::String(to))) = (args.first(), args.get(1), args.get(2)) {
+                        return Ok(Value::String(s.replace(from.as_str(), to.as_str())));
+                    }
+                    return Ok(Value::String(String::new()));
+                }
+                "fuse_rt_string_replace_first" => {
+                    if let (Some(Value::String(s)), Some(Value::String(from)), Some(Value::String(to))) = (args.first(), args.get(1), args.get(2)) {
+                        return Ok(Value::String(s.replacen(from.as_str(), to.as_str(), 1)));
+                    }
+                    return Ok(Value::String(String::new()));
+                }
+                "fuse_rt_string_split" => {
+                    if let (Some(Value::String(s)), Some(Value::String(sep))) = (args.first(), args.get(1)) {
+                        let parts: Vec<Value> = s.split(sep.as_str()).map(|p| Value::String(p.to_string())).collect();
+                        return Ok(Value::List(parts));
+                    }
+                    return Ok(Value::List(Vec::new()));
+                }
+                "fuse_rt_string_to_bytes" => {
+                    if let Some(Value::String(s)) = args.first() {
+                        let bytes: Vec<Value> = s.as_bytes().iter().map(|b| Value::Int(*b as i64)).collect();
+                        return Ok(Value::List(bytes));
+                    }
+                    return Ok(Value::List(Vec::new()));
+                }
+                "fuse_rt_string_from_bytes" => {
+                    if let Some(Value::List(items)) = args.first() {
+                        let bytes: Vec<u8> = items.iter().filter_map(|v| match v { Value::Int(n) => Some(*n as u8), _ => None }).collect();
+                        return match String::from_utf8(bytes) {
+                            Ok(s) => Ok(Value::Result { is_ok: true, value: Box::new(Value::String(s)) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("string: invalid UTF-8: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("string: expected byte list".to_string())) });
+                }
+                "fuse_rt_string_from_char_code" => {
+                    if let Some(Value::Int(n)) = args.first() {
+                        if let Some(ch) = char::from_u32(*n as u32) { return Ok(Value::String(ch.to_string())); }
+                    }
+                    return Ok(Value::String(String::new()));
+                }
+                "fuse_rt_string_chars_list" => {
+                    if let Some(Value::String(s)) = args.first() {
+                        let chars: Vec<Value> = s.chars().map(|ch| Value::String(ch.to_string())).collect();
+                        return Ok(Value::List(chars));
+                    }
+                    return Ok(Value::List(Vec::new()));
+                }
+                "fuse_rt_string_reverse" => {
+                    if let Some(Value::String(s)) = args.first() { return Ok(Value::String(s.chars().rev().collect())); }
+                    return Ok(Value::String(String::new()));
+                }
+                "fuse_rt_string_compare" => {
+                    if let (Some(Value::String(a)), Some(Value::String(b))) = (args.first(), args.get(1)) {
+                        return Ok(Value::Int(match a.cmp(b) { std::cmp::Ordering::Less => -1, std::cmp::Ordering::Equal => 0, std::cmp::Ordering::Greater => 1 }));
+                    }
+                    return Ok(Value::Int(0));
+                }
+                "fuse_rt_string_byte_len" => {
+                    if let Some(Value::String(s)) = args.first() { return Ok(Value::Int(s.len() as i64)); }
+                    return Ok(Value::Int(0));
+                }
+                "fuse_rt_string_capitalize" => {
+                    if let Some(Value::String(s)) = args.first() {
+                        let mut chars = s.chars();
+                        let result = match chars.next() {
+                            Some(first) => format!("{}{}", first.to_uppercase().collect::<String>(), chars.collect::<String>().to_lowercase()),
+                            None => String::new(),
+                        };
+                        return Ok(Value::String(result));
+                    }
+                    return Ok(Value::String(String::new()));
+                }
                 "fuse_rt_float_to_string_scientific" => {
                     let v = Self::extract_float(args.first());
                     let d = match args.get(1) { Some(Value::Int(n)) => *n as usize, _ => 2 };

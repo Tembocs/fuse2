@@ -1,0 +1,93 @@
+// EXPECTED OUTPUT:
+// === case ===
+// hello world
+// Hello world
+// === search ===
+// contains: true
+// startsWith: true
+// endsWith: true
+// indexOf: Some(6)
+// indexOf none: None
+// lastIndexOf: Some(8)
+// === transform ===
+// Hello, World!
+// |hello  |
+// |  hello|
+// h*llo
+// 3
+// abcabcabc
+// hi....
+// ..hi
+// olleh
+// === conversion ===
+// toInt: Ok(42)
+// toFloat: Ok(3.14)
+// toBool: Ok(true)
+// charCount: 5
+// compareTo: -1
+// === construction ===
+// A
+// Ok(hi)
+
+import stdlib.core.string
+
+@entrypoint
+fn main() {
+  // case
+  println("=== case ===")
+  val upper = "HELLO WORLD"
+  println(upper.toLower())
+  val lower = "hello world"
+  println(lower.capitalize())
+
+  // search
+  println("=== search ===")
+  val hw = "hello world"
+  val containsWorld = hw.contains("world")
+  println(f"contains: {containsWorld}")
+  val swResult = "hello".startsWith("hel")
+  println(f"startsWith: {swResult}")
+  val ewResult = "hello".endsWith("llo")
+  println(f"endsWith: {ewResult}")
+  val idxResult = hw.indexOf("world")
+  println(f"indexOf: {idxResult}")
+  val idxNone = "hello".indexOf("xyz")
+  println(f"indexOf none: {idxNone}")
+  val abc3 = "abcabcabc"
+  val lastC = abc3.lastIndexOf("c")
+  println(f"lastIndexOf: {lastC}")
+
+  // transform
+  println("=== transform ===")
+  println("  Hello, World!  ".trim())
+  val trimS = "  hello  "
+  val ts = trimS.trimStart()
+  val te = trimS.trimEnd()
+  println(f"|{ts}|")
+  println(f"|{te}|")
+  println("hello".replaceFirst("e", "*"))
+  val parts = "a,b,c".split(",")
+  println(parts.len())
+  println("abc".repeat(3))
+  println("hi".padEnd(6, "."))
+  println("hi".padStart(4, "."))
+  println("hello".reverse())
+
+  // conversion
+  println("=== conversion ===")
+  val intResult = "42".toInt()
+  println(f"toInt: {intResult}")
+  val floatResult = "3.14".toFloat()
+  println(f"toFloat: {floatResult}")
+  val boolResult = "TRUE".toBool()
+  println(f"toBool: {boolResult}")
+  val cc = "hello".charCount()
+  println(f"charCount: {cc}")
+  val cmp = "abc".compareTo("def")
+  println(f"compareTo: {cmp}")
+
+  // construction
+  println("=== construction ===")
+  println(string.fromChar(65))
+  println(string.fromBytes([104, 105]))
+}
