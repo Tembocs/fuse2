@@ -1489,6 +1489,24 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 other => Err(format!("unsupported String zero-arg member `{other}()`")),
             };
         }
+        if let Some((target_module, function)) = self
+            .compiler
+            .session
+            .resolve_extension(&receiver_type, name)
+        {
+            let symbol = layout::function_symbol(target_module, &function.name);
+            let func_id = *self
+                .compiler
+                .function_ids
+                .get(&symbol)
+                .ok_or_else(|| format!("missing function id for `{symbol}`"))?;
+            let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
+            let call = builder.ins().call(local, &[receiver.value]);
+            return Ok(TypedValue {
+                value: builder.inst_results(call)[0],
+                ty: function.return_type.clone(),
+            });
+        }
         Err(format!(
             "unsupported zero-arg member call `{name}()` on `{receiver_type}`"
         ))
@@ -2745,19 +2763,21 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             builder.switch_to_block(body_block);
             self.locals = base_locals.clone();
             self.bind_pattern(builder, subject.value, &subject_type, &arm.pattern)?;
-            let value = match &arm.body {
-                fa::ArmBody::Expr(expr) => self.compile_expr(builder, expr)?,
+            match &arm.body {
+                fa::ArmBody::Expr(expr) => {
+                    let value = self.compile_expr(builder, expr)?;
+                    if !self.current_block_is_terminated(builder) {
+                        self.jump_value(builder, done, value.value);
+                    }
+                }
                 fa::ArmBody::Block(block) => {
                     self.compile_statements(builder, &block.statements)?;
-                    TypedValue {
-                        value: self.runtime_nullary(builder, self.compiler.runtime.unit),
-                        ty: Some("Unit".to_string()),
+                    if !self.current_block_is_terminated(builder) {
+                        let unit = self.runtime_nullary(builder, self.compiler.runtime.unit);
+                        self.jump_value(builder, done, unit);
                     }
                 }
             };
-            if !self.current_block_is_terminated(builder) {
-                self.jump_value(builder, done, value.value);
-            }
             next = miss_block;
         }
 
@@ -2794,36 +2814,40 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         builder.switch_to_block(first_block);
         self.locals = base_locals.clone();
         self.bind_pattern(builder, subject.value, subject_type, &match_expr.arms[0].pattern)?;
-        let first_value = match &match_expr.arms[0].body {
-            fa::ArmBody::Expr(expr) => self.compile_expr(builder, expr)?,
+        match &match_expr.arms[0].body {
+            fa::ArmBody::Expr(expr) => {
+                let value = self.compile_expr(builder, expr)?;
+                if !self.current_block_is_terminated(builder) {
+                    self.jump_value(builder, done, value.value);
+                }
+            }
             fa::ArmBody::Block(block) => {
                 self.compile_statements(builder, &block.statements)?;
-                TypedValue {
-                    value: self.runtime_nullary(builder, self.compiler.runtime.unit),
-                    ty: Some("Unit".to_string()),
+                if !self.current_block_is_terminated(builder) {
+                    let unit = self.runtime_nullary(builder, self.compiler.runtime.unit);
+                    self.jump_value(builder, done, unit);
                 }
             }
         };
-        if !self.current_block_is_terminated(builder) {
-            self.jump_value(builder, done, first_value.value);
-        }
 
         builder.switch_to_block(second_block);
         self.locals = base_locals.clone();
         self.bind_pattern(builder, subject.value, subject_type, &match_expr.arms[1].pattern)?;
-        let second_value = match &match_expr.arms[1].body {
-            fa::ArmBody::Expr(expr) => self.compile_expr(builder, expr)?,
+        match &match_expr.arms[1].body {
+            fa::ArmBody::Expr(expr) => {
+                let value = self.compile_expr(builder, expr)?;
+                if !self.current_block_is_terminated(builder) {
+                    self.jump_value(builder, done, value.value);
+                }
+            }
             fa::ArmBody::Block(block) => {
                 self.compile_statements(builder, &block.statements)?;
-                TypedValue {
-                    value: self.runtime_nullary(builder, self.compiler.runtime.unit),
-                    ty: Some("Unit".to_string()),
+                if !self.current_block_is_terminated(builder) {
+                    let unit = self.runtime_nullary(builder, self.compiler.runtime.unit);
+                    self.jump_value(builder, done, unit);
                 }
             }
         };
-        if !self.current_block_is_terminated(builder) {
-            self.jump_value(builder, done, second_value.value);
-        }
 
         builder.switch_to_block(done);
         self.locals = base_locals;

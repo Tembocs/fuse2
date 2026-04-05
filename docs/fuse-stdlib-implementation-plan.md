@@ -362,21 +362,21 @@ interaction. All compiler features from Wave 0 are available.
 
 Extension methods on the built-in `Result<T, E>` type.
 
-- [ ] **1.1.1** Create `stdlib/core/result.fuse` with module header.
-- [ ] **1.1.2** Implement `Result.unwrap(owned self) -> T` — match on
+- [x] **1.1.1** Create `stdlib/core/result.fuse` with module header.
+- [x] **1.1.2** Implement `Result.unwrap(owned self) -> T` — match on
       Ok/Err, panic on Err with error message.
-- [ ] **1.1.3** Implement `Result.unwrapOr(owned self, default: T) -> T`.
-- [ ] **1.1.4** Implement `Result.unwrapOrElse(owned self, f: fn(E) -> T) -> T`.
-- [ ] **1.1.5** Implement `Result.isOk(ref self) -> Bool`.
-- [ ] **1.1.6** Implement `Result.isErr(ref self) -> Bool`.
-- [ ] **1.1.7** Implement `Result.map(owned self, f: fn(T) -> U) -> Result<U, E>`.
-- [ ] **1.1.8** Implement `Result.mapErr(owned self, f: fn(E) -> F) -> Result<T, F>`.
-- [ ] **1.1.9** Implement `Result.flatten(owned self) -> Result<T, E>`.
-- [ ] **1.1.10** Implement `Result.ok(owned self) -> Option<T>`.
-- [ ] **1.1.11** Implement `Result.err(owned self) -> Option<E>`.
-- [ ] **1.1.12** Create `tests/fuse/stdlib/core/result_test.fuse` — test
+- [x] **1.1.3** Implement `Result.unwrapOr(owned self, default: T) -> T`.
+- [x] **1.1.4** Implement `Result.unwrapOrElse(owned self, f: fn(E) -> T) -> T`.
+- [x] **1.1.5** Implement `Result.isOk(ref self) -> Bool`.
+- [x] **1.1.6** Implement `Result.isErr(ref self) -> Bool`.
+- [x] **1.1.7** Implement `Result.map(owned self, f: fn(T) -> U) -> Result<U, E>`.
+- [x] **1.1.8** Implement `Result.mapErr(owned self, f: fn(E) -> F) -> Result<T, F>`.
+- [x] **1.1.9** Implement `Result.flatten(owned self) -> Result<T, E>`.
+- [x] **1.1.10** Implement `Result.ok(owned self) -> Option<T>`.
+- [x] **1.1.11** Implement `Result.err(owned self) -> Option<E>`.
+- [x] **1.1.12** Create `tests/fuse/stdlib/core/result_test.fuse` — test
       every method with happy path and edge cases.
-- [ ] **1.1.13** Run tests. Fix any compiler bugs found.
+- [x] **1.1.13** Run tests. Fix any compiler bugs found.
 
 ---
 
@@ -1078,7 +1078,8 @@ fix commits.
 
 | # | Wave | Description | Minimal Repro | Fix Commit |
 |---|------|-------------|---------------|------------|
-| | | | | |
+| 1 | 1.1 | `call_zero_arg_member` did not resolve user extension functions — only hardcoded built-ins (Chan, Map, String). Calling `result.isOk()` failed with "unsupported zero-arg member call". | `val r = Ok(1); r.isOk()` | See Phase 1.1 commit |
+| 2 | 1.1 | `compile_two_arm_match` and `compile_match` emitted `runtime_nullary` (Unit value) after a match arm body block containing `return`, causing "block already filled" Cranelift panic. | `match x { Ok(v) => v, Err(e) => { return 0 } }` | See Phase 1.1 commit |
 
 ---
 

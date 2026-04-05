@@ -1,0 +1,90 @@
+// Fuse Core stdlib — Result<T, E> extension methods.
+//
+// The Result type is built into the language. This module provides
+// convenience methods via extension functions.
+//
+// import stdlib.core.result
+
+// Unwrap the Ok value or panic with a message.
+// TODO: should panic/abort instead of returning 0
+pub fn Result.unwrap(owned self) -> Int {
+  match self {
+    Ok(value) => value
+    Err(err) => {
+      println(f"panic: unwrap called on Err({err})")
+      return 0
+    }
+  }
+}
+
+// Unwrap the Ok value or return a default.
+pub fn Result.unwrapOr(owned self, default: Int) -> Int {
+  match self {
+    Ok(value) => value
+    Err(_) => default
+  }
+}
+
+// Unwrap the Ok value or compute a default from the error.
+pub fn Result.unwrapOrElse(owned self, f: fn(String) -> Int) -> Int {
+  match self {
+    Ok(value) => value
+    Err(err) => f(err)
+  }
+}
+
+// True if Ok.
+pub fn Result.isOk(ref self) -> Bool {
+  match self {
+    Ok(_) => true
+    Err(_) => false
+  }
+}
+
+// True if Err.
+pub fn Result.isErr(ref self) -> Bool {
+  match self {
+    Ok(_) => false
+    Err(_) => true
+  }
+}
+
+// Map the Ok value through a function; Err passes through unchanged.
+pub fn Result.map(owned self, f: fn(Int) -> Int) -> Result<Int, String> {
+  match self {
+    Ok(value) => Ok(f(value))
+    Err(err) => Err(err)
+  }
+}
+
+// Map the Err value through a function; Ok passes through unchanged.
+pub fn Result.mapErr(owned self, f: fn(String) -> String) -> Result<Int, String> {
+  match self {
+    Ok(value) => Ok(value)
+    Err(err) => Err(f(err))
+  }
+}
+
+// Flatten Result<Result<T, E>, E> into Result<T, E>.
+pub fn Result.flatten(owned self) -> Result<Int, String> {
+  match self {
+    Ok(inner) => inner
+    Err(err) => Err(err)
+  }
+}
+
+// Convert Ok value to Option<T>, discarding the error.
+pub fn Result.ok(owned self) -> Option<Int> {
+  match self {
+    Ok(value) => Some(value)
+    Err(_) => None
+  }
+}
+
+// Convert Err value to Option<E>, discarding the Ok value.
+pub fn Result.err(owned self) -> Option<String> {
+  match self {
+    Ok(_) => None
+    Err(err) => Some(err)
+  }
+}

@@ -1,0 +1,89 @@
+// EXPECTED OUTPUT:
+// === unwrap ===
+// 42
+// === unwrapOr ===
+// 42
+// 99
+// === unwrapOrElse ===
+// 42
+// 0
+// === isOk / isErr ===
+// isOk: true
+// isErr: false
+// isOk: false
+// isErr: true
+// === map ===
+// Ok(84)
+// Err(bad)
+// === mapErr ===
+// Ok(42)
+// Err(ERROR: bad)
+// === flatten ===
+// Ok(42)
+// Err(inner fail)
+// === ok ===
+// Some(42)
+// None
+// === err ===
+// None
+// Some(bad)
+
+import stdlib.core.result
+
+fn good() -> Result<Int, String> => Ok(42)
+fn bad() -> Result<Int, String> => Err("bad")
+
+@entrypoint
+fn main() {
+  // unwrap
+  println("=== unwrap ===")
+  println(good().unwrap())
+
+  // unwrapOr
+  println("=== unwrapOr ===")
+  println(good().unwrapOr(99))
+  println(bad().unwrapOr(99))
+
+  // unwrapOrElse
+  println("=== unwrapOrElse ===")
+  println(good().unwrapOrElse(fn(e: String) -> Int => 0))
+  println(bad().unwrapOrElse(fn(e: String) -> Int => 0))
+
+  // isOk / isErr
+  println("=== isOk / isErr ===")
+  val g = good()
+  val b = bad()
+  println(f"isOk: {g.isOk()}")
+  println(f"isErr: {g.isErr()}")
+  println(f"isOk: {b.isOk()}")
+  println(f"isErr: {b.isErr()}")
+
+  // map
+  println("=== map ===")
+  println(good().map(fn(n: Int) -> Int => n * 2))
+  println(bad().map(fn(n: Int) -> Int => n * 2))
+
+  // mapErr
+  println("=== mapErr ===")
+  println(good().mapErr(fn(e: String) -> String => f"ERROR: {e}"))
+  println(bad().mapErr(fn(e: String) -> String => f"ERROR: {e}"))
+
+  // flatten
+  println("=== flatten ===")
+  val nested_ok: Result<Int, String> = Ok(42)
+  val outer_ok = Ok(nested_ok)
+  println(outer_ok.flatten())
+  val outer_err: Result<Int, String> = Err("inner fail")
+  val wrapped_err = Ok(outer_err)
+  println(wrapped_err.flatten())
+
+  // ok
+  println("=== ok ===")
+  println(good().ok())
+  println(bad().ok())
+
+  // err
+  println("=== err ===")
+  println(good().err())
+  println(bad().err())
+}
