@@ -12,6 +12,22 @@
 > spec is implemented before the stdlib code that needs it. No stubs, no
 > deferred features, no shortcuts. A workaround today becomes a landmine
 > during self-hosting.
+>
+> **Zero-TODO Policy:** Shipped stdlib code must contain zero `TODO`,
+> `FIXME`, or `HACK` comments. If something cannot be implemented
+> because the compiler does not support it, the compiler is fixed first
+> (per the Bug Policy), then the natural code is written. A `TODO` is a
+> workaround in comment form — it hides the same debt. After completing
+> each module, scan every `.fuse` file in that module for `TODO`,
+> `FIXME`, and `HACK`. If any are found, resolve them before marking the
+> phase done.
+>
+> **Learning Documentation:** Every compiler bug discovered and fixed
+> during stdlib implementation must be documented in
+> `docs/stdlib_implementation_learning.md` with: symptom, minimal
+> reproduction, root cause, category, and fix description. This creates
+> a reference for Phase 9 self-hosting and future compiler work. Update
+> the learning doc in the same commit as the compiler fix.
 
 ---
 
@@ -26,6 +42,11 @@
 be marked `[x]` before moving to the next phase. This document is the
 single source of truth for progress — if it is not marked done here,
 it is not done.
+
+**TODO Scan Rule:** After completing each phase's implementation, run a
+scan for `TODO`, `FIXME`, and `HACK` across all `.fuse` files touched
+in that phase. Any match is a blocker — resolve it before marking the
+phase done. No exceptions.
 
 ---
 
@@ -356,6 +377,15 @@ interaction. All compiler features from Wave 0 are available.
 
 **Dependency:** Modules are ordered so each can import the previous.
 
+**Module ordering rationale:** The spec lists core modules as: result,
+option, list, map, set, string, int, float, bool, math, fmt. This plan
+reorders to: result, option, bool, int, float, math, fmt, string, list,
+map, set. The reason: primitive-type extensions (bool, int, float) have
+no dependencies, while collection extensions (list, map, set) may depend
+on primitive helpers (e.g., `Int.abs` inside a sort comparator) and on
+formatting utilities (e.g., `fmt.padLeft` inside `List.join`). Building
+bottom-up avoids forward references.
+
 ---
 
 ### Phase 1.1 — `result.fuse`
@@ -377,6 +407,17 @@ Extension methods on the built-in `Result<T, E>` type.
 - [x] **1.1.12** Create `tests/fuse/stdlib/core/result_test.fuse` — test
       every method with happy path and edge cases.
 - [x] **1.1.13** Run tests. Fix any compiler bugs found.
+
+**Post-completion fixes (applied retroactively):**
+- [x] Rewrote `result.fuse` to use generic type variables (`T`, `E`,
+  `U`, `F`) matching the spec signatures. The initial implementation
+  used concrete `Int`/`String` types, which violated the spec contract
+  and only worked for `Result<Int, String>`.
+- [x] Replaced the `unwrap` fallback (print + return 0) with a proper
+  panic mechanism using a `resultPanic(msg: String) -> !` helper. The
+  never-type trap instruction (Phase 0.7) provides the abort semantics.
+- [x] Removed all `TODO` comments from `result.fuse` per the Zero-TODO
+  Policy.
 
 ---
 
@@ -576,6 +617,13 @@ Extension methods on `Map<K, V>`.
 
 `Set<T>` built on `Map<T, Bool>`.
 
+**Design choice:** `Set<T>` is defined as `data class Set<T>(val inner: Map<T, Bool>)`
+rather than an opaque `struct`. This deliberately exposes the internal
+representation so that `Map` interop is zero-cost and pattern matching on
+the inner map is possible. If encapsulation proves necessary later
+(e.g., swapping to a hash-set runtime), this can be changed to a
+`struct` — but only with a spec update first.
+
 - [ ] **1.11.1** Create `stdlib/core/set.fuse` — define
       `data class Set<T>(val inner: Map<T, Bool>)`.
 - [ ] **1.11.2** Implement constructors: `Set.new()`, `Set.of(items: T...)`,
@@ -588,6 +636,27 @@ Extension methods on `Map<K, V>`.
 - [ ] **1.11.6** Implement `forEach`, `filter`, `map`.
 - [ ] **1.11.7** Create `tests/fuse/stdlib/core/set_test.fuse`.
 - [ ] **1.11.8** Run tests. Fix any compiler bugs found.
+
+---
+
+### Phase 1.12 — Wave 1 Verification
+
+**What:** End-to-end validation that all core modules work together,
+including cross-module imports, chained method calls across types, and
+the TODO scan gate.
+
+- [ ] **1.12.1** Write `tests/fuse/stdlib/core/cross_module_test.fuse` —
+      a single program that imports at least 5 core modules and uses
+      them together (e.g., parse an int, format it, add to a list, sort
+      the list, collect into a set). This stress-tests the import
+      resolver and cross-module extension function dispatch.
+- [ ] **1.12.2** Run full existing test suite — no regressions.
+- [ ] **1.12.3** Run `cargo test` on all Stage 1 crates — no regressions.
+- [ ] **1.12.4** Run TODO/FIXME/HACK scan across all `stdlib/core/*.fuse`
+      files. Zero matches required.
+- [ ] **1.12.5** Update `docs/stdlib_implementation_learning.md` with any
+      new compiler bugs found during Wave 1.
+- [ ] **1.12.6** Document any known limitations in this plan.
 
 ---
 
@@ -1062,24 +1131,27 @@ HTTP server backed by Rust crate.
 | Wave | Phases | Modules | Tasks |
 |------|--------|---------|-------|
 | **0 — Compiler Foundation** | 0.1–0.12 | — | 84 |
-| **1 — Core** | 1.1–1.11 | result, option, bool, int, float, math, fmt, string, list, map, set | 107 |
+| **1 — Core** | 1.1–1.12 | result, option, bool, int, float, math, fmt, string, list, map, set | 113 |
 | **2 — Full I/O & System** | 2.1–2.8 | io, path, os, env, sys, time, random, process | 69 |
 | **3 — Full Networking** | 3.1–3.3 | net, json, http | 29 |
 | **4 — Full Concurrency** | 4.1–4.4 | chan, shared, timer, simd | 31 |
 | **5 — Ext** | 5.1–5.8 | test, log, regex, toml, yaml, json_schema, crypto, http_server | 62 |
-| **Total** | **38 phases** | **34 modules** | **382 tasks** |
+| **Total** | **39 phases** | **34 modules** | **388 tasks** |
 
 ---
 
 ## Compiler Bug Log
 
 Bugs discovered during implementation are logged here with links to
-fix commits.
+fix commits. Full details including root cause analysis are in
+`docs/stdlib_implementation_learning.md`.
 
 | # | Wave | Description | Minimal Repro | Fix Commit |
 |---|------|-------------|---------------|------------|
 | 1 | 1.1 | `call_zero_arg_member` did not resolve user extension functions — only hardcoded built-ins (Chan, Map, String). Calling `result.isOk()` failed with "unsupported zero-arg member call". | `val r = Ok(1); r.isOk()` | See Phase 1.1 commit |
 | 2 | 1.1 | `compile_two_arm_match` and `compile_match` emitted `runtime_nullary` (Unit value) after a match arm body block containing `return`, causing "block already filled" Cranelift panic. | `match x { Ok(v) => v, Err(e) => { return 0 } }` | See Phase 1.1 commit |
+| 3 | 1.1 | `result.fuse` shipped with concrete types (`Int`, `String`) instead of generic type variables (`T`, `E`, `U`, `F`). Only worked for `Result<Int, String>`. | N/A — spec conformance issue | Retroactive fix |
+| 4 | 1.1 | `Result.unwrap()` returned `0` on Err instead of panicking. No panic mechanism existed. Fixed with never-type helper `resultPanic(msg) -> !`. | `Err("x").unwrap()` returned 0 | Retroactive fix |
 
 ---
 

@@ -5,20 +5,21 @@
 //
 // import stdlib.core.result
 
+// Internal panic helper — prints message and aborts via never-type trap.
+fn resultPanic(msg: String) -> ! {
+  println(msg)
+}
+
 // Unwrap the Ok value or panic with a message.
-// TODO: should panic/abort instead of returning 0
-pub fn Result.unwrap(owned self) -> Int {
+pub fn Result.unwrap(owned self) -> T {
   match self {
     Ok(value) => value
-    Err(err) => {
-      println(f"panic: unwrap called on Err({err})")
-      return 0
-    }
+    Err(err) => resultPanic(f"panic: unwrap called on Err({err})")
   }
 }
 
 // Unwrap the Ok value or return a default.
-pub fn Result.unwrapOr(owned self, default: Int) -> Int {
+pub fn Result.unwrapOr(owned self, default: T) -> T {
   match self {
     Ok(value) => value
     Err(_) => default
@@ -26,7 +27,7 @@ pub fn Result.unwrapOr(owned self, default: Int) -> Int {
 }
 
 // Unwrap the Ok value or compute a default from the error.
-pub fn Result.unwrapOrElse(owned self, f: fn(String) -> Int) -> Int {
+pub fn Result.unwrapOrElse(owned self, f: fn(E) -> T) -> T {
   match self {
     Ok(value) => value
     Err(err) => f(err)
@@ -50,7 +51,7 @@ pub fn Result.isErr(ref self) -> Bool {
 }
 
 // Map the Ok value through a function; Err passes through unchanged.
-pub fn Result.map(owned self, f: fn(Int) -> Int) -> Result<Int, String> {
+pub fn Result.map(owned self, f: fn(T) -> U) -> Result<U, E> {
   match self {
     Ok(value) => Ok(f(value))
     Err(err) => Err(err)
@@ -58,7 +59,7 @@ pub fn Result.map(owned self, f: fn(Int) -> Int) -> Result<Int, String> {
 }
 
 // Map the Err value through a function; Ok passes through unchanged.
-pub fn Result.mapErr(owned self, f: fn(String) -> String) -> Result<Int, String> {
+pub fn Result.mapErr(owned self, f: fn(E) -> F) -> Result<T, F> {
   match self {
     Ok(value) => Ok(value)
     Err(err) => Err(f(err))
@@ -66,7 +67,7 @@ pub fn Result.mapErr(owned self, f: fn(String) -> String) -> Result<Int, String>
 }
 
 // Flatten Result<Result<T, E>, E> into Result<T, E>.
-pub fn Result.flatten(owned self) -> Result<Int, String> {
+pub fn Result.flatten(owned self) -> Result<T, E> {
   match self {
     Ok(inner) => inner
     Err(err) => Err(err)
@@ -74,7 +75,7 @@ pub fn Result.flatten(owned self) -> Result<Int, String> {
 }
 
 // Convert Ok value to Option<T>, discarding the error.
-pub fn Result.ok(owned self) -> Option<Int> {
+pub fn Result.ok(owned self) -> Option<T> {
   match self {
     Ok(value) => Some(value)
     Err(_) => None
@@ -82,7 +83,7 @@ pub fn Result.ok(owned self) -> Option<Int> {
 }
 
 // Convert Err value to Option<E>, discarding the Ok value.
-pub fn Result.err(owned self) -> Option<String> {
+pub fn Result.err(owned self) -> Option<E> {
   match self {
     Ok(_) => None
     Err(err) => Some(err)
