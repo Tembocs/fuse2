@@ -176,6 +176,48 @@ and incomplete.
 
 ---
 
+### Bug #6 — Parser rejects keywords as member/method names (Wave 1, Phase 1.3)
+
+**Symptom:** Calling `t.not()` on a Bool value produced a parse error:
+`"expected member name after '.'"`. The method `not` could not be
+defined or called as an extension function.
+
+**Minimal reproduction:**
+```fuse
+pub fn Bool.not(ref self) -> Bool {
+  if self { false } else { true }
+}
+
+@entrypoint
+fn main() {
+  val t = true
+  println(t.not())
+}
+```
+
+**Root cause:** The parser used `expect(TokenKind::Identifier)` in two
+places: member access parsing (line 712) and extension function name
+parsing (line 173). Since `not` is a keyword (`TokenKind::Not`), it was
+rejected by `expect(Identifier)`. Any keyword used as a method name
+would hit the same issue (`match`, `return`, `if`, etc.).
+
+**Category:** Parser — keyword/identifier ambiguity
+
+**Fix:** Changed both member access and extension function name parsing
+to accept any token with non-empty text (using `self.take()` with an
+EOF/empty check) instead of strictly requiring an Identifier token.
+This allows keywords to be used as method names in member position,
+which is standard in most languages (e.g., Kotlin's `.not()`,
+Rust's `.match` on iterators).
+
+**Learning:** Member/method names occupy a different syntactic position
+than keywords in statement/expression position. The parser should
+allow any word-like token as a member name, not just identifiers. This
+is the same principle that allows field names to shadow keywords in
+most languages.
+
+---
+
 ## Pattern Analysis
 
 | Category | Count | Notes |
@@ -185,6 +227,7 @@ and incomplete.
 | Spec conformance | 1 | Always write generic signatures from the start |
 | Missing language primitive | 1 | Never type is the panic building block |
 | Evaluator — f-string evaluation | 1 | Hand-rolled expression parsers silently drop unsupported syntax |
+| Parser — keyword ambiguity | 1 | Keywords must be allowed as member/method names after `.` |
 
 ---
 

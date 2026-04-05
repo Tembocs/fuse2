@@ -1,0 +1,41 @@
+// EXPECTED OUTPUT:
+// === not ===
+// false
+// true
+// === toString ===
+// true
+// false
+// === toInt ===
+// 1
+// 0
+// === chaining ===
+// true
+// false: 0
+
+import stdlib.core.bool
+
+@entrypoint
+fn main() {
+  val t = true
+  val f = false
+
+  // not
+  println("=== not ===")
+  println(t.not())
+  println(f.not())
+
+  // toString
+  println("=== toString ===")
+  println(t.toString())
+  println(f.toString())
+
+  // toInt
+  println("=== toInt ===")
+  println(t.toInt())
+  println(f.toInt())
+
+  // chaining
+  println("=== chaining ===")
+  println(f.not().not().not())
+  println(f"false: {f.toInt()}")
+}

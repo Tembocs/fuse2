@@ -445,12 +445,12 @@ Extension methods on the built-in `Option<T>` type.
 
 Extension methods on `Bool`. Pure Fuse.
 
-- [ ] **1.3.1** Create `stdlib/core/bool.fuse`.
-- [ ] **1.3.2** Implement `Bool.not(ref self) -> Bool`.
-- [ ] **1.3.3** Implement `Bool.toString(ref self) -> String`.
-- [ ] **1.3.4** Implement `Bool.toInt(ref self) -> Int`.
-- [ ] **1.3.5** Create `tests/fuse/stdlib/core/bool_test.fuse`.
-- [ ] **1.3.6** Run tests. Fix any compiler bugs found.
+- [x] **1.3.1** Create `stdlib/core/bool.fuse`.
+- [x] **1.3.2** Implement `Bool.not(ref self) -> Bool`.
+- [x] **1.3.3** Implement `Bool.toString(ref self) -> String`.
+- [x] **1.3.4** Implement `Bool.toInt(ref self) -> Int`.
+- [x] **1.3.5** Create `tests/fuse/stdlib/core/bool_test.fuse`.
+- [x] **1.3.6** Run tests. Fix any compiler bugs found.
 
 ---
 
@@ -1153,6 +1153,7 @@ fix commits. Full details including root cause analysis are in
 | 3 | 1.1 | `result.fuse` shipped with concrete types (`Int`, `String`) instead of generic type variables (`T`, `E`, `U`, `F`). Only worked for `Result<Int, String>`. | N/A — spec conformance issue | Retroactive fix |
 | 4 | 1.1 | `Result.unwrap()` returned `0` on Err instead of panicking. No panic mechanism existed. Fixed with never-type helper `resultPanic(msg) -> !`. | `Err("x").unwrap()` returned 0 | Retroactive fix |
 | 5 | 1.2 | Evaluator f-string interpolation used hand-rolled string splitting that only supported `name.field` access. Method calls like `{s.isSome()}` silently returned the receiver value instead of the call result. | `val s = Some(42); println(f"{s.isSome()}")` → `42` instead of `true` | See Phase 1.2 commit |
+| 6 | 1.3 | Parser rejected keywords as member/method names after `.`. `t.not()` failed because `not` is a keyword (`TokenKind::Not`). The parser used `expect(Identifier)` which rejects keyword tokens. | `val t = true; t.not()` → parse error | See Phase 1.3 commit |
 
 ---
 

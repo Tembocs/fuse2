@@ -1,0 +1,21 @@
+// Fuse Core stdlib — Bool extension methods.
+//
+// The Bool type is built into the language. This module provides
+// convenience methods via extension functions.
+//
+// import stdlib.core.bool
+
+// Logical negation. Same as !self but chainable.
+pub fn Bool.not(ref self) -> Bool {
+  if self { false } else { true }
+}
+
+// String representation: "true" or "false".
+pub fn Bool.toString(ref self) -> String {
+  if self { "true" } else { "false" }
+}
+
+// Integer conversion: 1 if true, 0 if false.
+pub fn Bool.toInt(ref self) -> Int {
+  if self { 1 } else { 0 }
+}

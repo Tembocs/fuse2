@@ -169,9 +169,11 @@ impl Parser {
         let mut name = first.text.clone();
         if self.match_kind(TokenKind::Dot).is_some() {
             receiver_type = Some(first.text);
-            name = self
-                .expect(TokenKind::Identifier, "expected extension function name")?
-                .text;
+            let method_token = self.take();
+            if method_token.text.is_empty() || method_token.kind == TokenKind::Eof {
+                return Err(self.syntax_error("expected extension function name", method_token.span));
+            }
+            name = method_token.text;
         }
         self.expect(TokenKind::LParen, "expected `(` after function name")?;
         let mut params = Vec::new();
@@ -708,8 +710,10 @@ impl Parser {
                     let index = self.take();
                     expr = Expr::Member(Member { object: Box::new(expr), name: index.text, optional: false, span: index.span });
                 } else {
-                    let name =
-                        self.expect(TokenKind::Identifier, "expected member name after `.`")?;
+                    let name = self.take();
+                    if name.text.is_empty() || name.kind == TokenKind::Eof {
+                        return Err(self.syntax_error("expected member name after `.`", name.span));
+                    }
                     expr = Expr::Member(Member { object: Box::new(expr), name: name.text, optional: false, span: name.span });
                 }
                 continue;
