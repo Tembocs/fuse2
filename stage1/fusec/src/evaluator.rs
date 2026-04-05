@@ -467,6 +467,7 @@ impl Evaluator {
                 fa::Declaration::Enum(_) => {}
                 fa::Declaration::ExternFn(_) => {}
                 fa::Declaration::Struct(_) => {}
+                fa::Declaration::Const(_) => {}
             }
         }
         self.modules.insert(canonical, module.clone());

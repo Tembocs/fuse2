@@ -234,21 +234,21 @@ returns (e.g., `sys.exit`, `panic`, `test.fail`).
 **What:** Support `val Type.CONSTANT: T = expr` as a module-level
 constant associated with a type. Read via `Type.CONSTANT`.
 
-- [ ] **0.8.1** Parser: parse `val Type.NAME: T = expr` at top level.
+- [x] **0.8.1** Parser: parse `val Type.NAME: T = expr` at top level.
       Also parse `val module.NAME: T = expr` for module-level constants
       like `math.PI`.
-- [ ] **0.8.2** AST/HIR: add `TypeConstant` declaration node.
-- [ ] **0.8.3** Checker: register type constants in a lookup table.
+- [x] **0.8.2** AST/HIR: add `TypeConstant` declaration node.
+- [x] **0.8.3** Checker: register type constants in a lookup table.
       Validate that the initializer expression type matches the declared
       type. Constants must be immutable.
-- [ ] **0.8.4** Codegen: emit constant initialization. Options: global
+- [x] **0.8.4** Codegen: emit constant initialization. Options: global
       variable initialized once at module load, or inline the value at
       every use site (for primitives).
-- [ ] **0.8.5** Test: `tests/fuse/core/types/type_constant.fuse` —
+- [x] **0.8.5** Test: `tests/fuse/core/types/type_constant.fuse` —
       define `val Int.MAX: Int = 9223372036854775807`, read it, print it.
-- [ ] **0.8.6** Test: `val math.PI: Float = 3.141592653589793`, use in
+- [x] **0.8.6** Test: `val math.PI: Float = 3.141592653589793`, use in
       expression.
-- [ ] **0.8.7** Test: attempt to assign to a type constant → compile
+- [x] **0.8.7** Test: attempt to assign to a type constant → compile
       error.
 
 ---

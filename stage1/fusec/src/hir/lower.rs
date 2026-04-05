@@ -12,6 +12,7 @@ pub fn lower_program(program: &AstProgram, path: PathBuf) -> Module {
     let mut enums = Vec::new();
     let mut extern_fns = Vec::new();
     let mut structs = Vec::new();
+    let mut consts = Vec::new();
     let mut extension_functions = HashMap::new();
 
     for declaration in &program.declarations {
@@ -28,6 +29,7 @@ pub fn lower_program(program: &AstProgram, path: PathBuf) -> Module {
             Declaration::Enum(enum_decl) => enums.push(enum_decl.clone()),
             Declaration::ExternFn(extern_fn) => extern_fns.push(extern_fn.clone()),
             Declaration::Struct(struct_decl) => structs.push(struct_decl.clone()),
+            Declaration::Const(const_decl) => consts.push(const_decl.clone()),
         }
     }
 
@@ -40,6 +42,7 @@ pub fn lower_program(program: &AstProgram, path: PathBuf) -> Module {
         enums,
         extern_fns,
         structs,
+        consts,
         extension_functions,
     }
 }

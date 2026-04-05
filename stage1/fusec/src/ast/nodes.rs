@@ -14,6 +14,17 @@ pub enum Declaration {
     Enum(EnumDecl),
     ExternFn(ExternFnDecl),
     Struct(StructDecl),
+    Const(ConstDecl),
+}
+
+#[derive(Clone, Debug)]
+pub struct ConstDecl {
+    pub owner: String,
+    pub name: String,
+    pub type_name: Option<String>,
+    pub value: Expr,
+    pub is_pub: bool,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug)]

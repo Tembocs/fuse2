@@ -105,6 +105,11 @@ impl Parser {
                 struct_decl.is_pub = is_pub;
                 Ok(Declaration::Struct(struct_decl))
             }
+            TokenKind::Val => {
+                let mut const_decl = self.parse_const()?;
+                const_decl.is_pub = is_pub;
+                Ok(Declaration::Const(const_decl))
+            }
             _ => Err(self.syntax_error(
                 format!("unexpected top-level token {}", self.peek(0).text),
                 self.peek(0).span,
@@ -361,6 +366,32 @@ impl Parser {
         Ok(EnumDecl {
             name,
             variants,
+            is_pub: false,
+            span: start.span,
+        })
+    }
+
+    fn parse_const(&mut self) -> Result<ConstDecl, Diagnostic> {
+        let start = self.expect(TokenKind::Val, "expected `val`")?;
+        let owner = self
+            .expect(TokenKind::Identifier, "expected type or module name")?
+            .text;
+        self.expect(TokenKind::Dot, "expected `.` after type name in constant")?;
+        let name = self
+            .expect(TokenKind::Identifier, "expected constant name")?
+            .text;
+        let type_name = if self.match_kind(TokenKind::Colon).is_some() {
+            Some(self.parse_type_name(&[TokenKind::Eq]))
+        } else {
+            None
+        };
+        self.expect(TokenKind::Eq, "expected `=` in constant")?;
+        let value = self.parse_expression()?;
+        Ok(ConstDecl {
+            owner,
+            name,
+            type_name,
+            value,
             is_pub: false,
             span: start.span,
         })

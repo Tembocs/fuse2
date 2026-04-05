@@ -1,0 +1,15 @@
+// EXPECTED OUTPUT:
+// 9223372036854775807
+// 100
+// 42
+val Int.MAX: Int = 9223372036854775807
+val Int.HUNDRED: Int = 100
+
+val math.ANSWER: Int = 42
+
+@entrypoint
+fn main() {
+  println(Int.MAX)
+  println(Int.HUNDRED)
+  println(math.ANSWER)
+}

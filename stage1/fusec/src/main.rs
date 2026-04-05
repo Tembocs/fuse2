@@ -605,6 +605,13 @@ fn print_ast_decl(decl: &fusec::ast::nodes::Declaration, depth: usize) {
                 s.name, s.span.line, s.span.column
             );
         }
+        fusec::ast::nodes::Declaration::Const(c) => {
+            let ty = c.type_name.as_deref().unwrap_or("?");
+            println!(
+                "{indent}Const '{}.{}': {ty} [{}:{}]",
+                c.owner, c.name, c.span.line, c.span.column
+            );
+        }
     }
 }
 
@@ -810,6 +817,10 @@ fn print_hir_module(module: &fusec::hir::Module) {
     }
     for s in &module.structs {
         println!("  Struct '{}'", s.name);
+    }
+    for c in &module.consts {
+        let ty = c.type_name.as_deref().unwrap_or("?");
+        println!("  Const '{}.{}': {ty}", c.owner, c.name);
     }
 }
 

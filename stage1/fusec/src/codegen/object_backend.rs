@@ -47,6 +47,7 @@ struct LoadedModule {
     data_classes: HashMap<String, fa::DataClassDecl>,
     enums: HashMap<String, fa::EnumDecl>,
     extern_fns: HashMap<String, fa::ExternFnDecl>,
+    consts: HashMap<(String, String), fa::ConstDecl>,
 }
 
 struct BuildSession {
@@ -121,6 +122,11 @@ impl BuildSession {
         })
     }
 
+    fn find_const(&self, owner: &str, name: &str) -> Option<&fa::ConstDecl> {
+        let key = (owner.to_string(), name.to_string());
+        self.modules.values().find_map(|module| module.consts.get(&key))
+    }
+
     fn find_extern_fn(&self, name: &str) -> Option<&fa::ExternFnDecl> {
         self.modules.values().find_map(|module| module.extern_fns.get(name))
     }
@@ -175,6 +181,11 @@ fn load_module_recursive(
             .extern_fns
             .iter()
             .map(|e| (e.name.clone(), e.clone()))
+            .collect(),
+        consts: module
+            .consts
+            .iter()
+            .map(|c| ((c.owner.clone(), c.name.clone()), c.clone()))
             .collect(),
     };
     modules.insert(path.clone(), loaded);
@@ -2070,6 +2081,15 @@ impl<'a, 'b> LoweringState<'a, 'b> {
     ) -> Result<TypedValue, String> {
         if let fa::Expr::Name(name) = member.object.as_ref() {
             if !self.locals.contains_key(&name.value) {
+                if let Some(const_decl) = self.compiler.session.find_const(&name.value, &member.name) {
+                    let expr = const_decl.value.clone();
+                    let ty = const_decl.type_name.clone();
+                    let mut result = self.compile_expr(builder, &expr)?;
+                    if ty.is_some() {
+                        result.ty = ty;
+                    }
+                    return Ok(result);
+                }
                 if let Some(enum_decl) = self.compiler.session.find_enum(&name.value) {
                     let base = &name.value;
                     let variant_name = &member.name;
