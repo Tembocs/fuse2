@@ -849,6 +849,58 @@ pub unsafe extern "C" fn fuse_rt_string_char_at(handle: FuseHandle, index: FuseH
     fuse_string_new_utf8(b"".as_ptr(), 0)
 }
 
+// --- Float FFI helpers ---
+
+unsafe fn extract_float(handle: FuseHandle) -> f64 {
+    unsafe { match &(*handle).kind { ValueKind::Float(v) => *v, ValueKind::Int(v) => *v as f64, _ => 0.0 } }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_float_abs(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).abs()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_float_floor(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).floor()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_float_ceil(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).ceil()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_float_round(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).round()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_float_trunc(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).trunc()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_float_fract(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).fract()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_float_sqrt(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).sqrt()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_float_pow(h: FuseHandle, exp: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).powf(extract_float(exp))) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_float_is_nan(h: FuseHandle) -> FuseHandle { fuse_bool(extract_float(h).is_nan()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_float_is_infinite(h: FuseHandle) -> FuseHandle { fuse_bool(extract_float(h).is_infinite()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_float_is_finite(h: FuseHandle) -> FuseHandle { fuse_bool(extract_float(h).is_finite()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_float_to_int(h: FuseHandle) -> FuseHandle { fuse_int(extract_float(h) as i64) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_float_parse(h: FuseHandle) -> FuseHandle {
+    if let ValueKind::String(s) = &(*h).kind {
+        match s.parse::<f64>() {
+            Ok(v) => return fuse_ok(fuse_float(v)),
+            Err(_) => {
+                let msg = format!("float: invalid number: {s}");
+                return fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()));
+            }
+        }
+    }
+    let msg = "float: expected string";
+    fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_float_to_string_fixed(h: FuseHandle, decimals: FuseHandle) -> FuseHandle {
+    let v = extract_float(h);
+    let d = match &(*decimals).kind { ValueKind::Int(n) => *n as usize, _ => 2 };
+    let s = format!("{v:.prec$}", prec = d);
+    fuse_string_new_utf8(s.as_ptr(), s.len())
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_release(handle: FuseHandle) {
     if handle.is_null() {

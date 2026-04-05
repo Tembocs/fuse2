@@ -1,0 +1,111 @@
+// EXPECTED OUTPUT:
+// === abs ===
+// 2.3
+// 5.0
+// === min / max / clamp ===
+// 1.5
+// 3.7
+// 5.0
+// 0.0
+// === pow / sqrt ===
+// 1024.0
+// 4.0
+// === floor / ceil / round / trunc / fract ===
+// 3.0
+// 4.0
+// 4.0
+// 3.0
+// 0.7000000000000002
+// === predicates ===
+// isFinite: true
+// isNaN: true
+// isInfinite: true
+// isPositive: true
+// isNegative: true
+// === approxEq ===
+// true
+// true
+// === toInt ===
+// 3
+// -2
+// === toString ===
+// 3.14
+// === toStringFixed ===
+// 3.14
+// 2.7
+// === parse ===
+// Ok(3.14)
+// Err(float: invalid number: abc)
+// === constants ===
+// 3.141592653589793
+// 2.718281828459045
+
+import stdlib.core.float
+
+@entrypoint
+fn main() {
+  // abs
+  println("=== abs ===")
+  println((-2.3).abs())
+  println(5.0.abs())
+
+  // min / max / clamp
+  println("=== min / max / clamp ===")
+  println(1.5.min(3.7))
+  println(1.5.max(3.7))
+  println(7.5.clamp(0.0, 5.0))
+  println((-1.0).clamp(0.0, 5.0))
+
+  // pow / sqrt
+  println("=== pow / sqrt ===")
+  println(2.0.pow(10.0))
+  println(16.0.sqrt())
+
+  // floor / ceil / round / trunc / fract
+  println("=== floor / ceil / round / trunc / fract ===")
+  println(3.7.floor())
+  println(3.2.ceil())
+  println(3.5.round())
+  println(3.7.trunc())
+  println(3.7.fract())
+
+  // predicates
+  println("=== predicates ===")
+  println(f"isFinite: {3.14.isFinite()}")
+  val nan = 0.0 / 0.0
+  println(f"isNaN: {nan.isNaN()}")
+  val inf = 1.0 / 0.0
+  println(f"isInfinite: {inf.isInfinite()}")
+  println(f"isPositive: {1.0.isPositive()}")
+  println(f"isNegative: {(-1.0).isNegative()}")
+
+  // approxEq
+  println("=== approxEq ===")
+  val sum = 0.1 + 0.2
+  println(sum.approxEq(0.3, 0.0001))
+  println(sum.approxEq(0.3, 0.0000000000000001))
+
+  // toInt
+  println("=== toInt ===")
+  println(3.7.toInt())
+  println((-2.9).toInt())
+
+  // toString
+  println("=== toString ===")
+  println(3.14.toString())
+
+  // toStringFixed
+  println("=== toStringFixed ===")
+  println(3.14159.toStringFixed(2))
+  println(2.718.toStringFixed(1))
+
+  // parse
+  println("=== parse ===")
+  println(float.parse("3.14"))
+  println(float.parse("abc"))
+
+  // constants
+  println("=== constants ===")
+  println(3.141592653589793)
+  println(2.718281828459045)
+}

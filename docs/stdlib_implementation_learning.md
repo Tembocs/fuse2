@@ -256,6 +256,8 @@ string doesn't contain `.`, `NaN`, or `inf`, append `.0`.
 | Evaluator — f-string evaluation | 1 | Hand-rolled expression parsers silently drop unsupported syntax |
 | Parser — keyword ambiguity | 1 | Keywords must be allowed as member/method names after `.` |
 | Evaluator — float display | 1 | Rust's f64 Display drops `.0` for whole numbers |
+| Evaluator — float arithmetic | 1 | Float+Float fell through to string concatenation |
+| Evaluator — float comparison | 1 | compare_binary only handled Int, not Float |
 
 ---
 

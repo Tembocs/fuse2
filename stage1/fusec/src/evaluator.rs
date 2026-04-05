@@ -736,6 +736,32 @@ impl Evaluator {
                     }
                     return Ok(Value::String(String::new()));
                 }
+                "fuse_rt_float_abs" => return Ok(Value::Float(Self::extract_float(args.first()).abs())),
+                "fuse_rt_float_floor" => return Ok(Value::Float(Self::extract_float(args.first()).floor())),
+                "fuse_rt_float_ceil" => return Ok(Value::Float(Self::extract_float(args.first()).ceil())),
+                "fuse_rt_float_round" => return Ok(Value::Float(Self::extract_float(args.first()).round())),
+                "fuse_rt_float_trunc" => return Ok(Value::Float(Self::extract_float(args.first()).trunc())),
+                "fuse_rt_float_fract" => return Ok(Value::Float(Self::extract_float(args.first()).fract())),
+                "fuse_rt_float_sqrt" => return Ok(Value::Float(Self::extract_float(args.first()).sqrt())),
+                "fuse_rt_float_pow" => return Ok(Value::Float(Self::extract_float(args.first()).powf(Self::extract_float(args.get(1))))),
+                "fuse_rt_float_is_nan" => return Ok(Value::Bool(Self::extract_float(args.first()).is_nan())),
+                "fuse_rt_float_is_infinite" => return Ok(Value::Bool(Self::extract_float(args.first()).is_infinite())),
+                "fuse_rt_float_is_finite" => return Ok(Value::Bool(Self::extract_float(args.first()).is_finite())),
+                "fuse_rt_float_to_int" => return Ok(Value::Int(Self::extract_float(args.first()) as i64)),
+                "fuse_rt_float_parse" => {
+                    if let Some(Value::String(s)) = args.first() {
+                        return match s.parse::<f64>() {
+                            Ok(v) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Float(v)) }),
+                            Err(_) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("float: invalid number: {s}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("float: expected string".to_string())) });
+                }
+                "fuse_rt_float_to_string_fixed" => {
+                    let v = Self::extract_float(args.first());
+                    let d = match args.get(1) { Some(Value::Int(n)) => *n as usize, _ => 2 };
+                    return Ok(Value::String(format!("{v:.prec$}", prec = d)));
+                }
                 _ => {}
             }
         }
@@ -1234,6 +1260,14 @@ impl Evaluator {
         ))
     }
 
+    fn extract_float(arg: Option<&Value>) -> f64 {
+        match arg {
+            Some(Value::Float(v)) => *v,
+            Some(Value::Int(v)) => *v as f64,
+            _ => 0.0,
+        }
+    }
+
     fn find_extension(&self, receiver_type: &str, name: &str) -> Option<UserFunction> {
         for module in self.modules.values() {
             let key = (
@@ -1533,6 +1567,9 @@ fn eval_binary(binary: &fa::BinaryOp, left: Value, right: Value) -> Result<Value
     match binary.op.as_str() {
         "+" => match (left, right) {
             (Value::Int(left), Value::Int(right)) => Ok(Value::Int(left + right)),
+            (Value::Float(left), Value::Float(right)) => Ok(Value::Float(left + right)),
+            (Value::Int(left), Value::Float(right)) => Ok(Value::Float(left as f64 + right)),
+            (Value::Float(left), Value::Int(right)) => Ok(Value::Float(left + right as f64)),
             (Value::String(left), Value::String(right)) => Ok(Value::String(left + &right)),
             (left, right) => Ok(Value::String(render_value(&left) + &render_value(&right))),
         },
@@ -1575,6 +1612,24 @@ fn eval_binary(binary: &fa::BinaryOp, left: Value, right: Value) -> Result<Value
 fn compare_binary(left: Value, right: Value, cmp: impl Fn(i64, i64) -> bool) -> Result<Value, RuntimeError> {
     match (left, right) {
         (Value::Int(left), Value::Int(right)) => Ok(Value::Bool(cmp(left, right))),
+        (Value::Float(left), Value::Float(right)) => {
+            // Re-derive the comparison from the i64 comparator by testing (0,1) and (1,0).
+            let lt = cmp(0, 1); // true for <, <=
+            let gt = cmp(1, 0); // true for >, >=
+            let eq = cmp(0, 0); // true for <=, >=
+            let result = if left < right { lt } else if left > right { gt } else { eq };
+            Ok(Value::Bool(result))
+        }
+        (Value::Int(left), Value::Float(right)) => {
+            let left = left as f64;
+            let lt = cmp(0, 1); let gt = cmp(1, 0); let eq = cmp(0, 0);
+            Ok(Value::Bool(if left < right { lt } else if left > right { gt } else { eq }))
+        }
+        (Value::Float(left), Value::Int(right)) => {
+            let right = right as f64;
+            let lt = cmp(0, 1); let gt = cmp(1, 0); let eq = cmp(0, 0);
+            Ok(Value::Bool(if left < right { lt } else if left > right { gt } else { eq }))
+        }
         _ => Ok(Value::Bool(false)),
     }
 }

@@ -1,0 +1,147 @@
+// Fuse Core stdlib — Float extension methods.
+//
+// The Float type is built into the language. This module provides
+// math operations, predicates, conversions, and parsing.
+//
+// import stdlib.core.float
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_float_abs(value: Float) -> Float
+extern fn fuse_rt_float_floor(value: Float) -> Float
+extern fn fuse_rt_float_ceil(value: Float) -> Float
+extern fn fuse_rt_float_round(value: Float) -> Float
+extern fn fuse_rt_float_trunc(value: Float) -> Float
+extern fn fuse_rt_float_fract(value: Float) -> Float
+extern fn fuse_rt_float_sqrt(value: Float) -> Float
+extern fn fuse_rt_float_pow(value: Float, exp: Float) -> Float
+extern fn fuse_rt_float_is_nan(value: Float) -> Bool
+extern fn fuse_rt_float_is_infinite(value: Float) -> Bool
+extern fn fuse_rt_float_is_finite(value: Float) -> Bool
+extern fn fuse_rt_float_to_int(value: Float) -> Int
+extern fn fuse_rt_float_parse(s: String) -> Result<Float, String>
+extern fn fuse_rt_float_to_string_fixed(value: Float, decimals: Int) -> String
+
+// --- Type constants ---
+
+val Float.PI: Float = 3.141592653589793
+val Float.E: Float = 2.718281828459045
+val Float.EPSILON: Float = 0.00000000000000022204460492503131
+val Float.NAN: Float = 0.0 / 0.0
+val Float.INFINITY: Float = 1.0 / 0.0
+val Float.NEG_INFINITY: Float = -1.0 / 0.0
+
+// --- Arithmetic helpers ---
+
+// Absolute value.
+pub fn Float.abs(ref self) -> Float {
+  fuse_rt_float_abs(self)
+}
+
+// Minimum of self and other.
+pub fn Float.min(ref self, other: Float) -> Float {
+  if self < other { self } else { other }
+}
+
+// Maximum of self and other.
+pub fn Float.max(ref self, other: Float) -> Float {
+  if self > other { self } else { other }
+}
+
+// Clamp self to [low, high].
+pub fn Float.clamp(ref self, low: Float, high: Float) -> Float {
+  if self < low { low }
+  else if self > high { high }
+  else { self }
+}
+
+// Raise self to the power exp.
+pub fn Float.pow(ref self, exp: Float) -> Float {
+  fuse_rt_float_pow(self, exp)
+}
+
+// Square root.
+pub fn Float.sqrt(ref self) -> Float {
+  fuse_rt_float_sqrt(self)
+}
+
+// Floor — largest integer <= self.
+pub fn Float.floor(ref self) -> Float {
+  fuse_rt_float_floor(self)
+}
+
+// Ceiling — smallest integer >= self.
+pub fn Float.ceil(ref self) -> Float {
+  fuse_rt_float_ceil(self)
+}
+
+// Round half-away from zero.
+pub fn Float.round(ref self) -> Float {
+  fuse_rt_float_round(self)
+}
+
+// Truncate toward zero.
+pub fn Float.trunc(ref self) -> Float {
+  fuse_rt_float_trunc(self)
+}
+
+// Fractional part: self - trunc(self).
+pub fn Float.fract(ref self) -> Float {
+  fuse_rt_float_fract(self)
+}
+
+// --- Predicates ---
+
+pub fn Float.isNaN(ref self) -> Bool {
+  fuse_rt_float_is_nan(self)
+}
+
+pub fn Float.isInfinite(ref self) -> Bool {
+  fuse_rt_float_is_infinite(self)
+}
+
+pub fn Float.isFinite(ref self) -> Bool {
+  fuse_rt_float_is_finite(self)
+}
+
+pub fn Float.isPositive(ref self) -> Bool {
+  self > 0.0
+}
+
+pub fn Float.isNegative(ref self) -> Bool {
+  self < 0.0
+}
+
+// --- Comparison ---
+
+// Approximate equality: |self - other| < epsilon.
+pub fn Float.approxEq(ref self, other: Float, epsilon: Float) -> Bool {
+  val diff = self - other
+  val absDiff = fuse_rt_float_abs(diff)
+  absDiff < epsilon
+}
+
+// --- Conversion ---
+
+// Truncate to integer.
+pub fn Float.toInt(ref self) -> Int {
+  fuse_rt_float_to_int(self)
+}
+
+// String representation.
+pub fn Float.toString(ref self) -> String {
+  f"{self}"
+}
+
+// Fixed-decimal string (e.g., 3.14159.toStringFixed(2) = "3.14").
+pub fn Float.toStringFixed(ref self, decimals: Int) -> String {
+  fuse_rt_float_to_string_fixed(self, decimals)
+}
+
+// --- Parsing ---
+// Module-level function (same reason as int.fuse — checker limitation).
+
+// Parse a decimal float string.
+pub fn parse(s: String) -> Result<Float, String> {
+  fuse_rt_float_parse(s)
+}

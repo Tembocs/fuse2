@@ -493,24 +493,33 @@ Extension methods on `Int`.
 
 Extension methods on `Float`. FFI-backed math operations.
 
-- [ ] **1.5.1** Create `stdlib/core/float.fuse`.
-- [ ] **1.5.2** Add FFI functions to runtime: `fuse_rt_float_abs`,
+- [x] **1.5.1** Create `stdlib/core/float.fuse`.
+- [x] **1.5.2** Add FFI functions to runtime: `fuse_rt_float_abs`,
       `fuse_rt_float_floor`, `fuse_rt_float_ceil`, `fuse_rt_float_round`,
       `fuse_rt_float_trunc`, `fuse_rt_float_fract`, `fuse_rt_float_sqrt`,
       `fuse_rt_float_pow`, `fuse_rt_float_is_nan`,
       `fuse_rt_float_is_infinite`, `fuse_rt_float_is_finite`,
-      `fuse_rt_float_to_int`, `fuse_rt_float_parse`.
-- [ ] **1.5.3** Implement all math methods: `abs`, `floor`, `ceil`,
+      `fuse_rt_float_to_int`, `fuse_rt_float_parse`,
+      `fuse_rt_float_to_string_fixed`.
+- [x] **1.5.3** Implement all math methods: `abs`, `floor`, `ceil`,
       `round`, `trunc`, `fract`, `sqrt`, `pow`, `min`, `max`, `clamp`.
-- [ ] **1.5.4** Implement predicates: `isNaN`, `isInfinite`, `isFinite`,
+- [x] **1.5.4** Implement predicates: `isNaN`, `isInfinite`, `isFinite`,
       `isPositive`, `isNegative`.
-- [ ] **1.5.5** Implement `approxEq(ref self, other: Float, epsilon: Float)`.
-- [ ] **1.5.6** Implement `toInt`, `toString`, `toStringFixed`.
-- [ ] **1.5.7** Implement `Float.parse(s: String) -> Result<Float, String>`.
-- [ ] **1.5.8** Define type constants: `Float.PI`, `Float.E`, `Float.NAN`,
+- [x] **1.5.5** Implement `approxEq(ref self, other: Float, epsilon: Float)`.
+- [x] **1.5.6** Implement `toInt`, `toString`, `toStringFixed`.
+- [x] **1.5.7** Implement `float.parse(s: String) -> Result<Float, String>`.
+- [x] **1.5.8** Define type constants: `Float.PI`, `Float.E`, `Float.NAN`,
       `Float.INFINITY`, `Float.NEG_INFINITY`, `Float.EPSILON`.
-- [ ] **1.5.9** Create `tests/fuse/stdlib/core/float_test.fuse`.
-- [ ] **1.5.10** Run tests. Fix any compiler bugs found.
+- [x] **1.5.9** Create `tests/fuse/stdlib/core/float_test.fuse`.
+- [x] **1.5.10** Run tests. Fix any compiler bugs found.
+
+**Notes:**
+- Added 14 FFI functions to fuse-runtime for float math ops.
+- Fixed evaluator bug #8: float addition fell through to string
+  concatenation (`0.1 + 0.2` → `"0.10.2"` instead of `0.30...`).
+- Fixed evaluator bug #9: `compare_binary` only handled Int comparisons.
+  Float `<`, `>`, `<=`, `>=` all returned false. Added Float and
+  mixed Int/Float comparison support.
 
 ---
 
@@ -1165,6 +1174,8 @@ fix commits. Full details including root cause analysis are in
 | 5 | 1.2 | Evaluator f-string interpolation used hand-rolled string splitting that only supported `name.field` access. Method calls like `{s.isSome()}` silently returned the receiver value instead of the call result. | `val s = Some(42); println(f"{s.isSome()}")` → `42` instead of `true` | See Phase 1.2 commit |
 | 6 | 1.3 | Parser rejected keywords as member/method names after `.`. `t.not()` failed because `not` is a keyword (`TokenKind::Not`). The parser used `expect(Identifier)` which rejects keyword tokens. | `val t = true; t.not()` → parse error | See Phase 1.3 commit |
 | 7 | 1.4 | Evaluator displayed whole-number floats without `.0` suffix. `42.toFloat()` printed `42` instead of `42.0`. Rust's `f64::to_string()` drops the decimal for whole numbers. | `println(42.toFloat())` → `42` | See Phase 1.4 commit |
+| 8 | 1.5 | Evaluator `+` operator for Float+Float fell through to string concatenation. `0.1 + 0.2` produced `"0.10.2"` instead of `0.30...`. Only Int+Int and String+String were handled. | `val x = 0.1 + 0.2` → `"0.10.2"` | See Phase 1.5 commit |
+| 9 | 1.5 | Evaluator `compare_binary` only handled Int comparisons. Float `<`, `>`, `<=`, `>=` all returned `false`. `1.5 < 3.7` evaluated to false. | `if 1.5 < 3.7 { ... }` → false branch taken | See Phase 1.5 commit |
 
 ---
 
