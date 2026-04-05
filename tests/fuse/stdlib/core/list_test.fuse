@@ -1,0 +1,109 @@
+// EXPECTED OUTPUT:
+// === query ===
+// isEmpty: true
+// first: Some(1)
+// last: Some(5)
+// contains: true
+// indexOf: Some(2)
+// === HOF query ===
+// count even: 2
+// any > 4: true
+// all > 0: true
+// === map / filter / reduce ===
+// 2, 4, 6, 8, 10
+// 2, 4
+// sum: 15
+// === sorted / unique ===
+// 1, 1, 2, 3, 4, 5
+// 3, 1, 4, 5, 2
+// === sorted by descending ===
+// 5, 4, 3, 2, 1, 1
+// === slice / take / drop ===
+// 2, 3, 4
+// 1, 2
+// 4, 5
+// === concat / join ===
+// 1, 2, 3, 4, 5, 6
+// a-b-c
+// === reversed ===
+// 5, 4, 3, 2, 1
+// === zip ===
+// 2
+// === flatten ===
+// 1, 2, 3, 4, 5, 6
+
+import stdlib.core.list
+
+@entrypoint
+fn main() {
+  val nums = [1, 2, 3, 4, 5]
+  val empty: List<Int> = []
+
+  // query
+  println("=== query ===")
+  val ie = empty.isEmpty()
+  println(f"isEmpty: {ie}")
+  val fi = nums.first()
+  println(f"first: {fi}")
+  val la = nums.last()
+  println(f"last: {la}")
+  val co = nums.contains(3)
+  println(f"contains: {co}")
+  val io = nums.indexOf(3)
+  println(f"indexOf: {io}")
+
+  // HOF query
+  println("=== HOF query ===")
+  val ce = nums.count(fn(n: Int) -> Bool => n % 2 == 0)
+  println(f"count even: {ce}")
+  val ag = nums.any(fn(n: Int) -> Bool => n > 4)
+  println(f"any > 4: {ag}")
+  val al = nums.all(fn(n: Int) -> Bool => n > 0)
+  println(f"all > 0: {al}")
+
+  // map / filter / reduce
+  println("=== map / filter / reduce ===")
+  val doubled = nums.map(fn(n: Int) -> Int => n * 2)
+  println(doubled.join(", "))
+  val evens = nums.filter(fn(n: Int) -> Bool => n % 2 == 0)
+  println(evens.join(", "))
+  val sum = nums.reduce(0, fn(acc: Int, n: Int) -> Int => acc + n)
+  println(f"sum: {sum}")
+
+  // sorted / unique
+  println("=== sorted / unique ===")
+  val unsorted = [3, 1, 4, 1, 5, 2]
+  println(unsorted.sorted().join(", "))
+  println(unsorted.unique().join(", "))
+
+  // sortedBy
+  println("=== sorted by descending ===")
+  val desc = unsorted.sortedBy(fn(a: Int, b: Int) -> Int => b - a)
+  println(desc.join(", "))
+
+  // slice / take / drop
+  println("=== slice / take / drop ===")
+  println(nums.slice(1, 4).join(", "))
+  println(nums.take(2).join(", "))
+  println(nums.drop(3).join(", "))
+
+  // concat / join
+  println("=== concat / join ===")
+  val ab = [1, 2, 3].concat([4, 5, 6])
+  println(ab.join(", "))
+  println(["a", "b", "c"].join("-"))
+
+  // reversed
+  println("=== reversed ===")
+  println(nums.reversed().join(", "))
+
+  // zip
+  println("=== zip ===")
+  val zipped = [1, 2, 3].zip([10, 20])
+  println(zipped.len())
+
+  // flatten
+  println("=== flatten ===")
+  val nested = [[1, 2], [3, 4], [5, 6]]
+  println(nested.flatten().join(", "))
+}

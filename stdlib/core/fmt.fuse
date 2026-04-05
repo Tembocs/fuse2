@@ -12,6 +12,8 @@ extern fn fuse_rt_float_to_string_scientific(value: Float, decimals: Int) -> Str
 extern fn fuse_rt_string_len(s: String) -> Int
 extern fn fuse_rt_string_char_at(s: String, index: Int) -> String
 extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
+extern fn fuse_rt_list_len(list: List<T>) -> Int
+extern fn fuse_list_get(list: List<T>, index: Int) -> T
 
 // --- Number formatting ---
 
@@ -277,15 +279,15 @@ pub fn ruler(width: Int) -> String {
 pub fn columns(rows: List<List<String>>, widths: List<Int>) -> String {
   var result = ""
   var rowIdx = 0
-  val rowCount = rows.len()
+  val rowCount = fuse_rt_list_len(rows)
   while rowIdx < rowCount {
-    val row = rows.get(rowIdx)
+    val row = fuse_list_get(rows, rowIdx)
     var line = ""
     var colIdx = 0
-    val colCount = widths.len()
+    val colCount = fuse_rt_list_len(widths)
     while colIdx < colCount {
-      val cell = row.get(colIdx)
-      val w = widths.get(colIdx)
+      val cell = fuse_list_get(row, colIdx)
+      val w = fuse_list_get(widths, colIdx)
       val padded = padRight(cell, w)
       if colIdx > 0 {
         line = f"{line} {padded}"

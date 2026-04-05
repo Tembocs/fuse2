@@ -893,6 +893,111 @@ pub unsafe extern "C" fn fuse_rt_float_parse(h: FuseHandle) -> FuseHandle {
     let msg = "float: expected string";
     fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()))
 }
+// --- List FFI helpers ---
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_list_len(list: FuseHandle) -> FuseHandle {
+    fuse_int(fuse_list_len(list) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_list_get(list: FuseHandle, index: FuseHandle) -> FuseHandle {
+    let i = match &(*index).kind { ValueKind::Int(n) => *n as usize, _ => return fuse_none() };
+    let len = fuse_list_len(list);
+    if i < len { fuse_some(fuse_list_get(list, i)) } else { fuse_none() }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_list_push(list: FuseHandle, item: FuseHandle) -> FuseHandle {
+    fuse_list_push(list, item);
+    fuse_unit()
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_list_pop(list: FuseHandle) -> FuseHandle {
+    if let ValueKind::List(items) = &mut (*list).kind {
+        match items.pop() {
+            Some(item) => fuse_some(item),
+            None => fuse_none(),
+        }
+    } else { fuse_none() }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_list_set(list: FuseHandle, index: FuseHandle, item: FuseHandle) -> FuseHandle {
+    if let (ValueKind::List(items), ValueKind::Int(i)) = (&mut (*list).kind, &(*index).kind) {
+        let idx = *i as usize;
+        if idx < items.len() { items[idx] = item; }
+    }
+    fuse_unit()
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_list_insert(list: FuseHandle, index: FuseHandle, item: FuseHandle) -> FuseHandle {
+    if let (ValueKind::List(items), ValueKind::Int(i)) = (&mut (*list).kind, &(*index).kind) {
+        let idx = (*i as usize).min(items.len());
+        items.insert(idx, item);
+    }
+    fuse_unit()
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_list_remove_at(list: FuseHandle, index: FuseHandle) -> FuseHandle {
+    if let (ValueKind::List(items), ValueKind::Int(i)) = (&mut (*list).kind, &(*index).kind) {
+        let idx = *i as usize;
+        if idx < items.len() { return fuse_some(items.remove(idx)); }
+    }
+    fuse_none()
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_list_clear(list: FuseHandle) -> FuseHandle {
+    if let ValueKind::List(items) = &mut (*list).kind { items.clear(); }
+    fuse_unit()
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_list_slice(list: FuseHandle, start: FuseHandle, end: FuseHandle) -> FuseHandle {
+    let result = fuse_list_new();
+    if let ValueKind::List(items) = &(*list).kind {
+        let s = match &(*start).kind { ValueKind::Int(n) => (*n as usize).min(items.len()), _ => 0 };
+        let e = match &(*end).kind { ValueKind::Int(n) => (*n as usize).min(items.len()), _ => items.len() };
+        for i in s..e { fuse_list_push(result, items[i]); }
+    }
+    result
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_list_concat(a: FuseHandle, b: FuseHandle) -> FuseHandle {
+    let result = fuse_list_new();
+    if let ValueKind::List(items) = &(*a).kind { for item in items { fuse_list_push(result, *item); } }
+    if let ValueKind::List(items) = &(*b).kind { for item in items { fuse_list_push(result, *item); } }
+    result
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_list_reverse(list: FuseHandle) -> FuseHandle {
+    let result = fuse_list_new();
+    if let ValueKind::List(items) = &(*list).kind {
+        for item in items.iter().rev() { fuse_list_push(result, *item); }
+    }
+    result
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_list_reverse_in_place(list: FuseHandle) -> FuseHandle {
+    if let ValueKind::List(items) = &mut (*list).kind { items.reverse(); }
+    fuse_unit()
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_list_join(list: FuseHandle, sep: FuseHandle) -> FuseHandle {
+    let separator = extract_string(sep);
+    let mut parts = Vec::new();
+    if let ValueKind::List(items) = &(*list).kind {
+        for item in items {
+            let s = match &(**item).kind {
+                ValueKind::String(s) => s.clone(),
+                ValueKind::Int(n) => n.to_string(),
+                ValueKind::Float(n) => { let s = n.to_string(); if s.contains('.') { s } else { format!("{s}.0") } },
+                ValueKind::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
+                _ => String::new(),
+            };
+            parts.push(s);
+        }
+    }
+    let result = parts.join(separator);
+    fuse_string_new_utf8(result.as_ptr(), result.len())
+}
+
 // --- String FFI helpers ---
 
 fn extract_string(handle: FuseHandle) -> &'static str {

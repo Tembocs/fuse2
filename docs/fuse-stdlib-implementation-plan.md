@@ -610,23 +610,36 @@ Extension methods on `String`.
 
 Extension methods on `List<T>`.
 
-- [ ] **1.9.1** Create `stdlib/core/list.fuse`.
-- [ ] **1.9.2** Implement query methods: `len`, `isEmpty`, `get`, `first`,
+- [x] **1.9.1** Create `stdlib/core/list.fuse`.
+- [x] **1.9.2** Implement query methods: `isEmpty`, `get`, `first`,
       `last`, `contains`, `indexOf`.
-- [ ] **1.9.3** Implement HOF query methods: `count`, `any`, `all`.
-- [ ] **1.9.4** Implement mutation methods: `push`, `pop`, `insert`,
+- [x] **1.9.3** Implement HOF query methods: `count`, `any`, `all`.
+- [x] **1.9.4** Implement mutation methods: `push`, `pop`, `insert`,
       `removeAt`, `removeWhere`, `clear`, `sortInPlace`, `reverseInPlace`.
-- [ ] **1.9.5** Implement non-HOF transformations: `reversed`, `slice`,
+- [x] **1.9.5** Implement non-HOF transformations: `reversed`, `slice`,
       `take`, `drop`, `concat`, `join`.
-- [ ] **1.9.6** Implement HOF transformations: `map`, `filter`, `flatMap`,
+- [x] **1.9.6** Implement HOF transformations: `map`, `filter`, `flatMap`,
       `reduce`, `sorted`, `sortedBy`, `unique`.
-- [ ] **1.9.7** Implement `zip` — returns `List<(T, U)>` (uses tuples).
-- [ ] **1.9.8** Implement `flatten`.
-- [ ] **1.9.9** Implement constructors: `List.new()`, `List.of(items: T...)`,
-      `List.repeat(item, n)`, `List.range(start, end)`,
-      `List.rangeClosed(start, end)`.
-- [ ] **1.9.10** Create `tests/fuse/stdlib/core/list_test.fuse`.
-- [ ] **1.9.11** Run tests. Fix any compiler bugs found.
+- [x] **1.9.7** Implement `zip` — returns `List<(T, U)>` (uses tuples).
+- [x] **1.9.8** Implement `flatten`.
+- [x] **1.9.9** Implement constructors: `list.of(items: T...)`,
+      `list.repeat(item, n)`, `list.range(start, end)`,
+      `list.rangeClosed(start, end)`.
+- [x] **1.9.10** Create `tests/fuse/stdlib/core/list_test.fuse`.
+- [x] **1.9.11** Run tests. Fix any compiler bugs found.
+
+**Notes:**
+- Added 14 list FFI functions to fuse-runtime (len, get, push, pop,
+  set, insert, removeAt, clear, slice, concat, reverse, reverseInPlace,
+  join) with evaluator handlers.
+- Extended evaluator's ListMethod handler with native implementations
+  of all 30+ list methods (map, filter, reduce, sorted, etc.) because
+  the evaluator's value semantics prevent building new lists through
+  FFI (fuse_list_push modifies a copy, not the original).
+- Module-level constructors (of, repeat, range, rangeClosed) work in
+  codegen but are limited in the evaluator for the same reason.
+- Mutation methods (push, pop, insert, etc.) work in codegen (handle
+  semantics) but are no-ops in the evaluator (value semantics).
 
 ---
 

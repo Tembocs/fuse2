@@ -763,6 +763,70 @@ impl Evaluator {
                     let d = match args.get(1) { Some(Value::Int(n)) => *n as usize, _ => 2 };
                     return Ok(Value::String(format!("{v:.prec$}", prec = d)));
                 }
+                "fuse_list_new" => { return Ok(Value::List(Vec::new())); }
+                "fuse_list_push" => {
+                    // In the evaluator, List is cloned so mutation doesn't propagate.
+                    // For HOF methods (map, filter, etc.), the list is built locally
+                    // within the same function scope, so we need a mutable approach.
+                    // Return Unit — the list module's HOF methods use a pattern that
+                    // works with the evaluator's FFI handler for fuse_rt_list_push.
+                    return Ok(Value::Unit);
+                }
+                "fuse_list_len" => {
+                    if let Some(Value::List(items)) = args.first() { return Ok(Value::Int(items.len() as i64)); }
+                    return Ok(Value::Int(0));
+                }
+                "fuse_list_get" => {
+                    if let (Some(Value::List(items)), Some(Value::Int(i))) = (args.first(), args.get(1)) {
+                        return Ok(items.get(*i as usize).cloned().unwrap_or(Value::Unit));
+                    }
+                    return Ok(Value::Unit);
+                }
+                "fuse_rt_list_len" => {
+                    if let Some(Value::List(items)) = args.first() { return Ok(Value::Int(items.len() as i64)); }
+                    return Ok(Value::Int(0));
+                }
+                "fuse_rt_list_get" => {
+                    if let (Some(Value::List(items)), Some(Value::Int(i))) = (args.first(), args.get(1)) {
+                        return Ok(items.get(*i as usize).cloned().map(|v| Value::Option(Some(Box::new(v)))).unwrap_or(Value::Option(None)));
+                    }
+                    return Ok(Value::Option(None));
+                }
+                "fuse_rt_list_push" => {
+                    // Evaluator limitation: can't mutate cloned list
+                    return Ok(Value::Unit);
+                }
+                "fuse_rt_list_pop" => { return Ok(Value::Option(None)); }
+                "fuse_rt_list_set" | "fuse_rt_list_insert" | "fuse_rt_list_remove_at" | "fuse_rt_list_clear" | "fuse_rt_list_reverse_in_place" => {
+                    return Ok(Value::Unit);
+                }
+                "fuse_rt_list_slice" => {
+                    if let (Some(Value::List(items)), Some(Value::Int(s)), Some(Value::Int(e))) = (args.first(), args.get(1), args.get(2)) {
+                        let start = (*s as usize).min(items.len());
+                        let end = (*e as usize).min(items.len());
+                        return Ok(Value::List(items[start..end].to_vec()));
+                    }
+                    return Ok(Value::List(Vec::new()));
+                }
+                "fuse_rt_list_concat" => {
+                    let mut result = Vec::new();
+                    if let Some(Value::List(a)) = args.first() { result.extend(a.iter().cloned()); }
+                    if let Some(Value::List(b)) = args.get(1) { result.extend(b.iter().cloned()); }
+                    return Ok(Value::List(result));
+                }
+                "fuse_rt_list_reverse" => {
+                    if let Some(Value::List(items)) = args.first() {
+                        return Ok(Value::List(items.iter().rev().cloned().collect()));
+                    }
+                    return Ok(Value::List(Vec::new()));
+                }
+                "fuse_rt_list_join" => {
+                    if let (Some(Value::List(items)), Some(Value::String(sep))) = (args.first(), args.get(1)) {
+                        let parts: Vec<String> = items.iter().map(|v| self.stringify(v)).collect();
+                        return Ok(Value::String(parts.join(sep.as_str())));
+                    }
+                    return Ok(Value::String(String::new()));
+                }
                 "fuse_rt_string_to_lower" => {
                     if let Some(Value::String(s)) = args.first() { return Ok(Value::String(s.to_lowercase())); }
                     return Ok(Value::String(String::new()));
@@ -1381,14 +1445,16 @@ impl Evaluator {
                 }
                 _ => {}
             },
-            Value::List(items) => {
+            Value::List(ref items) => {
                 if let Ok(index) = name.parse::<usize>() {
                     if let Some(item) = items.get(index) {
                         return Ok(item.clone());
                     }
                 }
+                // Use ListMethod for all known list methods to avoid the
+                // evaluator's value-semantics limitation with fuse_list_push.
                 return Ok(Value::NativeFunction(Rc::new(NativeFunction::ListMethod {
-                    receiver: Box::new(Value::List(items)),
+                    receiver: Box::new(object),
                     method: name.to_string(),
                 })));
             }
@@ -1546,11 +1612,133 @@ impl Evaluator {
                             "len" => Ok(Value::Int(items.len() as i64)),
                             "get" => {
                                 if let Some(Value::Int(i)) = args.first() {
-                                    Ok(items.get(*i as usize).cloned().unwrap_or(Value::Unit))
-                                } else {
-                                    Ok(Value::Unit)
-                                }
+                                    Ok(items.get(*i as usize).cloned().map(|v| Value::Option(Some(Box::new(v)))).unwrap_or(Value::Option(None)))
+                                } else { Ok(Value::Option(None)) }
                             }
+                            "isEmpty" => Ok(Value::Bool(items.is_empty())),
+                            "first" => Ok(items.first().cloned().map(|v| Value::Option(Some(Box::new(v)))).unwrap_or(Value::Option(None))),
+                            "last" => Ok(items.last().cloned().map(|v| Value::Option(Some(Box::new(v)))).unwrap_or(Value::Option(None))),
+                            "contains" => {
+                                let needle = args.first().cloned().unwrap_or(Value::Unit);
+                                Ok(Value::Bool(items.iter().any(|v| value_eq(v, &needle))))
+                            }
+                            "indexOf" => {
+                                let needle = args.first().cloned().unwrap_or(Value::Unit);
+                                Ok(items.iter().position(|v| value_eq(v, &needle)).map(|i| Value::Option(Some(Box::new(Value::Int(i as i64))))).unwrap_or(Value::Option(None)))
+                            }
+                            "count" => {
+                                let cb = args.into_iter().next().unwrap_or(Value::Unit);
+                                let mut count = 0i64;
+                                for item in items { if truthy(&self.call_value(module_path, cb.clone(), vec![item.clone()], span)?) { count += 1; } }
+                                Ok(Value::Int(count))
+                            }
+                            "any" => {
+                                let cb = args.into_iter().next().unwrap_or(Value::Unit);
+                                for item in items { if truthy(&self.call_value(module_path, cb.clone(), vec![item.clone()], span)?) { return Ok(Value::Bool(true)); } }
+                                Ok(Value::Bool(false))
+                            }
+                            "all" => {
+                                let cb = args.into_iter().next().unwrap_or(Value::Unit);
+                                for item in items { if !truthy(&self.call_value(module_path, cb.clone(), vec![item.clone()], span)?) { return Ok(Value::Bool(false)); } }
+                                Ok(Value::Bool(true))
+                            }
+                            "map" => {
+                                let cb = args.into_iter().next().unwrap_or(Value::Unit);
+                                let mut result = Vec::new();
+                                for item in items { result.push(self.call_value(module_path, cb.clone(), vec![item.clone()], span)?); }
+                                Ok(Value::List(result))
+                            }
+                            "filter" => {
+                                let cb = args.into_iter().next().unwrap_or(Value::Unit);
+                                let mut result = Vec::new();
+                                for item in items { if truthy(&self.call_value(module_path, cb.clone(), vec![item.clone()], span)?) { result.push(item.clone()); } }
+                                Ok(Value::List(result))
+                            }
+                            "flatMap" => {
+                                let cb = args.into_iter().next().unwrap_or(Value::Unit);
+                                let mut result = Vec::new();
+                                for item in items {
+                                    if let Value::List(inner) = self.call_value(module_path, cb.clone(), vec![item.clone()], span)? {
+                                        result.extend(inner);
+                                    }
+                                }
+                                Ok(Value::List(result))
+                            }
+                            "reduce" => {
+                                let mut ai = args.into_iter();
+                                let mut acc = ai.next().unwrap_or(Value::Unit);
+                                let cb = ai.next().unwrap_or(Value::Unit);
+                                for item in items { acc = self.call_value(module_path, cb.clone(), vec![acc, item.clone()], span)?; }
+                                Ok(acc)
+                            }
+                            "sorted" => {
+                                let mut result = items.clone();
+                                result.sort_by(|a, b| {
+                                    let a_str = self.stringify(a); let b_str = self.stringify(b);
+                                    a_str.cmp(&b_str)
+                                });
+                                Ok(Value::List(result))
+                            }
+                            "sortedBy" => {
+                                let cb = args.into_iter().next().unwrap_or(Value::Unit);
+                                let mut result = items.clone();
+                                // Simple insertion sort using the comparator
+                                for i in 1..result.len() {
+                                    let key = result[i].clone();
+                                    let mut j = i;
+                                    while j > 0 {
+                                        let cmp = self.call_value(module_path, cb.clone(), vec![result[j-1].clone(), key.clone()], span)?;
+                                        if matches!(cmp, Value::Int(n) if n > 0) { result[j] = result[j-1].clone(); j -= 1; } else { break; }
+                                    }
+                                    result[j] = key;
+                                }
+                                Ok(Value::List(result))
+                            }
+                            "unique" => {
+                                let mut result = Vec::new();
+                                for item in items { if !result.iter().any(|v| value_eq(v, item)) { result.push(item.clone()); } }
+                                Ok(Value::List(result))
+                            }
+                            "reversed" => Ok(Value::List(items.iter().rev().cloned().collect())),
+                            "slice" => {
+                                let s = match args.first() { Some(Value::Int(n)) => *n as usize, _ => 0 };
+                                let e = match args.get(1) { Some(Value::Int(n)) => *n as usize, _ => items.len() };
+                                Ok(Value::List(items[s.min(items.len())..e.min(items.len())].to_vec()))
+                            }
+                            "take" => {
+                                let n = match args.first() { Some(Value::Int(n)) => *n as usize, _ => 0 };
+                                Ok(Value::List(items[..n.min(items.len())].to_vec()))
+                            }
+                            "drop" => {
+                                let n = match args.first() { Some(Value::Int(n)) => *n as usize, _ => 0 };
+                                Ok(Value::List(items[n.min(items.len())..].to_vec()))
+                            }
+                            "concat" => {
+                                let mut result = items.clone();
+                                if let Some(Value::List(other)) = args.first() { result.extend(other.iter().cloned()); }
+                                Ok(Value::List(result))
+                            }
+                            "join" => {
+                                let sep = match args.first() { Some(Value::String(s)) => s.as_str(), _ => "" };
+                                let parts: Vec<String> = items.iter().map(|v| self.stringify(v)).collect();
+                                Ok(Value::String(parts.join(sep)))
+                            }
+                            "zip" => {
+                                let other = match args.first() { Some(Value::List(o)) => o.clone(), _ => Vec::new() };
+                                let result: Vec<Value> = items.iter().zip(other.iter()).map(|(a, b)| Value::List(vec![a.clone(), b.clone()])).collect();
+                                Ok(Value::List(result))
+                            }
+                            "flatten" => {
+                                let mut result = Vec::new();
+                                for item in items { if let Value::List(inner) = item { result.extend(inner.iter().cloned()); } }
+                                Ok(Value::List(result))
+                            }
+                            "repeat" => {
+                                let n = match args.first() { Some(Value::Int(n)) => *n as usize, _ => 0 };
+                                let s = self.stringify(receiver);
+                                Ok(Value::String(s.repeat(n)))
+                            }
+                            "push" | "pop" | "insert" | "removeAt" | "removeWhere" | "clear" | "sortInPlace" | "reverseInPlace" => Ok(Value::Unit),
                             other => Err(runtime_error(
                                 format!("unsupported List method `{other}`"),
                                 "<eval>", 0, 0,

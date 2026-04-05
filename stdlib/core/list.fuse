@@ -1,0 +1,386 @@
+// Fuse Core stdlib — List<T> extension methods.
+//
+// The List type is built into the language. This module provides
+// query, transformation, mutation, and construction utilities.
+//
+// import stdlib.core.list
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_list_len(list: List<T>) -> Int
+extern fn fuse_rt_list_get(list: List<T>, index: Int) -> Option<T>
+extern fn fuse_rt_list_push(list: List<T>, item: T) -> Int
+extern fn fuse_rt_list_pop(list: List<T>) -> Option<T>
+extern fn fuse_rt_list_set(list: List<T>, index: Int, item: T) -> Int
+extern fn fuse_rt_list_insert(list: List<T>, index: Int, item: T) -> Int
+extern fn fuse_rt_list_remove_at(list: List<T>, index: Int) -> Option<T>
+extern fn fuse_rt_list_clear(list: List<T>) -> Int
+extern fn fuse_rt_list_slice(list: List<T>, start: Int, end: Int) -> List<T>
+extern fn fuse_rt_list_concat(a: List<T>, b: List<T>) -> List<T>
+extern fn fuse_rt_list_reverse(list: List<T>) -> List<T>
+extern fn fuse_rt_list_reverse_in_place(list: List<T>) -> Int
+extern fn fuse_rt_list_join(list: List<String>, sep: String) -> String
+extern fn fuse_list_new() -> List<T>
+extern fn fuse_list_push(list: List<T>, item: T)
+extern fn fuse_list_len(list: List<T>) -> Int
+extern fn fuse_list_get(list: List<T>, index: Int) -> T
+
+// --- Query ---
+
+pub fn List.isEmpty(ref self) -> Bool {
+  fuse_rt_list_len(self) == 0
+}
+
+pub fn List.get(ref self, index: Int) -> Option<T> {
+  fuse_rt_list_get(self, index)
+}
+
+pub fn List.first(ref self) -> Option<T> {
+  fuse_rt_list_get(self, 0)
+}
+
+pub fn List.last(ref self) -> Option<T> {
+  val len = fuse_rt_list_len(self)
+  if len == 0 { None } else { fuse_rt_list_get(self, len - 1) }
+}
+
+pub fn List.contains(ref self, item: T) -> Bool {
+  val len = fuse_rt_list_len(self)
+  var i = 0
+  while i < len {
+    if fuse_list_get(self, i) == item { return true }
+    i = i + 1
+  }
+  false
+}
+
+pub fn List.indexOf(ref self, item: T) -> Option<Int> {
+  val len = fuse_rt_list_len(self)
+  var i = 0
+  while i < len {
+    if fuse_list_get(self, i) == item { return Some(i) }
+    i = i + 1
+  }
+  None
+}
+
+// --- HOF query ---
+
+pub fn List.count(ref self, f: fn(T) -> Bool) -> Int {
+  val len = fuse_rt_list_len(self)
+  var result = 0
+  var i = 0
+  while i < len {
+    if f(fuse_list_get(self, i)) { result = result + 1 }
+    i = i + 1
+  }
+  result
+}
+
+pub fn List.any(ref self, f: fn(T) -> Bool) -> Bool {
+  val len = fuse_rt_list_len(self)
+  var i = 0
+  while i < len {
+    if f(fuse_list_get(self, i)) { return true }
+    i = i + 1
+  }
+  false
+}
+
+pub fn List.all(ref self, f: fn(T) -> Bool) -> Bool {
+  val len = fuse_rt_list_len(self)
+  var i = 0
+  while i < len {
+    if f(fuse_list_get(self, i)) == false { return false }
+    i = i + 1
+  }
+  true
+}
+
+// --- HOF transformations ---
+
+pub fn List.map(ref self, f: fn(T) -> U) -> List<U> {
+  val result = fuse_list_new()
+  val len = fuse_rt_list_len(self)
+  var i = 0
+  while i < len {
+    fuse_list_push(result, f(fuse_list_get(self, i)))
+    i = i + 1
+  }
+  result
+}
+
+pub fn List.filter(ref self, f: fn(T) -> Bool) -> List<T> {
+  val result = fuse_list_new()
+  val len = fuse_rt_list_len(self)
+  var i = 0
+  while i < len {
+    val item = fuse_list_get(self, i)
+    if f(item) { fuse_list_push(result, item) }
+    i = i + 1
+  }
+  result
+}
+
+pub fn List.flatMap(ref self, f: fn(T) -> List<U>) -> List<U> {
+  val result = fuse_list_new()
+  val len = fuse_rt_list_len(self)
+  var i = 0
+  while i < len {
+    val inner = f(fuse_list_get(self, i))
+    val innerLen = fuse_rt_list_len(inner)
+    var j = 0
+    while j < innerLen {
+      fuse_list_push(result, fuse_list_get(inner, j))
+      j = j + 1
+    }
+    i = i + 1
+  }
+  result
+}
+
+pub fn List.reduce(ref self, init: U, f: fn(U, T) -> U) -> U {
+  val len = fuse_rt_list_len(self)
+  var acc = init
+  var i = 0
+  while i < len {
+    acc = f(acc, fuse_list_get(self, i))
+    i = i + 1
+  }
+  acc
+}
+
+pub fn List.sorted(ref self) -> List<T> {
+  // Insertion sort on a copy.
+  val len = fuse_rt_list_len(self)
+  val result = fuse_list_new()
+  var i = 0
+  while i < len {
+    fuse_list_push(result, fuse_list_get(self, i))
+    i = i + 1
+  }
+  i = 1
+  while i < len {
+    val key = fuse_list_get(result, i)
+    var j = i - 1
+    while j >= 0 {
+      if fuse_list_get(result, j) > key {
+        fuse_rt_list_set(result, j + 1, fuse_list_get(result, j))
+        j = j - 1
+      } else {
+        j = -1
+      }
+    }
+    fuse_rt_list_set(result, j + 1, key)
+    i = i + 1
+  }
+  result
+}
+
+pub fn List.sortedBy(ref self, f: fn(T, T) -> Int) -> List<T> {
+  // Insertion sort with custom comparator.
+  val len = fuse_rt_list_len(self)
+  val result = fuse_list_new()
+  var i = 0
+  while i < len {
+    fuse_list_push(result, fuse_list_get(self, i))
+    i = i + 1
+  }
+  i = 1
+  while i < len {
+    val key = fuse_list_get(result, i)
+    var j = i - 1
+    while j >= 0 {
+      if f(fuse_list_get(result, j), key) > 0 {
+        fuse_rt_list_set(result, j + 1, fuse_list_get(result, j))
+        j = j - 1
+      } else {
+        j = -1
+      }
+    }
+    fuse_rt_list_set(result, j + 1, key)
+    i = i + 1
+  }
+  result
+}
+
+pub fn List.unique(ref self) -> List<T> {
+  val result = fuse_list_new()
+  val len = fuse_rt_list_len(self)
+  var i = 0
+  while i < len {
+    val item = fuse_list_get(self, i)
+    // Check if already in result.
+    val rLen = fuse_rt_list_len(result)
+    var found = false
+    var j = 0
+    while j < rLen {
+      if fuse_list_get(result, j) == item { found = true }
+      j = j + 1
+    }
+    if found == false { fuse_list_push(result, item) }
+    i = i + 1
+  }
+  result
+}
+
+// --- Non-HOF transformations ---
+
+pub fn List.reversed(ref self) -> List<T> {
+  fuse_rt_list_reverse(self)
+}
+
+pub fn List.slice(ref self, start: Int, end: Int) -> List<T> {
+  fuse_rt_list_slice(self, start, end)
+}
+
+pub fn List.take(ref self, n: Int) -> List<T> {
+  val len = fuse_rt_list_len(self)
+  val end = if n < len { n } else { len }
+  fuse_rt_list_slice(self, 0, end)
+}
+
+pub fn List.drop(ref self, n: Int) -> List<T> {
+  val len = fuse_rt_list_len(self)
+  val start = if n < len { n } else { len }
+  fuse_rt_list_slice(self, start, len)
+}
+
+pub fn List.concat(ref self, other: List<T>) -> List<T> {
+  fuse_rt_list_concat(self, other)
+}
+
+pub fn List.join(ref self, sep: String) -> String {
+  fuse_rt_list_join(self, sep)
+}
+
+pub fn List.zip(ref self, other: List<U>) -> List<(T, U)> {
+  val result = fuse_list_new()
+  val lenA = fuse_rt_list_len(self)
+  val lenB = fuse_rt_list_len(other)
+  val len = if lenA < lenB { lenA } else { lenB }
+  var i = 0
+  while i < len {
+    fuse_list_push(result, (fuse_list_get(self, i), fuse_list_get(other, i)))
+    i = i + 1
+  }
+  result
+}
+
+pub fn List.flatten(ref self) -> List<T> {
+  val result = fuse_list_new()
+  val len = fuse_rt_list_len(self)
+  var i = 0
+  while i < len {
+    val inner = fuse_list_get(self, i)
+    val innerLen = fuse_rt_list_len(inner)
+    var j = 0
+    while j < innerLen {
+      fuse_list_push(result, fuse_list_get(inner, j))
+      j = j + 1
+    }
+    i = i + 1
+  }
+  result
+}
+
+// --- Mutation ---
+
+pub fn List.push(mutref self, item: T) {
+  fuse_rt_list_push(self, item)
+}
+
+pub fn List.pop(mutref self) -> Option<T> {
+  fuse_rt_list_pop(self)
+}
+
+pub fn List.insert(mutref self, index: Int, item: T) {
+  fuse_rt_list_insert(self, index, item)
+}
+
+pub fn List.removeAt(mutref self, index: Int) -> Option<T> {
+  fuse_rt_list_remove_at(self, index)
+}
+
+pub fn List.removeWhere(mutref self, f: fn(T) -> Bool) {
+  // Remove items matching predicate by building a new list.
+  val len = fuse_rt_list_len(self)
+  val keep = fuse_list_new()
+  var i = 0
+  while i < len {
+    val item = fuse_list_get(self, i)
+    if f(item) == false { fuse_list_push(keep, item) }
+    i = i + 1
+  }
+  fuse_rt_list_clear(self)
+  val keepLen = fuse_rt_list_len(keep)
+  i = 0
+  while i < keepLen {
+    fuse_rt_list_push(self, fuse_list_get(keep, i))
+    i = i + 1
+  }
+}
+
+pub fn List.clear(mutref self) {
+  fuse_rt_list_clear(self)
+}
+
+pub fn List.sortInPlace(mutref self) {
+  // Insertion sort in place.
+  val len = fuse_rt_list_len(self)
+  var i = 1
+  while i < len {
+    val key = fuse_list_get(self, i)
+    var j = i - 1
+    while j >= 0 {
+      if fuse_list_get(self, j) > key {
+        fuse_rt_list_set(self, j + 1, fuse_list_get(self, j))
+        j = j - 1
+      } else {
+        j = -1
+      }
+    }
+    fuse_rt_list_set(self, j + 1, key)
+    i = i + 1
+  }
+}
+
+pub fn List.reverseInPlace(mutref self) {
+  fuse_rt_list_reverse_in_place(self)
+}
+
+// --- Construction (module-level functions) ---
+
+pub fn of(items: T...) -> List<T> {
+  items
+}
+
+pub fn repeat(item: T, n: Int) -> List<T> {
+  val result = fuse_list_new()
+  var i = 0
+  while i < n {
+    fuse_list_push(result, item)
+    i = i + 1
+  }
+  result
+}
+
+pub fn range(start: Int, end: Int) -> List<Int> {
+  val result = fuse_list_new()
+  var i = start
+  while i < end {
+    fuse_list_push(result, i)
+    i = i + 1
+  }
+  result
+}
+
+pub fn rangeClosed(start: Int, end: Int) -> List<Int> {
+  val result = fuse_list_new()
+  var i = start
+  while i <= end {
+    fuse_list_push(result, i)
+    i = i + 1
+  }
+  result
+}
