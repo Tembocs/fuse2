@@ -782,6 +782,72 @@ impl Evaluator {
                     }
                     return Ok(Value::Unit);
                 }
+                "fuse_rt_io_read_file" => {
+                    if let Some(Value::String(p)) = args.first() {
+                        return match std::fs::read_to_string(p) {
+                            Ok(s) => Ok(Value::Result { is_ok: true, value: Box::new(Value::String(s)) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("io: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("io: expected path".to_string())) });
+                }
+                "fuse_rt_io_read_file_bytes" => {
+                    if let Some(Value::String(p)) = args.first() {
+                        return match std::fs::read(p) {
+                            Ok(bytes) => Ok(Value::Result { is_ok: true, value: Box::new(Value::List(bytes.into_iter().map(|b| Value::Int(b as i64)).collect())) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("io: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("io: expected path".to_string())) });
+                }
+                "fuse_rt_io_write_file" => {
+                    if let (Some(Value::String(p)), Some(Value::String(c))) = (args.first(), args.get(1)) {
+                        return match std::fs::write(p, c) {
+                            Ok(()) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("io: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("io: expected path and content".to_string())) });
+                }
+                "fuse_rt_io_write_file_bytes" => {
+                    if let (Some(Value::String(p)), Some(Value::List(items))) = (args.first(), args.get(1)) {
+                        let bytes: Vec<u8> = items.iter().filter_map(|v| match v { Value::Int(n) => Some(*n as u8), _ => None }).collect();
+                        return match std::fs::write(p, &bytes) {
+                            Ok(()) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("io: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("io: expected path and bytes".to_string())) });
+                }
+                "fuse_rt_io_append_file" => {
+                    if let (Some(Value::String(p)), Some(Value::String(c))) = (args.first(), args.get(1)) {
+                        use std::io::Write;
+                        return match std::fs::OpenOptions::new().append(true).create(true).open(p) {
+                            Ok(mut f) => match f.write_all(c.as_bytes()) {
+                                Ok(()) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) }),
+                                Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("io: {e}"))) }),
+                            },
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("io: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("io: expected path and content".to_string())) });
+                }
+                "fuse_rt_io_read_line" => {
+                    let mut line = String::new();
+                    return match std::io::stdin().read_line(&mut line) {
+                        Ok(_) => Ok(Value::Result { is_ok: true, value: Box::new(Value::String(line.trim_end_matches('\n').trim_end_matches('\r').to_string())) }),
+                        Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("io: {e}"))) }),
+                    };
+                }
+                "fuse_rt_io_read_all" => {
+                    use std::io::Read;
+                    let mut s = String::new();
+                    return match std::io::stdin().read_to_string(&mut s) {
+                        Ok(_) => Ok(Value::Result { is_ok: true, value: Box::new(Value::String(s)) }),
+                        Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("io: {e}"))) }),
+                    };
+                }
+                "fuse_rt_file_open" | "fuse_rt_file_close" => { return Ok(Value::Unit); }
                 "fuse_map_new" => { return Ok(Value::Map(Vec::new())); }
                 "fuse_map_set" => {
                     // Mutation limited in evaluator (value semantics)

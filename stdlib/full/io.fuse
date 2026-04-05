@@ -1,0 +1,98 @@
+// Fuse Full stdlib — io module.
+//
+// File I/O and stdin/stdout access. All operations are synchronous.
+//
+// import stdlib.full.io
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_io_read_file(path: String) -> Result<String, IOError>
+extern fn fuse_rt_io_read_file_bytes(path: String) -> Result<List<Int>, IOError>
+extern fn fuse_rt_io_write_file(path: String, content: String) -> Result<Int, IOError>
+extern fn fuse_rt_io_write_file_bytes(path: String, bytes: List<Int>) -> Result<Int, IOError>
+extern fn fuse_rt_io_append_file(path: String, content: String) -> Result<Int, IOError>
+extern fn fuse_rt_io_read_line() -> Result<String, IOError>
+extern fn fuse_rt_io_read_all() -> Result<String, IOError>
+extern fn fuse_rt_file_open(path: String, mode: Int) -> Result<File, IOError>
+extern fn fuse_rt_file_close(file: File) -> Result<Int, IOError>
+
+// --- Error type ---
+
+pub data class IOError(val message: String, val code: Int)
+// code: 0 = generic, 1 = not found, 2 = permission denied,
+//       3 = already exists, 4 = is a directory, 5 = not a directory,
+//       6 = disk full, 7 = interrupted
+
+// --- Open mode ---
+
+pub enum OpenMode {
+  Read
+  Write
+  Append
+  ReadWrite
+}
+
+fn modeToInt(mode: OpenMode) -> Int {
+  match mode {
+    Read => 0
+    Write => 1
+    Append => 2
+    ReadWrite => 3
+  }
+}
+
+// --- Free functions ---
+
+// Read entire file as a string.
+pub fn readFile(path: String) -> Result<String, IOError> {
+  fuse_rt_io_read_file(path)
+}
+
+// Read entire file as a byte list.
+pub fn readFileBytes(path: String) -> Result<List<Int>, IOError> {
+  fuse_rt_io_read_file_bytes(path)
+}
+
+// Write string to file (creates or truncates).
+pub fn writeFile(path: String, content: String) -> Result<Int, IOError> {
+  fuse_rt_io_write_file(path, content)
+}
+
+// Write byte list to file (creates or truncates).
+pub fn writeFileBytes(path: String, bytes: List<Int>) -> Result<Int, IOError> {
+  fuse_rt_io_write_file_bytes(path, bytes)
+}
+
+// Append string to file (creates if missing).
+pub fn appendFile(path: String, content: String) -> Result<Int, IOError> {
+  fuse_rt_io_append_file(path, content)
+}
+
+// Read one line from stdin (strips trailing newline).
+pub fn readLine() -> Result<String, IOError> {
+  fuse_rt_io_read_line()
+}
+
+// Read all of stdin until EOF.
+pub fn readAll() -> Result<String, IOError> {
+  fuse_rt_io_read_all()
+}
+
+// --- File struct ---
+
+pub struct File { }
+
+// Open a file with the specified mode.
+pub fn File.open(path: String, mode: OpenMode) -> Result<File, IOError> {
+  fuse_rt_file_open(path, modeToInt(mode))
+}
+
+// Create a file (write mode, truncate, create if missing).
+pub fn File.create(path: String) -> Result<File, IOError> {
+  fuse_rt_file_open(path, 1)
+}
+
+// Close a file.
+pub fn File.close(owned self) -> Result<Int, IOError> {
+  fuse_rt_file_close(self)
+}

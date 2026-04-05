@@ -1,0 +1,89 @@
+// EXPECTED OUTPUT:
+// === writeFile + readFile ===
+// write: ok
+// read: hello from fuse
+// === appendFile ===
+// append: ok
+// after append: hello from fusemore data
+// === readFileBytes ===
+// byte count: 24
+// first byte: Some(104)
+// === writeFileBytes ===
+// write bytes: ok
+// read back: hi
+// === readFile not found ===
+// error: true
+// === cleanup ===
+// done
+
+import stdlib.full.io
+
+@entrypoint
+fn main() {
+  val testFile = "__fuse_io_test__.txt"
+  val testFile2 = "__fuse_io_test2__.txt"
+
+  // writeFile + readFile
+  println("=== writeFile + readFile ===")
+  val writeResult = io.writeFile(testFile, "hello from fuse")
+  match writeResult {
+    Ok(_) => println("write: ok")
+    Err(e) => println(f"write error: {e}")
+  }
+  val readResult = io.readFile(testFile)
+  match readResult {
+    Ok(content) => println(f"read: {content}")
+    Err(e) => println(f"read error: {e}")
+  }
+
+  // appendFile
+  println("=== appendFile ===")
+  val appendResult = io.appendFile(testFile, "more data")
+  match appendResult {
+    Ok(_) => println("append: ok")
+    Err(e) => println(f"append error: {e}")
+  }
+  val readAfter = io.readFile(testFile)
+  match readAfter {
+    Ok(content) => println(f"after append: {content}")
+    Err(e) => println(f"read error: {e}")
+  }
+
+  // readFileBytes
+  println("=== readFileBytes ===")
+  val bytesResult = io.readFileBytes(testFile)
+  match bytesResult {
+    Ok(bytes) => {
+      println(f"byte count: {bytes.len()}")
+      println(f"first byte: {bytes.get(0)}")
+    }
+    Err(e) => println(f"bytes error: {e}")
+  }
+
+  // writeFileBytes
+  println("=== writeFileBytes ===")
+  val wb = io.writeFileBytes(testFile2, [104, 105])
+  match wb {
+    Ok(_) => println("write bytes: ok")
+    Err(e) => println(f"write bytes error: {e}")
+  }
+  val rb = io.readFile(testFile2)
+  match rb {
+    Ok(content) => println(f"read back: {content}")
+    Err(e) => println(f"read back error: {e}")
+  }
+
+  // readFile on non-existent file
+  println("=== readFile not found ===")
+  val missing = io.readFile("__nonexistent_file__.txt")
+  match missing {
+    Ok(_) => println("error: false")
+    Err(e) => println("error: true")
+  }
+
+  // cleanup — delete test files
+  println("=== cleanup ===")
+  io.writeFile(testFile, "")
+  io.writeFile(testFile2, "")
+  println("done")
+}

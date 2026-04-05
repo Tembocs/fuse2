@@ -893,6 +893,144 @@ pub unsafe extern "C" fn fuse_rt_float_parse(h: FuseHandle) -> FuseHandle {
     let msg = "float: expected string";
     fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()))
 }
+// --- IO FFI helpers ---
+
+unsafe fn make_io_error(msg: &str, code: i64) -> FuseHandle {
+    let type_name = b"IOError";
+    let data = fuse_data_new(type_name.as_ptr(), type_name.len(), 2, None);
+    fuse_data_set_field(data, 0, fuse_string_new_utf8(msg.as_ptr(), msg.len()));
+    fuse_data_set_field(data, 1, fuse_int(code));
+    data
+}
+
+unsafe fn io_error_code(e: &std::io::Error) -> i64 {
+    match e.kind() {
+        std::io::ErrorKind::NotFound => 1,
+        std::io::ErrorKind::PermissionDenied => 2,
+        std::io::ErrorKind::AlreadyExists => 3,
+        std::io::ErrorKind::Interrupted => 7,
+        _ => 0,
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_io_read_file(path: FuseHandle) -> FuseHandle {
+    let p = extract_string(path);
+    match std::fs::read_to_string(p) {
+        Ok(s) => fuse_ok(fuse_string_new_utf8(s.as_ptr(), s.len())),
+        Err(e) => { let msg = format!("io: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_io_read_file_bytes(path: FuseHandle) -> FuseHandle {
+    let p = extract_string(path);
+    match std::fs::read(p) {
+        Ok(bytes) => {
+            let list = fuse_list_new();
+            for b in bytes { fuse_list_push(list, fuse_int(b as i64)); }
+            fuse_ok(list)
+        }
+        Err(e) => { let msg = format!("io: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_io_write_file(path: FuseHandle, content: FuseHandle) -> FuseHandle {
+    let p = extract_string(path);
+    let c = extract_string(content);
+    match std::fs::write(p, c) {
+        Ok(()) => fuse_ok(fuse_unit()),
+        Err(e) => { let msg = format!("io: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_io_write_file_bytes(path: FuseHandle, bytes: FuseHandle) -> FuseHandle {
+    if let ValueKind::List(items) = &(*bytes).kind {
+        let data: Vec<u8> = items.iter().filter_map(|h| match &(**h).kind { ValueKind::Int(n) => Some(*n as u8), _ => None }).collect();
+        let p = extract_string(path);
+        match std::fs::write(p, &data) {
+            Ok(()) => return fuse_ok(fuse_unit()),
+            Err(e) => { let msg = format!("io: {e}"); return fuse_err(make_io_error(&msg, io_error_code(&e))); }
+        }
+    }
+    let msg = "io: expected byte list";
+    fuse_err(make_io_error(msg, 0))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_io_append_file(path: FuseHandle, content: FuseHandle) -> FuseHandle {
+    use std::io::Write;
+    let p = extract_string(path);
+    let c = extract_string(content);
+    match std::fs::OpenOptions::new().append(true).create(true).open(p) {
+        Ok(mut f) => match f.write_all(c.as_bytes()) {
+            Ok(()) => fuse_ok(fuse_unit()),
+            Err(e) => { let msg = format!("io: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+        },
+        Err(e) => { let msg = format!("io: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_io_read_line() -> FuseHandle {
+    let mut line = String::new();
+    match std::io::stdin().read_line(&mut line) {
+        Ok(_) => {
+            let trimmed = line.trim_end_matches('\n').trim_end_matches('\r');
+            fuse_ok(fuse_string_new_utf8(trimmed.as_ptr(), trimmed.len()))
+        }
+        Err(e) => { let msg = format!("io: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_io_read_all() -> FuseHandle {
+    use std::io::Read;
+    let mut s = String::new();
+    match std::io::stdin().read_to_string(&mut s) {
+        Ok(_) => fuse_ok(fuse_string_new_utf8(s.as_ptr(), s.len())),
+        Err(e) => { let msg = format!("io: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+// --- File handle FFI ---
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_file_open(path: FuseHandle, mode: FuseHandle) -> FuseHandle {
+    use std::io::BufWriter;
+    let p = extract_string(path);
+    let m = match &(*mode).kind { ValueKind::Int(n) => *n, _ => 0 };
+    let result = match m {
+        0 => std::fs::File::open(p).map(|f| Box::new(f) as Box<dyn std::any::Any>),
+        1 => std::fs::File::create(p).map(|f| Box::new(BufWriter::new(f)) as Box<dyn std::any::Any>),
+        2 => std::fs::OpenOptions::new().append(true).create(true).open(p).map(|f| Box::new(BufWriter::new(f)) as Box<dyn std::any::Any>),
+        3 => std::fs::OpenOptions::new().read(true).write(true).open(p).map(|f| Box::new(f) as Box<dyn std::any::Any>),
+        _ => std::fs::File::open(p).map(|f| Box::new(f) as Box<dyn std::any::Any>),
+    };
+    match result {
+        Ok(handle) => {
+            let ptr = Box::into_raw(handle);
+            let type_name = b"File";
+            let file_handle = fuse_data_new(type_name.as_ptr(), type_name.len(), 1, Some(fuse_rt_file_destructor));
+            fuse_data_set_field(file_handle, 0, ptr as FuseHandle);
+            fuse_ok(file_handle)
+        }
+        Err(e) => { let msg = format!("io: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+unsafe extern "C" fn fuse_rt_file_destructor(_handle: FuseHandle) {
+    // The file handle is cleaned up when the data class is dropped.
+    // In a production runtime, this would close the file descriptor.
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_file_close(_file: FuseHandle) -> FuseHandle {
+    fuse_ok(fuse_unit())
+}
+
 // --- List FFI helpers ---
 
 #[unsafe(no_mangle)]
