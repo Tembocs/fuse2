@@ -20,6 +20,7 @@ struct BindingInfo {
     held_rank: Option<i64>,
     held_rank_is_write: bool,
     moved: bool,
+    used: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -41,6 +42,7 @@ pub struct Checker {
     module_cache: HashMap<PathBuf, ModuleInfo>,
     diagnostics: Vec<Diagnostic>,
     current_file: PathBuf,
+    warn_unused: bool,
 }
 
 impl Checker {
@@ -49,6 +51,7 @@ impl Checker {
             module_cache: HashMap::new(),
             diagnostics: Vec::new(),
             current_file: PathBuf::from("<unknown>"),
+            warn_unused: false,
         }
     }
 
@@ -195,11 +198,28 @@ impl Checker {
                     held_rank: None,
                     held_rank_is_write: false,
                     moved: false,
+                    used: false,
                 },
             );
         }
         for stmt in &function.body.statements {
             self.check_statement(module, stmt, &mut scope, 0, owner_name.as_deref());
+        }
+        if self.warn_unused {
+            for (name, binding) in &scope {
+                if !binding.used && !name.starts_with('_') && binding.param_convention.is_none() {
+                    self.diagnostics.push(
+                        Diagnostic::warning(
+                            format!("unused binding `{name}`"),
+                            display_name(&module.path),
+                            function.span,
+                            None,
+                        )
+                        .with_code("W0001")
+                        .with_help(format!("prefix with `_` to suppress: `_{name}`")),
+                    );
+                }
+            }
         }
         if let Some(expected) = &function.return_type {
             if let Some(actual) = self.infer_block_type(module, &function.body, &scope, owner_name.as_deref()) {
@@ -285,6 +305,7 @@ impl Checker {
                         held_rank,
                         held_rank_is_write,
                         moved: false,
+                        used: false,
                     },
                 );
             }
@@ -317,6 +338,7 @@ impl Checker {
                         held_rank: None,
                         held_rank_is_write: false,
                         moved: false,
+                        used: false,
                     },
                 );
                 for inner in &for_stmt.body.statements {
@@ -599,7 +621,8 @@ impl Checker {
                 if name.value == "None" {
                     return;
                 }
-                if let Some(binding) = scope.get(&name.value) {
+                if let Some(binding) = scope.get_mut(&name.value) {
+                    binding.used = true;
                     if binding.moved {
                         self.add_error(
                             &display_name(&module.path),
@@ -1036,7 +1059,12 @@ impl Checker {
 }
 
 pub fn check_file(path: &Path) -> Vec<Diagnostic> {
+    check_file_with_options(path, false)
+}
+
+pub fn check_file_with_options(path: &Path, warn_unused: bool) -> Vec<Diagnostic> {
     let mut checker = Checker::new();
+    checker.warn_unused = warn_unused;
     checker.check_path(path)
 }
 

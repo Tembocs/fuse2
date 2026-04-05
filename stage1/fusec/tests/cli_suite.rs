@@ -472,6 +472,111 @@ fn repl_persists_state_across_lines() {
 }
 
 // ---------------------------------------------------------------------------
+// --warn-unused / --deny-warnings
+// ---------------------------------------------------------------------------
+
+#[test]
+fn warn_unused_detects_unused_binding() {
+    let fixture = harness::repo_root()
+        .join("stage1")
+        .join("target")
+        .join("cli_test_unused.fuse");
+    std::fs::write(
+        &fixture,
+        "@entrypoint\nfn main() {\n  val unused = 42\n  val used = 10\n  println(used)\n}\n",
+    )
+    .expect("write fixture");
+    let out = fusec()
+        .args(["--check", "--warn-unused", "--color", "never"])
+        .arg(&fixture)
+        .output()
+        .expect("run fusec");
+    assert!(out.status.success(), "warnings alone should exit 0");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("W0001"),
+        "should contain W0001 warning code, got:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("unused binding `unused`"),
+        "should name the unused binding, got:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("prefix with `_`"),
+        "should suggest _prefix, got:\n{stderr}"
+    );
+}
+
+#[test]
+fn warn_unused_with_deny_warnings_exits_1() {
+    let fixture = harness::repo_root()
+        .join("stage1")
+        .join("target")
+        .join("cli_test_unused_deny.fuse");
+    std::fs::write(
+        &fixture,
+        "@entrypoint\nfn main() {\n  val unused = 42\n  println(\"ok\")\n}\n",
+    )
+    .expect("write fixture");
+    let out = fusec()
+        .args(["--check", "--warn-unused", "--deny-warnings", "--color", "never"])
+        .arg(&fixture)
+        .output()
+        .expect("run fusec");
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "--deny-warnings should turn warning into exit 1"
+    );
+}
+
+#[test]
+fn warn_unused_suppresses_underscore_prefix() {
+    let fixture = harness::repo_root()
+        .join("stage1")
+        .join("target")
+        .join("cli_test_underscore.fuse");
+    std::fs::write(
+        &fixture,
+        "@entrypoint\nfn main() {\n  val _suppressed = 42\n  println(\"ok\")\n}\n",
+    )
+    .expect("write fixture");
+    let out = fusec()
+        .args(["--check", "--warn-unused", "--color", "never"])
+        .arg(&fixture)
+        .output()
+        .expect("run fusec");
+    assert!(out.status.success());
+    assert!(
+        out.stderr.is_empty(),
+        "_prefixed bindings should not produce warnings"
+    );
+}
+
+#[test]
+fn no_warn_unused_flag_is_silent() {
+    let fixture = harness::repo_root()
+        .join("stage1")
+        .join("target")
+        .join("cli_test_no_warn.fuse");
+    std::fs::write(
+        &fixture,
+        "@entrypoint\nfn main() {\n  val unused = 42\n  println(\"ok\")\n}\n",
+    )
+    .expect("write fixture");
+    let out = fusec()
+        .args(["--check", "--color", "never"])
+        .arg(&fixture)
+        .output()
+        .expect("run fusec");
+    assert!(out.status.success());
+    assert!(
+        out.stderr.is_empty(),
+        "without --warn-unused, no warnings should appear"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // --color never strips ANSI codes
 // ---------------------------------------------------------------------------
 

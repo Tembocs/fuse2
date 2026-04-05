@@ -17,6 +17,10 @@ pub fn check_path(path: &Path) -> Vec<Diagnostic> {
     checker::check_file(path)
 }
 
+pub fn check_path_with_options(path: &Path, warn_unused: bool) -> Vec<Diagnostic> {
+    checker::check_file_with_options(path, warn_unused)
+}
+
 pub fn check_file(path: &Path) -> Result<(), Vec<Diagnostic>> {
     let diagnostics = check_path(path);
     if diagnostics.is_empty() {
