@@ -1,8 +1,10 @@
 pub mod ast;
 pub mod checker;
+pub mod color;
 pub mod common;
 pub mod codegen;
 pub mod error;
+pub mod evaluator;
 pub mod hir;
 pub mod lexer;
 pub mod parser;
