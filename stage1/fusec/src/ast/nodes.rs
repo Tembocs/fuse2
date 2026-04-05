@@ -178,6 +178,7 @@ pub enum Expr {
     If(IfExpr),
     Match(MatchExpr),
     When(WhenExpr),
+    Lambda(LambdaExpr),
 }
 
 impl Expr {
@@ -199,6 +200,7 @@ impl Expr {
             Self::If(node) => node.span,
             Self::Match(node) => node.span,
             Self::When(node) => node.span,
+            Self::Lambda(node) => node.span,
         }
     }
 }
@@ -377,6 +379,14 @@ pub struct NamePattern {
 pub struct VariantPattern {
     pub name: String,
     pub args: Vec<Pattern>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct LambdaExpr {
+    pub params: Vec<Param>,
+    pub return_type: Option<String>,
+    pub body: Block,
     pub span: Span,
 }
 

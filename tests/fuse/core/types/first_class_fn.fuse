@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// 6
+// 10
+fn double(n: Int) -> Int => n * 2
+
+fn apply(value: Int, f: fn(Int) -> Int) -> Int {
+  return f(value)
+}
+
+@entrypoint
+fn main() {
+  val result = apply(3, fn(n: Int) -> Int => n * 2)
+  println(result)
+
+  val result2 = apply(5, fn(x: Int) -> Int => x + x)
+  println(result2)
+}

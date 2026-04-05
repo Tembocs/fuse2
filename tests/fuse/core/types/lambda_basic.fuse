@@ -1,0 +1,15 @@
+// EXPECTED OUTPUT:
+// 15
+// 7
+fn apply(a: Int, b: Int, f: fn(Int, Int) -> Int) -> Int {
+  return f(a, b)
+}
+
+@entrypoint
+fn main() {
+  val sum = apply(10, 5, fn(x: Int, y: Int) -> Int => x + y)
+  println(sum)
+
+  val diff = apply(10, 3, fn(x: Int, y: Int) -> Int => x - y)
+  println(diff)
+}

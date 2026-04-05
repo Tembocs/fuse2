@@ -669,6 +669,7 @@ impl Parser {
             TokenKind::If => Ok(Expr::If(self.parse_if_expr()?)),
             TokenKind::Match => Ok(Expr::Match(self.parse_match_expr()?)),
             TokenKind::When => Ok(Expr::When(self.parse_when_expr()?)),
+            TokenKind::Fn => Ok(Expr::Lambda(self.parse_lambda()?)),
             _ => Err(self.syntax_error(format!("unexpected token {}", token.text), token.span)),
         }
     }
@@ -724,6 +725,43 @@ impl Parser {
         }
         self.expect(TokenKind::RBrace, "expected `}` after when arms")?;
         Ok(WhenExpr { arms, span: start.span })
+    }
+
+    fn parse_lambda(&mut self) -> Result<LambdaExpr, Diagnostic> {
+        let start = self.expect(TokenKind::Fn, "expected `fn`")?;
+        self.expect(TokenKind::LParen, "expected `(` after `fn` in lambda")?;
+        let mut params = Vec::new();
+        if self.peek(0).kind != TokenKind::RParen {
+            loop {
+                params.push(self.parse_param()?);
+                if self.match_kind(TokenKind::Comma).is_none() {
+                    break;
+                }
+            }
+        }
+        self.expect(TokenKind::RParen, "expected `)` after lambda parameters")?;
+        let mut return_type = None;
+        if self.match_kind(TokenKind::Arrow).is_some() {
+            return_type = Some(self.parse_type_name(&[TokenKind::LBrace, TokenKind::FatArrow]));
+        }
+        let body = if self.match_kind(TokenKind::FatArrow).is_some() {
+            let expr = self.parse_expression()?;
+            Block {
+                statements: vec![Statement::Expr(ExprStmt {
+                    expr: expr.clone(),
+                    span: expr.span(),
+                })],
+                span: start.span,
+            }
+        } else {
+            self.parse_block()?
+        };
+        Ok(LambdaExpr {
+            params,
+            return_type,
+            body,
+            span: start.span,
+        })
     }
 
     fn parse_pattern(&mut self) -> Result<Pattern, Diagnostic> {

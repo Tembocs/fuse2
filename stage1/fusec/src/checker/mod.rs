@@ -604,6 +604,11 @@ impl Checker {
                 }
             }
             hir::Expr::Literal(_) | hir::Expr::FString(_) | hir::Expr::Name(_) => {}
+            hir::Expr::Lambda(lambda) => {
+                for statement in &lambda.body.statements {
+                    self.check_spawn_statement(module, statement, outer_names, &mut local_names.clone());
+                }
+            }
         }
     }
 
@@ -737,6 +742,24 @@ impl Checker {
                     self.check_expr(module, arg, scope, owner_name, loop_depth);
                 }
                 self.check_call(module, call, scope, owner_name);
+            }
+            hir::Expr::Lambda(lambda) => {
+                let mut lambda_scope = scope.clone();
+                for param in &lambda.params {
+                    lambda_scope.insert(param.name.clone(), BindingInfo {
+                        mutable: false,
+                        param_convention: param.convention.clone(),
+                        type_name: param.type_name.clone(),
+                        rank: None,
+                        held_rank: None,
+                        held_rank_is_write: false,
+                        moved: false,
+                        used: true,
+                    });
+                }
+                for statement in &lambda.body.statements {
+                    self.check_statement(module, statement, &mut lambda_scope, loop_depth, owner_name);
+                }
             }
         }
     }
@@ -1029,6 +1052,13 @@ impl Checker {
             hir::Expr::MutRef(expr) => self.infer_expr_type(module, &expr.value, scope, owner_name),
             hir::Expr::Await(expr) => self.infer_expr_type(module, &expr.value, scope, owner_name),
             hir::Expr::When(_) => None,
+            hir::Expr::Lambda(lambda) => {
+                let param_types: Vec<String> = lambda.params.iter()
+                    .map(|p| p.type_name.clone().unwrap_or_else(|| "Any".to_string()))
+                    .collect();
+                let ret = lambda.return_type.clone().unwrap_or_else(|| "Any".to_string());
+                Some(format!("fn({}) -> {}", param_types.join(", "), ret))
+            }
         }
     }
 

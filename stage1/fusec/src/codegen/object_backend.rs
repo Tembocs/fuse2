@@ -214,6 +214,11 @@ struct RuntimeFns {
     string_is_empty: FuncId,
 }
 
+struct PendingLambda {
+    module_path: PathBuf,
+    decl: fa::FunctionDecl,
+}
+
 struct BackendCompiler<'a> {
     session: &'a BuildSession,
     module: ObjectModule,
@@ -222,6 +227,8 @@ struct BackendCompiler<'a> {
     function_ids: HashMap<String, FuncId>,
     destructor_ids: HashMap<String, FuncId>,
     string_ids: HashMap<String, cranelift_module::DataId>,
+    lambda_counter: u32,
+    pending_lambdas: Vec<PendingLambda>,
 }
 
 #[derive(Clone)]
@@ -262,6 +269,8 @@ impl<'a> BackendCompiler<'a> {
             function_ids: HashMap::new(),
             destructor_ids: HashMap::new(),
             string_ids: HashMap::new(),
+            lambda_counter: 0,
+            pending_lambdas: Vec::new(),
         };
         compiler.declare_user_surface()?;
         Ok(compiler)
@@ -543,7 +552,12 @@ impl<'a> BackendCompiler<'a> {
         }
         self.module
             .define_function(func_id, &mut ctx)
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())?;
+
+        while let Some(pending) = self.pending_lambdas.pop() {
+            self.compile_function(&pending.module_path, &pending.decl)?;
+        }
+        Ok(())
     }
 
     fn compile_destructor(&mut self, module_path: &Path, data: &fa::DataClassDecl) -> Result<(), String> {
@@ -762,7 +776,7 @@ fn build_wrapper(_input: &Path, output: &Path, object: &[u8]) -> Result<(), Stri
 
 struct LoweringState<'a, 'b> {
     compiler: &'a mut BackendCompiler<'b>,
-    _module_path: &'a Path,
+    module_path: &'a Path,
     _function: &'a fa::FunctionDecl,
     locals: HashMap<String, LocalBinding>,
     next_var: usize,
@@ -777,7 +791,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
     ) -> Self {
         Self {
             compiler,
-            _module_path: module_path,
+            module_path,
             _function: function,
             locals: HashMap::new(),
             next_var: 0,
@@ -1048,6 +1062,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             fa::Expr::If(if_expr) => self.compile_if(builder, if_expr),
             fa::Expr::Match(match_expr) => self.compile_match(builder, match_expr),
             fa::Expr::When(when_expr) => self.compile_when(builder, when_expr),
+            fa::Expr::Lambda(lambda) => self.compile_lambda(builder, lambda),
         }
     }
 
@@ -1496,10 +1511,37 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         call: &fa::Call,
     ) -> Result<TypedValue, String> {
         match call.callee.as_ref() {
-            fa::Expr::Name(name) => self.compile_named_call(builder, &name.value, &call.args),
+            fa::Expr::Name(name) => {
+                if self.locals.contains_key(&name.value) {
+                    let binding = &self.locals[&name.value];
+                    if binding.ty.as_ref().is_some_and(|t| t.starts_with("fn(")) {
+                        return self.compile_indirect_call(builder, call);
+                    }
+                }
+                self.compile_named_call(builder, &name.value, &call.args)
+            }
             fa::Expr::Member(member) => self.compile_member_call(builder, member, &call.args),
-            _ => Err("unsupported call target".to_string()),
+            _ => self.compile_indirect_call(builder, call),
         }
+    }
+
+    fn compile_indirect_call(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        call: &fa::Call,
+    ) -> Result<TypedValue, String> {
+        let callee = self.compile_expr(builder, &call.callee)?;
+        let mut lowered_args = Vec::with_capacity(call.args.len());
+        for arg in &call.args {
+            lowered_args.push(self.compile_expr(builder, arg)?.value);
+        }
+        let sig = self.compiler.handle_signature(call.args.len());
+        let sig_ref = builder.import_signature(sig);
+        let inst = builder.ins().call_indirect(sig_ref, callee.value, &lowered_args);
+        Ok(TypedValue {
+            value: builder.inst_results(inst)[0],
+            ty: None,
+        })
     }
 
     fn compile_named_call(
@@ -2258,6 +2300,58 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         })
     }
 
+    fn compile_lambda(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        lambda: &fa::LambdaExpr,
+    ) -> Result<TypedValue, String> {
+        let id = self.compiler.lambda_counter;
+        self.compiler.lambda_counter += 1;
+        let lambda_name = format!("__lambda_{id}");
+        let module_path = self.module_path.to_path_buf();
+        let symbol = layout::function_symbol(&module_path, &lambda_name);
+        let sig = self.compiler.handle_signature(lambda.params.len());
+        let func_id = self
+            .compiler
+            .module
+            .declare_function(&symbol, Linkage::Local, &sig)
+            .map_err(|error| error.to_string())?;
+        self.compiler.function_ids.insert(symbol.clone(), func_id);
+
+        let decl = fa::FunctionDecl {
+            name: lambda_name,
+            params: lambda.params.clone(),
+            return_type: lambda.return_type.clone(),
+            body: lambda.body.clone(),
+            is_pub: false,
+            decorators: Vec::new(),
+            is_async: false,
+            is_suspend: false,
+            receiver_type: None,
+            span: lambda.span,
+        };
+        self.compiler.pending_lambdas.push(PendingLambda {
+            module_path,
+            decl,
+        });
+
+        let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
+        let addr = builder.ins().func_addr(self.compiler.pointer_type, local);
+        let param_types: Vec<String> = lambda
+            .params
+            .iter()
+            .map(|p| p.type_name.clone().unwrap_or_else(|| "Any".to_string()))
+            .collect();
+        let ret = lambda
+            .return_type
+            .clone()
+            .unwrap_or_else(|| "Any".to_string());
+        Ok(TypedValue {
+            value: addr,
+            ty: Some(format!("fn({}) -> {}", param_types.join(", "), ret)),
+        })
+    }
+
     fn pattern_matches(
         &mut self,
         builder: &mut FunctionBuilder,
@@ -2619,6 +2713,15 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 fa::ArmBody::Expr(expr) => self.infer_expr_type(expr),
                 fa::ArmBody::Block(_) => Some("Unit".to_string()),
             }),
+            fa::Expr::Lambda(lambda) => {
+                let param_types: Vec<String> = lambda
+                    .params
+                    .iter()
+                    .map(|p| p.type_name.clone().unwrap_or_else(|| "Any".to_string()))
+                    .collect();
+                let ret = lambda.return_type.clone().unwrap_or_else(|| "Any".to_string());
+                Some(format!("fn({}) -> {}", param_types.join(", "), ret))
+            }
         }
     }
 }
@@ -2776,6 +2879,13 @@ fn collect_expr_names(expr: &fa::Expr) -> HashSet<String> {
                     }
                     fa::ArmBody::Expr(expr) => names.extend(collect_expr_names(expr)),
                 }
+            }
+            names
+        }
+        fa::Expr::Lambda(lambda) => {
+            let mut names = HashSet::new();
+            for statement in &lambda.body.statements {
+                names.extend(collect_stmt_names(statement));
             }
             names
         }

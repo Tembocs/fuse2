@@ -737,6 +737,12 @@ fn print_ast_expr(expr: &fusec::ast::nodes::Expr, depth: usize, label: &str) {
             println!("{indent}{prefix}Question");
             print_ast_expr(&q.value, depth + 1, "");
         }
+        fusec::ast::nodes::Expr::Lambda(l) => {
+            println!(
+                "{indent}{prefix}Lambda ({} params)",
+                l.params.len()
+            );
+        }
     }
 }
 

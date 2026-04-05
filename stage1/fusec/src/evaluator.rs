@@ -1025,6 +1025,24 @@ impl Evaluator {
                 }
                 Ok(Value::Unit)
             }
+            fa::Expr::Lambda(lambda) => {
+                let decl = fa::FunctionDecl {
+                    name: format!("__lambda_{}", lambda.span.line),
+                    params: lambda.params.clone(),
+                    return_type: lambda.return_type.clone(),
+                    body: lambda.body.clone(),
+                    is_pub: false,
+                    decorators: Vec::new(),
+                    is_async: false,
+                    is_suspend: false,
+                    receiver_type: None,
+                    span: lambda.span,
+                };
+                Ok(Value::UserFunction(UserFunction {
+                    module_path: module_path.to_path_buf(),
+                    decl,
+                }))
+            }
         }
     }
 
@@ -1577,6 +1595,13 @@ fn collect_expr_names(expr: &fa::Expr) -> HashSet<String> {
                     }
                     fa::ArmBody::Expr(expr) => names.extend(collect_expr_names(expr)),
                 }
+            }
+            names
+        }
+        fa::Expr::Lambda(lambda) => {
+            let mut names = HashSet::new();
+            for statement in &lambda.body.statements {
+                names.extend(collect_stmt_names(statement));
             }
             names
         }

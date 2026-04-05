@@ -49,32 +49,32 @@ parameter, stored in a variable, and called. This is the single most
 impactful feature — it unblocks `map`, `filter`, `reduce`, `forEach`,
 `sortedBy`, and every callback-based API across all 5 waves.
 
-- [ ] **0.1.1** Lexer/Parser: parse `fn(T) -> U` and `fn(T, U) -> V` as
+- [x] **0.1.1** Lexer/Parser: parse `fn(T) -> U` and `fn(T, U) -> V` as
       type annotations in parameter positions, variable declarations,
       and return types.
-- [ ] **0.1.2** Lexer/Parser: parse lambda/closure syntax. Choose one of:
+- [x] **0.1.2** Lexer/Parser: parse lambda/closure syntax. Choose one of:
       `fn(x) => expr`, `fn(x, y) => expr`, or `fn(x) { body }`.
       Multi-statement bodies must be supported.
-- [ ] **0.1.3** AST: add `Lambda` expression node with params, optional
+- [x] **0.1.3** AST: add `Lambda` expression node with params, optional
       return type, and body. Add `FnType` to type representation.
-- [ ] **0.1.4** Checker: type-check function parameters with `fn` types.
+- [x] **0.1.4** Checker: type-check function parameters with `fn` types.
       Validate argument count and (where annotated) argument types at
       call sites that pass lambdas.
-- [ ] **0.1.5** Checker: validate that a value of type `fn(T) -> U` can
+- [x] **0.1.5** Checker: validate that a value of type `fn(T) -> U` can
       be called with `value(arg)` syntax, producing type `U`.
-- [ ] **0.1.6** Codegen: emit Cranelift IR for lambda expressions.
+- [x] **0.1.6** Codegen: emit Cranelift IR for lambda expressions.
       Strategy: lift each lambda to a top-level function, pass as
       function pointer. Closures over local variables are not required
       for Wave 1 but document the limitation.
-- [ ] **0.1.7** Codegen: emit indirect call instructions for calling
+- [x] **0.1.7** Codegen: emit indirect call instructions for calling
       values of `fn` type (Cranelift `call_indirect`).
-- [ ] **0.1.8** Test: `tests/fuse/core/types/first_class_fn.fuse` —
+- [x] **0.1.8** Test: `tests/fuse/core/types/first_class_fn.fuse` —
       pass a named function as argument, call it, verify output.
-- [ ] **0.1.9** Test: `tests/fuse/core/types/lambda_basic.fuse` —
+- [x] **0.1.9** Test: `tests/fuse/core/types/lambda_basic.fuse` —
       inline lambda expression passed to a function, verify output.
-- [ ] **0.1.10** Test: `tests/fuse/core/types/lambda_multiline.fuse` —
+- [x] **0.1.10** Test: `tests/fuse/core/types/lambda_multiline.fuse` —
       multi-statement lambda body.
-- [ ] **0.1.11** Test: `tests/fuse/core/types/fn_type_mismatch.fuse` —
+- [x] **0.1.11** Test: `tests/fuse/core/types/fn_type_mismatch.fuse` —
       wrong argument type to fn parameter produces compile error.
 
 ---
