@@ -1,0 +1,91 @@
+// EXPECTED OUTPUT:
+// === cross-module: option + bool ===
+// has value: true
+// flag str: true
+// === cross-module: int + float + math ===
+// abs: 5
+// sqrt: 3.0
+// pi approx: true
+// gcd: 6
+// === cross-module: string + fmt ===
+// trimmed: hello
+// padded: |     hello|
+// hex: ff
+// upper: HELLO WORLD
+// === cross-module: list + string ===
+// words: 3
+// joined: hello-world-fuse
+// sorted: fuse, hello, world
+// any long: true
+// mapped lens: 5, 5, 4
+// === cross-module: result + option chain ===
+// parsed: 42
+// toFloat: 42.0
+// missing: 0
+
+import stdlib.core.result
+import stdlib.core.option
+import stdlib.core.bool
+import stdlib.core.int
+import stdlib.core.float
+import stdlib.core.math
+import stdlib.core.string
+import stdlib.core.fmt
+import stdlib.core.list
+
+@entrypoint
+fn main() {
+  // option + bool: unwrap a Some, convert bool to string
+  println("=== cross-module: option + bool ===")
+  val opt = Some(42)
+  val hasVal = opt.isSome()
+  println(f"has value: {hasVal}")
+  val flag = true
+  println(f"flag str: {flag.toString()}")
+
+  // int + float + math: arithmetic chain across types
+  println("=== cross-module: int + float + math ===")
+  val n = -5
+  println(f"abs: {n.abs()}")
+  val f = 9.0
+  println(f"sqrt: {f.sqrt()}")
+  val piApprox = 3.14.approxEq(3.141592653589793, 0.01)
+  println(f"pi approx: {piApprox}")
+  val g = math.gcd(12, 18)
+  println(f"gcd: {g}")
+
+  // string + fmt: transform and format strings
+  println("=== cross-module: string + fmt ===")
+  val raw = "  hello  "
+  val trimmed = raw.trim()
+  println(f"trimmed: {trimmed}")
+  val padded = fmt.padLeft(trimmed, 10)
+  println(f"padded: |{padded}|")
+  println(f"hex: {fmt.hex(255)}")
+  val upper = "hello world"
+  println(f"upper: {upper.toUpper()}")
+
+  // list + string: split, sort, join, HOF methods
+  println("=== cross-module: list + string ===")
+  val words = "hello world fuse".split(" ")
+  println(f"words: {words.len()}")
+  val joined = words.join("-")
+  println(f"joined: {joined}")
+  val sortedWords = words.sorted().join(", ")
+  println(f"sorted: {sortedWords}")
+  val anyLong = words.any(fn(w: String) -> Bool => w.charCount() > 4)
+  println(f"any long: {anyLong}")
+  val lens = words.map(fn(w: String) -> Int => w.charCount())
+  val lensStr = lens.join(", ")
+  println(f"mapped lens: {lensStr}")
+
+  // result + option chain: parse int, convert, handle missing
+  println("=== cross-module: result + option chain ===")
+  val parsed = "42".toInt()
+  val value = parsed.unwrap()
+  println(f"parsed: {value}")
+  val asFloat = value.toFloat()
+  println(f"toFloat: {asFloat}")
+  val missing = "bad".toInt().unwrapOr(0)
+  println(f"missing: {missing}")
+}

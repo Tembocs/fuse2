@@ -262,6 +262,32 @@ string doesn't contain `.`, `NaN`, or `inf`, append `.0`.
 
 ---
 
+## Wave 1 Summary
+
+Wave 1 (stdlib/core/) implemented 11 modules across 12 phases:
+result, option, bool, int, float, math, fmt, string, list, map, set.
+
+**10 compiler/evaluator bugs** found and fixed during implementation:
+- 2 codegen bugs (#1 extension resolution, #2 match arm termination)
+- 2 spec conformance issues (#3 concrete types, #4 missing panic)
+- 6 evaluator bugs (#5 f-string eval, #6 keywords as members,
+  #7 float display, #8 float arithmetic, #9 float comparison,
+  #10 f-string ASAP names)
+
+**Key evaluator limitation discovered:** The tree-walking evaluator uses
+value semantics (clone on pass). This prevents in-place mutation of
+List and Map values through FFI calls. Workaround: implement
+collection-building HOF methods (map, filter, sorted, etc.) natively
+in the evaluator's ListMethod/MapMethod handlers. This limitation does
+NOT affect the Cranelift compilation path (handle/pointer semantics).
+
+**Key lexer limitation discovered:** Nested double quotes inside f-string
+interpolation braces are not supported (`f"{s.join(",")}"` fails).
+Workaround: assign to a local variable first. This is a lexer limitation
+that should be addressed in a future phase.
+
+---
+
 ## How to Add New Entries
 
 When you fix a compiler bug during stdlib implementation:

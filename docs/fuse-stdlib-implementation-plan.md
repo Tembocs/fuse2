@@ -708,18 +708,32 @@ the inner map is possible. If encapsulation proves necessary later
 including cross-module imports, chained method calls across types, and
 the TODO scan gate.
 
-- [ ] **1.12.1** Write `tests/fuse/stdlib/core/cross_module_test.fuse` —
-      a single program that imports at least 5 core modules and uses
-      them together (e.g., parse an int, format it, add to a list, sort
-      the list, collect into a set). This stress-tests the import
-      resolver and cross-module extension function dispatch.
-- [ ] **1.12.2** Run full existing test suite — no regressions.
-- [ ] **1.12.3** Run `cargo test` on all Stage 1 crates — no regressions.
-- [ ] **1.12.4** Run TODO/FIXME/HACK scan across all `stdlib/core/*.fuse`
-      files. Zero matches required.
-- [ ] **1.12.5** Update `docs/stdlib_implementation_learning.md` with any
-      new compiler bugs found during Wave 1.
-- [ ] **1.12.6** Document any known limitations in this plan.
+- [x] **1.12.1** Write `tests/fuse/stdlib/core/cross_module_test.fuse` —
+      imports 9 core modules (result, option, bool, int, float, math,
+      string, fmt, list) and chains operations across them.
+- [x] **1.12.2** Run full existing test suite — 12 stdlib tests pass,
+      all producing correct output.
+- [x] **1.12.3** Run `cargo test` on all Stage 1 crates — 89 tests
+      pass, 0 failures, 0 regressions.
+- [x] **1.12.4** Run TODO/FIXME/HACK scan across all `stdlib/core/*.fuse`
+      files. Zero matches confirmed.
+- [x] **1.12.5** Update `docs/stdlib_implementation_learning.md` with
+      Wave 1 summary (10 bugs found/fixed, key limitations documented).
+- [x] **1.12.6** Document known limitations (below).
+
+**Known limitations (Wave 1):**
+1. **Evaluator value semantics:** List/Map/Set mutation methods (push,
+   set, add) don't propagate changes in `--run` mode. Collection-
+   building HOF methods (map, filter, sorted, etc.) are implemented
+   natively in the evaluator to work around this. The Cranelift
+   compilation path works correctly with handle semantics.
+2. **Checker static method syntax:** `Type.staticMethod()` calls (e.g.,
+   `Int.parse(...)`, `Float.PI`) are rejected by the checker. Parse
+   functions and constructors use module-level `pub fn` as workaround.
+3. **F-string nested quotes:** Double quotes inside f-string braces
+   terminate the f-string early. Workaround: assign to a variable first.
+4. **Generic data class syntax:** `data class Set<T>(...)` not supported.
+   Type parameter lives in field type annotation only.
 
 ---
 
