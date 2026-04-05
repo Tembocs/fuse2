@@ -803,6 +803,52 @@ pub unsafe extern "C" fn fuse_data_get_field(handle: FuseHandle, index: usize) -
     }
 }
 
+// ---------------------------------------------------------------------------
+// stdlib FFI helpers
+// ---------------------------------------------------------------------------
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_int_to_float(handle: FuseHandle) -> FuseHandle {
+    if let ValueKind::Int(n) = &(*handle).kind {
+        return fuse_float(*n as f64);
+    }
+    fuse_float(0.0)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_int_parse(handle: FuseHandle) -> FuseHandle {
+    if let ValueKind::String(s) = &(*handle).kind {
+        match s.parse::<i64>() {
+            Ok(n) => return fuse_ok(fuse_int(n)),
+            Err(_) => {
+                let msg = format!("int: invalid number: {s}");
+                return fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()));
+            }
+        }
+    }
+    let msg = "int: expected string";
+    fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_len(handle: FuseHandle) -> FuseHandle {
+    if let ValueKind::String(s) = &(*handle).kind {
+        return fuse_int(s.chars().count() as i64);
+    }
+    fuse_int(0)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_char_at(handle: FuseHandle, index: FuseHandle) -> FuseHandle {
+    if let (ValueKind::String(s), ValueKind::Int(i)) = (&(*handle).kind, &(*index).kind) {
+        if let Some(ch) = s.chars().nth(*i as usize) {
+            let ch_str = ch.to_string();
+            return fuse_string_new_utf8(ch_str.as_ptr(), ch_str.len());
+        }
+    }
+    fuse_string_new_utf8(b"".as_ptr(), 0)
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_release(handle: FuseHandle) {
     if handle.is_null() {

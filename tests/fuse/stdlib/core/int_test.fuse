@@ -1,0 +1,132 @@
+// EXPECTED OUTPUT:
+// === abs ===
+// 5
+// 5
+// 0
+// === min / max / clamp ===
+// 3
+// 7
+// 5
+// 0
+// 10
+// === pow ===
+// 1
+// 8
+// 100
+// === gcd / lcm ===
+// 4
+// 24
+// 6
+// === predicates ===
+// even: true
+// odd: true
+// positive: true
+// negative: true
+// zero: true
+// === toFloat ===
+// 42.0
+// === toString ===
+// 42
+// -7
+// === toBits ===
+// 0
+// 101010
+// === toHex ===
+// 0
+// ff
+// 2a
+// === toOctal ===
+// 0
+// 377
+// 52
+// === parse ===
+// Ok(42)
+// Ok(-7)
+// Err(int: invalid number: hello)
+// === parseHex ===
+// Ok(255)
+// Ok(26)
+// === parseBinary ===
+// Ok(42)
+// Ok(7)
+
+import stdlib.core.int
+
+@entrypoint
+fn main() {
+  // abs
+  println("=== abs ===")
+  println((-5).abs())
+  println(5.abs())
+  println(0.abs())
+
+  // min / max / clamp
+  println("=== min / max / clamp ===")
+  println(3.min(7))
+  println(3.max(7))
+  println(7.clamp(0, 5))
+  println((-3).clamp(0, 10))
+  println(10.clamp(0, 10))
+
+  // pow
+  println("=== pow ===")
+  println(2.pow(0))
+  println(2.pow(3))
+  println(10.pow(2))
+
+  // gcd / lcm
+  println("=== gcd / lcm ===")
+  println(12.gcd(8))
+  println(12.lcm(8))
+  println(6.gcd(0))
+
+  // predicates
+  println("=== predicates ===")
+  println(f"even: {4.isEven()}")
+  println(f"odd: {3.isOdd()}")
+  println(f"positive: {1.isPositive()}")
+  println(f"negative: {(-1).isNegative()}")
+  println(f"zero: {0.isZero()}")
+
+  // toFloat
+  println("=== toFloat ===")
+  println(42.toFloat())
+
+  // toString
+  println("=== toString ===")
+  println(42.toString())
+  println((-7).toString())
+
+  // toBits
+  println("=== toBits ===")
+  println(0.toBits())
+  println(42.toBits())
+
+  // toHex
+  println("=== toHex ===")
+  println(0.toHex())
+  println(255.toHex())
+  println(42.toHex())
+
+  // toOctal
+  println("=== toOctal ===")
+  println(0.toOctal())
+  println(255.toOctal())
+  println(42.toOctal())
+
+  // parse (module-level functions)
+  println("=== parse ===")
+  println(int.parse("42"))
+  println(int.parse("-7"))
+  println(int.parse("hello"))
+
+  // parseHex
+  println("=== parseHex ===")
+  println(int.parseHex("ff"))
+  println(int.parseHex("1a"))
+
+  // parseBinary
+  println("=== parseBinary ===")
+  println(int.parseBinary("101010"))
+  println(int.parseBinary("111"))
+}

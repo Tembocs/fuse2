@@ -458,24 +458,34 @@ Extension methods on `Bool`. Pure Fuse.
 
 Extension methods on `Int`.
 
-- [ ] **1.4.1** Create `stdlib/core/int.fuse`.
-- [ ] **1.4.2** Implement `Int.abs`, `Int.min`, `Int.max`, `Int.clamp`.
-- [ ] **1.4.3** Implement `Int.pow(ref self, exp: Int) -> Int`.
-- [ ] **1.4.4** Implement `Int.gcd` (Euclid's algorithm) and `Int.lcm`.
-- [ ] **1.4.5** Implement predicates: `isEven`, `isOdd`, `isPositive`,
+- [x] **1.4.1** Create `stdlib/core/int.fuse`.
+- [x] **1.4.2** Implement `Int.abs`, `Int.min`, `Int.max`, `Int.clamp`.
+- [x] **1.4.3** Implement `Int.pow(ref self, exp: Int) -> Int`.
+- [x] **1.4.4** Implement `Int.gcd` (Euclid's algorithm) and `Int.lcm`.
+- [x] **1.4.5** Implement predicates: `isEven`, `isOdd`, `isPositive`,
       `isNegative`, `isZero`.
-- [ ] **1.4.6** Implement `Int.toFloat(ref self) -> Float` — via FFI
+- [x] **1.4.6** Implement `Int.toFloat(ref self) -> Float` — via FFI
       `fuse_rt_int_to_float`.
-- [ ] **1.4.7** Implement `Int.toString(ref self) -> String` — via f-string.
-- [ ] **1.4.8** Implement `Int.toHex`, `Int.toBits`, `Int.toOctal` — pure
+- [x] **1.4.7** Implement `Int.toString(ref self) -> String` — via f-string.
+- [x] **1.4.8** Implement `Int.toHex`, `Int.toBits`, `Int.toOctal` — pure
       Fuse string-building with `%` and `/` loops.
-- [ ] **1.4.9** Implement `Int.parse(s: String) -> Result<Int, String>` —
-      wraps built-in `parseInt`.
-- [ ] **1.4.10** Implement `Int.parseHex`, `Int.parseBinary` — pure Fuse
-      char-by-char parsing.
-- [ ] **1.4.11** Define `val Int.MIN` and `val Int.MAX` type constants.
-- [ ] **1.4.12** Create `tests/fuse/stdlib/core/int_test.fuse`.
-- [ ] **1.4.13** Run tests. Fix any compiler bugs found.
+- [x] **1.4.9** Implement `int.parse(s: String) -> Result<Int, String>` —
+      FFI-backed via `fuse_rt_int_parse`.
+- [x] **1.4.10** Implement `int.parseHex`, `int.parseBinary` — pure Fuse
+      char-by-char parsing via `fuse_rt_string_len`/`fuse_rt_string_char_at`.
+- [x] **1.4.11** Define `val Int.MIN` and `val Int.MAX` type constants.
+- [x] **1.4.12** Create `tests/fuse/stdlib/core/int_test.fuse`.
+- [x] **1.4.13** Run tests. Fix any compiler bugs found.
+
+**Notes:**
+- Parse functions (`parse`, `parseHex`, `parseBinary`) are exported as
+  module-level `pub fn` rather than `Int.parse(...)` because the checker
+  does not yet support `Type.staticMethod()` call syntax. When the
+  checker is updated, these can be promoted to `Int.parse` etc.
+- Added 4 FFI functions to fuse-runtime: `fuse_rt_int_to_float`,
+  `fuse_rt_int_parse`, `fuse_rt_string_len`, `fuse_rt_string_char_at`.
+- Added evaluator handlers for all 4 FFI functions so `--run` mode works.
+- Fixed evaluator float display: whole-number floats now show `.0` suffix.
 
 ---
 
@@ -1154,6 +1164,7 @@ fix commits. Full details including root cause analysis are in
 | 4 | 1.1 | `Result.unwrap()` returned `0` on Err instead of panicking. No panic mechanism existed. Fixed with never-type helper `resultPanic(msg) -> !`. | `Err("x").unwrap()` returned 0 | Retroactive fix |
 | 5 | 1.2 | Evaluator f-string interpolation used hand-rolled string splitting that only supported `name.field` access. Method calls like `{s.isSome()}` silently returned the receiver value instead of the call result. | `val s = Some(42); println(f"{s.isSome()}")` → `42` instead of `true` | See Phase 1.2 commit |
 | 6 | 1.3 | Parser rejected keywords as member/method names after `.`. `t.not()` failed because `not` is a keyword (`TokenKind::Not`). The parser used `expect(Identifier)` which rejects keyword tokens. | `val t = true; t.not()` → parse error | See Phase 1.3 commit |
+| 7 | 1.4 | Evaluator displayed whole-number floats without `.0` suffix. `42.toFloat()` printed `42` instead of `42.0`. Rust's `f64::to_string()` drops the decimal for whole numbers. | `println(42.toFloat())` → `42` | See Phase 1.4 commit |
 
 ---
 

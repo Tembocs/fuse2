@@ -602,7 +602,10 @@ impl Evaluator {
     fn stringify(&self, value: &Value) -> String {
         match value {
             Value::Int(value) => value.to_string(),
-            Value::Float(value) => value.to_string(),
+            Value::Float(value) => {
+                let s = value.to_string();
+                if s.contains('.') || s.contains("NaN") || s.contains("inf") { s } else { format!("{s}.0") }
+            }
             Value::Bool(value) => {
                 if *value { "true".to_string() } else { "false".to_string() }
             }
@@ -701,6 +704,41 @@ impl Evaluator {
         args: Vec<Value>,
         caller_env: Option<Environment>,
     ) -> Result<Value, RuntimeError> {
+        // Handle known FFI functions in the evaluator (before args are moved).
+        if function.body.statements.is_empty() {
+            match function.name.as_str() {
+                "fuse_rt_int_to_float" => {
+                    if let Some(Value::Int(n)) = args.first() {
+                        return Ok(Value::Float(*n as f64));
+                    }
+                    return Ok(Value::Float(0.0));
+                }
+                "fuse_rt_int_parse" => {
+                    if let Some(Value::String(s)) = args.first() {
+                        return match s.parse::<i64>() {
+                            Ok(n) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Int(n)) }),
+                            Err(_) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("int: invalid number: {s}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("int: expected string".to_string())) });
+                }
+                "fuse_rt_string_len" => {
+                    if let Some(Value::String(s)) = args.first() {
+                        return Ok(Value::Int(s.chars().count() as i64));
+                    }
+                    return Ok(Value::Int(0));
+                }
+                "fuse_rt_string_char_at" => {
+                    if let (Some(Value::String(s)), Some(Value::Int(i))) = (args.first(), args.get(1)) {
+                        if let Some(ch) = s.chars().nth(*i as usize) {
+                            return Ok(Value::String(ch.to_string()));
+                        }
+                    }
+                    return Ok(Value::String(String::new()));
+                }
+                _ => {}
+            }
+        }
         let module = self.load_module(module_path)?;
         let base = caller_env.unwrap_or(self.module_env(&module)?);
         let env = Environment::new(Some(base));

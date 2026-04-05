@@ -218,6 +218,33 @@ most languages.
 
 ---
 
+### Bug #7 — Evaluator displays whole-number floats without `.0` (Wave 1, Phase 1.4)
+
+**Symptom:** `42.toFloat()` printed `42` instead of `42.0`. Float values
+that happen to be whole numbers were indistinguishable from integers.
+
+**Minimal reproduction:**
+```fuse
+@entrypoint
+fn main() {
+  println(42.toFloat())
+  // Expected: 42.0
+  // Actual:   42
+}
+```
+
+**Root cause:** The evaluator's `stringify` function used Rust's
+`f64::to_string()` which produces `"42"` for `42.0_f64` (no decimal
+point for whole numbers). This is standard Rust Display behavior but
+violates Fuse's expectation that floats always show a decimal point.
+
+**Category:** Evaluator — float display
+
+**Fix:** Added a post-check in `stringify` for Float values: if the
+string doesn't contain `.`, `NaN`, or `inf`, append `.0`.
+
+---
+
 ## Pattern Analysis
 
 | Category | Count | Notes |
@@ -228,6 +255,7 @@ most languages.
 | Missing language primitive | 1 | Never type is the panic building block |
 | Evaluator — f-string evaluation | 1 | Hand-rolled expression parsers silently drop unsupported syntax |
 | Parser — keyword ambiguity | 1 | Keywords must be allowed as member/method names after `.` |
+| Evaluator — float display | 1 | Rust's f64 Display drops `.0` for whole numbers |
 
 ---
 

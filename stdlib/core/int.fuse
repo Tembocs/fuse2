@@ -1,0 +1,247 @@
+// Fuse Core stdlib — Int extension methods.
+//
+// The Int type is built into the language. This module provides
+// arithmetic helpers, predicates, conversions, and parsing.
+//
+// import stdlib.core.int
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_int_to_float(value: Int) -> Float
+extern fn fuse_rt_int_parse(s: String) -> Result<Int, String>
+extern fn fuse_rt_string_len(s: String) -> Int
+extern fn fuse_rt_string_char_at(s: String, index: Int) -> String
+
+// --- Type constants ---
+
+val Int.MIN: Int = -9223372036854775807 - 1
+val Int.MAX: Int = 9223372036854775807
+
+// --- Arithmetic helpers ---
+
+// Absolute value.
+pub fn Int.abs(ref self) -> Int {
+  if self < 0 { 0 - self } else { self }
+}
+
+// Minimum of self and other.
+pub fn Int.min(ref self, other: Int) -> Int {
+  if self < other { self } else { other }
+}
+
+// Maximum of self and other.
+pub fn Int.max(ref self, other: Int) -> Int {
+  if self > other { self } else { other }
+}
+
+// Clamp self to [low, high].
+pub fn Int.clamp(ref self, low: Int, high: Int) -> Int {
+  if self < low { low }
+  else if self > high { high }
+  else { self }
+}
+
+// Raise self to the power exp (exp must be >= 0).
+pub fn Int.pow(ref self, exp: Int) -> Int {
+  if exp == 0 { return 1 }
+  var result = 1
+  var i = 0
+  while i < exp {
+    result = result * self
+    i = i + 1
+  }
+  result
+}
+
+// Greatest common divisor (Euclid's algorithm).
+pub fn Int.gcd(ref self, other: Int) -> Int {
+  var a = self.abs()
+  var b = other.abs()
+  while b > 0 {
+    val t = b
+    b = a % b
+    a = t
+  }
+  a
+}
+
+// Least common multiple.
+pub fn Int.lcm(ref self, other: Int) -> Int {
+  val d = self.gcd(other)
+  if d == 0 { return 0 }
+  val product = self * other
+  val magnitude = product.abs()
+  magnitude / d
+}
+
+// --- Predicates ---
+
+pub fn Int.isEven(ref self) -> Bool {
+  self % 2 == 0
+}
+
+pub fn Int.isOdd(ref self) -> Bool {
+  self % 2 != 0
+}
+
+pub fn Int.isPositive(ref self) -> Bool {
+  self > 0
+}
+
+pub fn Int.isNegative(ref self) -> Bool {
+  self < 0
+}
+
+pub fn Int.isZero(ref self) -> Bool {
+  self == 0
+}
+
+// --- Conversion ---
+
+// Convert to Float.
+pub fn Int.toFloat(ref self) -> Float {
+  fuse_rt_int_to_float(self)
+}
+
+// String representation.
+pub fn Int.toString(ref self) -> String {
+  f"{self}"
+}
+
+// Binary string (e.g., 42 -> "101010").
+pub fn Int.toBits(ref self) -> String {
+  if self == 0 { return "0" }
+  var n = self.abs()
+  var result = ""
+  while n > 0 {
+    val d = n % 2
+    result = f"{d}{result}"
+    n = n / 2
+  }
+  if self < 0 { f"-{result}" } else { result }
+}
+
+// Lowercase hex string (e.g., 255 -> "ff").
+pub fn Int.toHex(ref self) -> String {
+  if self == 0 { return "0" }
+  var n = self.abs()
+  var result = ""
+  while n > 0 {
+    val d = n % 16
+    val ch = hexDigit(d)
+    result = f"{ch}{result}"
+    n = n / 16
+  }
+  if self < 0 { f"-{result}" } else { result }
+}
+
+// Octal string (e.g., 255 -> "377").
+pub fn Int.toOctal(ref self) -> String {
+  if self == 0 { return "0" }
+  var n = self.abs()
+  var result = ""
+  while n > 0 {
+    val d = n % 8
+    result = f"{d}{result}"
+    n = n / 8
+  }
+  if self < 0 { f"-{result}" } else { result }
+}
+
+// --- Parsing ---
+// Note: These are module-level functions (not Int.method) because the
+// checker does not yet support Type.staticMethod() call syntax.
+// When the checker is updated, these can be changed to Int.parse etc.
+
+// Parse a decimal integer string.
+pub fn parse(s: String) -> Result<Int, String> {
+  fuse_rt_int_parse(s)
+}
+
+// Parse a hexadecimal string (without "0x" prefix).
+pub fn parseHex(s: String) -> Result<Int, String> {
+  val len = fuse_rt_string_len(s)
+  if len == 0 { return Err("int: empty hex string") }
+  var result = 0
+  var i = 0
+  while i < len {
+    val ch = fuse_rt_string_char_at(s, i)
+    val d = hexCharToInt(ch)
+    if d < 0 { return Err(f"int: invalid hex digit: {ch}") }
+    result = result * 16 + d
+    i = i + 1
+  }
+  Ok(result)
+}
+
+// Parse a binary string (without "0b" prefix).
+pub fn parseBinary(s: String) -> Result<Int, String> {
+  val len = fuse_rt_string_len(s)
+  if len == 0 { return Err("int: empty binary string") }
+  var result = 0
+  var i = 0
+  while i < len {
+    val ch = fuse_rt_string_char_at(s, i)
+    if ch == "1" {
+      result = result * 2 + 1
+    } else if ch == "0" {
+      result = result * 2
+    } else {
+      return Err(f"int: invalid binary digit: {ch}")
+    }
+    i = i + 1
+  }
+  Ok(result)
+}
+
+// --- Internal helpers ---
+
+fn hexDigit(d: Int) -> String {
+  when {
+    d == 0 => "0"
+    d == 1 => "1"
+    d == 2 => "2"
+    d == 3 => "3"
+    d == 4 => "4"
+    d == 5 => "5"
+    d == 6 => "6"
+    d == 7 => "7"
+    d == 8 => "8"
+    d == 9 => "9"
+    d == 10 => "a"
+    d == 11 => "b"
+    d == 12 => "c"
+    d == 13 => "d"
+    d == 14 => "e"
+    d == 15 => "f"
+    else => "?"
+  }
+}
+
+fn hexCharToInt(ch: String) -> Int {
+  when {
+    ch == "0" => 0
+    ch == "1" => 1
+    ch == "2" => 2
+    ch == "3" => 3
+    ch == "4" => 4
+    ch == "5" => 5
+    ch == "6" => 6
+    ch == "7" => 7
+    ch == "8" => 8
+    ch == "9" => 9
+    ch == "a" => 10
+    ch == "b" => 11
+    ch == "c" => 12
+    ch == "d" => 13
+    ch == "e" => 14
+    ch == "f" => 15
+    ch == "A" => 10
+    ch == "B" => 11
+    ch == "C" => 12
+    ch == "D" => 13
+    ch == "E" => 14
+    ch == "F" => 15
+    else => -1
+  }
+}
