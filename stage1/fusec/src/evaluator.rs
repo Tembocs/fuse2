@@ -131,6 +131,7 @@ enum NativeFunction {
     StringToUpper(Box<Value>),
     StringIsEmpty(Box<Value>),
     MapMethod { receiver: Box<Value>, method: String },
+    ListMethod { receiver: Box<Value>, method: String },
 }
 
 #[derive(Clone)]
@@ -762,6 +763,20 @@ impl Evaluator {
                     let d = match args.get(1) { Some(Value::Int(n)) => *n as usize, _ => 2 };
                     return Ok(Value::String(format!("{v:.prec$}", prec = d)));
                 }
+                "fuse_rt_float_to_string_scientific" => {
+                    let v = Self::extract_float(args.first());
+                    let d = match args.get(1) { Some(Value::Int(n)) => *n as usize, _ => 2 };
+                    return Ok(Value::String(format!("{v:.prec$e}", prec = d)));
+                }
+                "fuse_rt_string_slice" => {
+                    if let Some(Value::String(s)) = args.first() {
+                        let start = match args.get(1) { Some(Value::Int(n)) => *n as usize, _ => 0 };
+                        let end = match args.get(2) { Some(Value::Int(n)) => *n as usize, _ => s.len() };
+                        let result: String = s.chars().skip(start).take(end.saturating_sub(start)).collect();
+                        return Ok(Value::String(result));
+                    }
+                    return Ok(Value::String(String::new()));
+                }
                 "fuse_rt_math_sin" => return Ok(Value::Float(Self::extract_float(args.first()).sin())),
                 "fuse_rt_math_cos" => return Ok(Value::Float(Self::extract_float(args.first()).cos())),
                 "fuse_rt_math_tan" => return Ok(Value::Float(Self::extract_float(args.first()).tan())),
@@ -1250,6 +1265,10 @@ impl Evaluator {
                         return Ok(item.clone());
                     }
                 }
+                return Ok(Value::NativeFunction(Rc::new(NativeFunction::ListMethod {
+                    receiver: Box::new(Value::List(items)),
+                    method: name.to_string(),
+                })));
             }
             Value::Map(_) => {
                 return Ok(Value::NativeFunction(Rc::new(NativeFunction::MapMethod {
@@ -1397,6 +1416,26 @@ impl Evaluator {
                             format!("unsupported Map method `{other}`"),
                             "<eval>", 0, 0,
                         )),
+                    }
+                }
+                NativeFunction::ListMethod { receiver, method } => {
+                    if let Value::List(items) = receiver.as_ref() {
+                        match method.as_str() {
+                            "len" => Ok(Value::Int(items.len() as i64)),
+                            "get" => {
+                                if let Some(Value::Int(i)) = args.first() {
+                                    Ok(items.get(*i as usize).cloned().unwrap_or(Value::Unit))
+                                } else {
+                                    Ok(Value::Unit)
+                                }
+                            }
+                            other => Err(runtime_error(
+                                format!("unsupported List method `{other}`"),
+                                "<eval>", 0, 0,
+                            )),
+                        }
+                    } else {
+                        Ok(Value::Unit)
                     }
                 }
             },

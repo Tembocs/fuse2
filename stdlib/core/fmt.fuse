@@ -1,0 +1,351 @@
+// Fuse Core stdlib — fmt module.
+//
+// String formatting utilities beyond f-string interpolation.
+// All functions are pure — no side effects.
+//
+// import stdlib.core.fmt
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_float_to_string_fixed(value: Float, decimals: Int) -> String
+extern fn fuse_rt_float_to_string_scientific(value: Float, decimals: Int) -> String
+extern fn fuse_rt_string_len(s: String) -> Int
+extern fn fuse_rt_string_char_at(s: String, index: Int) -> String
+extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
+
+// --- Number formatting ---
+
+// Fixed decimal places (e.g., decimal(3.14159, 2) = "3.14").
+pub fn decimal(n: Float, places: Int) -> String {
+  fuse_rt_float_to_string_fixed(n, places)
+}
+
+// Scientific notation (e.g., scientific(12345.0, 2) = "1.23e4").
+pub fn scientific(n: Float, places: Int) -> String {
+  fuse_rt_float_to_string_scientific(n, places)
+}
+
+// Percentage (e.g., percent(0.986, 1) = "98.6%").
+pub fn percent(n: Float, places: Int) -> String {
+  val pct = n * 100.0
+  val s = fuse_rt_float_to_string_fixed(pct, places)
+  f"{s}%"
+}
+
+// Integer with thousands separators (e.g., thousands(1234567) = "1,234,567").
+pub fn thousands(n: Int) -> String {
+  val negative = n < 0
+  var num = n
+  if negative { num = 0 - n }
+  val digits = f"{num}"
+  val len = fuse_rt_string_len(digits)
+  var result = ""
+  var i = 0
+  while i < len {
+    if i > 0 {
+      val remaining = len - i
+      if remaining % 3 == 0 {
+        result = f"{result},"
+      }
+    }
+    val ch = fuse_rt_string_char_at(digits, i)
+    result = f"{result}{ch}"
+    i = i + 1
+  }
+  if negative { f"-{result}" } else { result }
+}
+
+// Float with thousands separators and fixed decimals.
+pub fn thousandsFloat(n: Float, places: Int) -> String {
+  val negative = n < 0.0
+  var num = n
+  if negative { num = 0.0 - n }
+  // Use the full fixed-point string and split at the dot to avoid rounding the integer part.
+  val decPart = fuse_rt_float_to_string_fixed(num, places)
+  // Find the dot in decPart and split into integer + fractional parts
+  val decLen = fuse_rt_string_len(decPart)
+  var dotPos = decLen
+  var di = 0
+  while di < decLen {
+    if fuse_rt_string_char_at(decPart, di) == "." {
+      dotPos = di
+    }
+    di = di + 1
+  }
+  val fracStr = fuse_rt_string_slice(decPart, dotPos, decLen)
+  val intPart = fuse_rt_string_slice(decPart, 0, dotPos)
+  // Format the integer part with commas
+  val intLen = fuse_rt_string_len(intPart)
+  var result = ""
+  var i = 0
+  while i < intLen {
+    if i > 0 {
+      val remaining = intLen - i
+      if remaining % 3 == 0 {
+        result = f"{result},"
+      }
+    }
+    val ch = fuse_rt_string_char_at(intPart, i)
+    result = f"{result}{ch}"
+    i = i + 1
+  }
+  val formatted = f"{result}{fracStr}"
+  if negative { f"-{formatted}" } else { formatted }
+}
+
+// Lowercase hex without prefix (e.g., hex(255) = "ff").
+pub fn hex(n: Int) -> String {
+  if n == 0 { return "0" }
+  val negative = n < 0
+  var num = n
+  if negative { num = 0 - n }
+  var result = ""
+  while num > 0 {
+    val d = num % 16
+    val ch = hexDigitLower(d)
+    result = f"{ch}{result}"
+    num = num / 16
+  }
+  if negative { f"-{result}" } else { result }
+}
+
+// Uppercase hex without prefix.
+pub fn hexUpper(n: Int) -> String {
+  if n == 0 { return "0" }
+  val negative = n < 0
+  var num = n
+  if negative { num = 0 - n }
+  var result = ""
+  while num > 0 {
+    val d = num % 16
+    val ch = hexDigitUpper(d)
+    result = f"{ch}{result}"
+    num = num / 16
+  }
+  if negative { f"-{result}" } else { result }
+}
+
+// Binary without prefix (e.g., binary(42) = "101010").
+pub fn binary(n: Int) -> String {
+  if n == 0 { return "0" }
+  val negative = n < 0
+  var num = n
+  if negative { num = 0 - n }
+  var result = ""
+  while num > 0 {
+    val d = num % 2
+    result = f"{d}{result}"
+    num = num / 2
+  }
+  if negative { f"-{result}" } else { result }
+}
+
+// Octal without prefix (e.g., octal(255) = "377").
+pub fn octal(n: Int) -> String {
+  if n == 0 { return "0" }
+  val negative = n < 0
+  var num = n
+  if negative { num = 0 - n }
+  var result = ""
+  while num > 0 {
+    val d = num % 8
+    result = f"{d}{result}"
+    num = num / 8
+  }
+  if negative { f"-{result}" } else { result }
+}
+
+// --- String alignment and padding ---
+
+// Pad on the left with spaces to reach width.
+pub fn padLeft(s: String, width: Int) -> String {
+  val len = fuse_rt_string_len(s)
+  if len >= width { return s }
+  var pad = ""
+  var i = 0
+  val needed = width - len
+  while i < needed {
+    pad = f"{pad} "
+    i = i + 1
+  }
+  f"{pad}{s}"
+}
+
+// Pad on the right with spaces to reach width.
+pub fn padRight(s: String, width: Int) -> String {
+  val len = fuse_rt_string_len(s)
+  if len >= width { return s }
+  var pad = ""
+  var i = 0
+  val needed = width - len
+  while i < needed {
+    pad = f"{pad} "
+    i = i + 1
+  }
+  f"{s}{pad}"
+}
+
+// Center within width, padding both sides with spaces.
+pub fn padCenter(s: String, width: Int) -> String {
+  val len = fuse_rt_string_len(s)
+  if len >= width { return s }
+  val total = width - len
+  val leftPad = total / 2
+  val rightPad = total - leftPad
+  var left = ""
+  var i = 0
+  while i < leftPad {
+    left = f"{left} "
+    i = i + 1
+  }
+  var right = ""
+  i = 0
+  while i < rightPad {
+    right = f"{right} "
+    i = i + 1
+  }
+  f"{left}{s}{right}"
+}
+
+// Pad on the left with a custom character.
+pub fn padLeftWith(s: String, width: Int, ch: String) -> String {
+  val len = fuse_rt_string_len(s)
+  if len >= width { return s }
+  var pad = ""
+  var i = 0
+  val needed = width - len
+  while i < needed {
+    pad = f"{pad}{ch}"
+    i = i + 1
+  }
+  f"{pad}{s}"
+}
+
+// Pad on the right with a custom character.
+pub fn padRightWith(s: String, width: Int, ch: String) -> String {
+  val len = fuse_rt_string_len(s)
+  if len >= width { return s }
+  var pad = ""
+  var i = 0
+  val needed = width - len
+  while i < needed {
+    pad = f"{pad}{ch}"
+    i = i + 1
+  }
+  f"{s}{pad}"
+}
+
+// Truncate to maxLen characters (no ellipsis).
+pub fn truncate(s: String, maxLen: Int) -> String {
+  val len = fuse_rt_string_len(s)
+  if len <= maxLen { return s }
+  fuse_rt_string_slice(s, 0, maxLen)
+}
+
+// Truncate and append "..." (total length = maxLen).
+pub fn truncateEllipsis(s: String, maxLen: Int) -> String {
+  val len = fuse_rt_string_len(s)
+  if len <= maxLen { return s }
+  if maxLen <= 3 { return fuse_rt_string_slice("...", 0, maxLen) }
+  val prefix = fuse_rt_string_slice(s, 0, maxLen - 3)
+  f"{prefix}..."
+}
+
+// --- Repetition ---
+
+// Repeat a character n times.
+pub fn repeatChar(ch: String, n: Int) -> String {
+  var result = ""
+  var i = 0
+  while i < n {
+    result = f"{result}{ch}"
+    i = i + 1
+  }
+  result
+}
+
+// Horizontal ruler of dashes.
+pub fn ruler(width: Int) -> String {
+  repeatChar("-", width)
+}
+
+// --- Table formatting ---
+
+// Format rows into fixed-width columns.
+// Each row is a List<String>, widths is a List<Int>.
+// Columns are space-separated and right-padded.
+pub fn columns(rows: List<List<String>>, widths: List<Int>) -> String {
+  var result = ""
+  var rowIdx = 0
+  val rowCount = rows.len()
+  while rowIdx < rowCount {
+    val row = rows.get(rowIdx)
+    var line = ""
+    var colIdx = 0
+    val colCount = widths.len()
+    while colIdx < colCount {
+      val cell = row.get(colIdx)
+      val w = widths.get(colIdx)
+      val padded = padRight(cell, w)
+      if colIdx > 0 {
+        line = f"{line} {padded}"
+      } else {
+        line = padded
+      }
+      colIdx = colIdx + 1
+    }
+    if rowIdx > 0 {
+      result = f"{result}\n{line}"
+    } else {
+      result = line
+    }
+    rowIdx = rowIdx + 1
+  }
+  result
+}
+
+// --- Internal helpers ---
+
+fn hexDigitLower(d: Int) -> String {
+  when {
+    d == 0 => "0"
+    d == 1 => "1"
+    d == 2 => "2"
+    d == 3 => "3"
+    d == 4 => "4"
+    d == 5 => "5"
+    d == 6 => "6"
+    d == 7 => "7"
+    d == 8 => "8"
+    d == 9 => "9"
+    d == 10 => "a"
+    d == 11 => "b"
+    d == 12 => "c"
+    d == 13 => "d"
+    d == 14 => "e"
+    d == 15 => "f"
+    else => "?"
+  }
+}
+
+fn hexDigitUpper(d: Int) -> String {
+  when {
+    d == 0 => "0"
+    d == 1 => "1"
+    d == 2 => "2"
+    d == 3 => "3"
+    d == 4 => "4"
+    d == 5 => "5"
+    d == 6 => "6"
+    d == 7 => "7"
+    d == 8 => "8"
+    d == 9 => "9"
+    d == 10 => "A"
+    d == 11 => "B"
+    d == 12 => "C"
+    d == 13 => "D"
+    d == 14 => "E"
+    d == 15 => "F"
+    else => "?"
+  }
+}

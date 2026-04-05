@@ -893,6 +893,27 @@ pub unsafe extern "C" fn fuse_rt_float_parse(h: FuseHandle) -> FuseHandle {
     let msg = "float: expected string";
     fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()))
 }
+// --- Fmt FFI helpers ---
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_float_to_string_scientific(h: FuseHandle, decimals: FuseHandle) -> FuseHandle {
+    let v = extract_float(h);
+    let d = match &(*decimals).kind { ValueKind::Int(n) => *n as usize, _ => 2 };
+    let s = format!("{v:.prec$e}", prec = d);
+    fuse_string_new_utf8(s.as_ptr(), s.len())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_slice(h: FuseHandle, start: FuseHandle, end: FuseHandle) -> FuseHandle {
+    if let ValueKind::String(s) = &(*h).kind {
+        let s_start = match &(*start).kind { ValueKind::Int(n) => *n as usize, _ => 0 };
+        let s_end = match &(*end).kind { ValueKind::Int(n) => *n as usize, _ => s.len() };
+        let result: String = s.chars().skip(s_start).take(s_end.saturating_sub(s_start)).collect();
+        return fuse_string_new_utf8(result.as_ptr(), result.len());
+    }
+    fuse_string_new_utf8(b"".as_ptr(), 0)
+}
+
 // --- Math FFI helpers ---
 
 #[unsafe(no_mangle)]

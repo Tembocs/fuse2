@@ -554,18 +554,25 @@ Free mathematical functions.
 
 String formatting utilities. Pure Fuse.
 
-- [ ] **1.7.1** Create `stdlib/core/fmt.fuse`.
-- [ ] **1.7.2** Implement number formatting: `fmt.hex`, `fmt.hexUpper`,
+- [x] **1.7.1** Create `stdlib/core/fmt.fuse`.
+- [x] **1.7.2** Implement number formatting: `fmt.hex`, `fmt.hexUpper`,
       `fmt.binary`, `fmt.octal`, `fmt.thousands`.
-- [ ] **1.7.3** Implement `fmt.decimal`, `fmt.percent`,
+- [x] **1.7.3** Implement `fmt.decimal`, `fmt.percent`,
       `fmt.thousandsFloat`, `fmt.scientific`.
-- [ ] **1.7.4** Implement string alignment: `fmt.padLeft`, `fmt.padRight`,
+- [x] **1.7.4** Implement string alignment: `fmt.padLeft`, `fmt.padRight`,
       `fmt.padCenter`, `fmt.padLeftWith`, `fmt.padRightWith`.
-- [ ] **1.7.5** Implement `fmt.truncate`, `fmt.truncateEllipsis`.
-- [ ] **1.7.6** Implement `fmt.repeatChar`, `fmt.ruler`.
-- [ ] **1.7.7** Implement `fmt.columns`.
-- [ ] **1.7.8** Create `tests/fuse/stdlib/core/fmt_test.fuse`.
-- [ ] **1.7.9** Run tests. Fix any compiler bugs found.
+- [x] **1.7.5** Implement `fmt.truncate`, `fmt.truncateEllipsis`.
+- [x] **1.7.6** Implement `fmt.repeatChar`, `fmt.ruler`.
+- [x] **1.7.7** Implement `fmt.columns`.
+- [x] **1.7.8** Create `tests/fuse/stdlib/core/fmt_test.fuse`.
+- [x] **1.7.9** Run tests. Fix any compiler bugs found.
+
+**Notes:**
+- Added 2 FFI functions: `fuse_rt_float_to_string_scientific`,
+  `fuse_rt_string_slice` (substring extraction).
+- Added `ListMethod` native function variant to evaluator so
+  `List.len()` and `List.get()` work in `--run` mode (needed by
+  `fmt.columns`).
 
 ---
 

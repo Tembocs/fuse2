@@ -1,0 +1,74 @@
+// EXPECTED OUTPUT:
+// === number formatting ===
+// 3.14
+// 1.23e4
+// 98.6%
+// 1,234,567
+// 1,234.56
+// === hex / binary / octal ===
+// ff
+// FF
+// 101010
+// 377
+// === padding ===
+// |        hi|
+// |hi        |
+// |    hi    |
+// |0000042|
+// === truncate ===
+// hello
+// hello...
+// ...
+// === repeat / ruler ===
+// =====
+// ----------
+// === columns ===
+// Name  Age
+// Alice 30
+
+import stdlib.core.fmt
+
+@entrypoint
+fn main() {
+  // number formatting
+  println("=== number formatting ===")
+  println(fmt.decimal(3.14159, 2))
+  println(fmt.scientific(12300.0, 2))
+  println(fmt.percent(0.986, 1))
+  println(fmt.thousands(1234567))
+  println(fmt.thousandsFloat(1234.56, 2))
+
+  // hex / binary / octal
+  println("=== hex / binary / octal ===")
+  println(fmt.hex(255))
+  println(fmt.hexUpper(255))
+  println(fmt.binary(42))
+  println(fmt.octal(255))
+
+  // padding
+  println("=== padding ===")
+  val hi = "hi"
+  val padL = fmt.padLeft(hi, 10)
+  val padR = fmt.padRight(hi, 10)
+  val padC = fmt.padCenter(hi, 10)
+  val padZ = fmt.padLeftWith("42", 7, "0")
+  println(f"|{padL}|")
+  println(f"|{padR}|")
+  println(f"|{padC}|")
+  println(f"|{padZ}|")
+
+  // truncate
+  println("=== truncate ===")
+  println(fmt.truncate("hello world", 5))
+  println(fmt.truncateEllipsis("hello world", 8))
+  println(fmt.truncateEllipsis("hello", 3))
+
+  // repeat / ruler
+  println("=== repeat / ruler ===")
+  println(fmt.repeatChar("=", 5))
+  println(fmt.ruler(10))
+
+  // columns
+  println("=== columns ===")
+  println(fmt.columns([["Name", "Age"], ["Alice", "30"]], [5, 3]))
+}
