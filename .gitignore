@@ -15,6 +15,19 @@ target/
 .omx/setup-scope.json
 .omx/tmux-hook.json
 
+# Distribution artifacts
+dist/
+
+# Claude Code local settings
+.claude/
+
+# Codex temp directories
+.codex-target*/
+**/.codex-target*/
+
+# Windows reserved-name artifacts
+CON
+
 # OS junk
 Thumbs.db
 .DS_Store
