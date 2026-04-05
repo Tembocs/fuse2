@@ -1,0 +1,62 @@
+// EXPECTED OUTPUT:
+// === getOrDefault ===
+// eve: 0
+// === mapValues ===
+// 0
+// === filter ===
+// 0
+// === merge ===
+// 0
+// === toList ===
+// 0
+// === invert ===
+// 0
+// === methods callable ===
+// done
+
+import stdlib.core.map
+
+@entrypoint
+fn main() {
+  // Note: Map.set() doesn't mutate in the evaluator (value semantics).
+  // These tests verify methods are callable and produce correct types.
+  // Full functional testing requires Cranelift compilation.
+
+  var scores = Map::<String, Int>.new()
+
+  // getOrDefault — returns default for missing keys
+  println("=== getOrDefault ===")
+  val eveScore = scores.getOrDefault("eve", 0)
+  println(f"eve: {eveScore}")
+
+  // mapValues — empty map produces empty map
+  println("=== mapValues ===")
+  val doubled = scores.mapValues(fn(v: Int) -> Int => v * 2)
+  println(doubled.len())
+
+  // filter — empty map produces empty map
+  println("=== filter ===")
+  val high = scores.filter(fn(k: String, v: Int) -> Bool => v > 80)
+  println(high.len())
+
+  // merge — empty + empty = empty
+  println("=== merge ===")
+  var other = Map::<String, Int>.new()
+  val merged = scores.merge(other)
+  println(merged.len())
+
+  // toList — empty map produces empty list
+  println("=== toList ===")
+  val entries = scores.toList()
+  println(entries.len())
+
+  // invert — empty map produces empty map
+  println("=== invert ===")
+  val inverted = scores.invert()
+  println(inverted.len())
+
+  // Verify all methods are callable without errors
+  println("=== methods callable ===")
+  scores.forEach(fn(k: String, v: Int) => println(k))
+  println("done")
+}

@@ -1,0 +1,128 @@
+// Fuse Core stdlib — Map<K, V> extension methods.
+//
+// The Map type is built into the language with core methods (set, get,
+// remove, len, isEmpty, contains, keys, values, entries). This module
+// adds higher-level functional helpers.
+//
+// import stdlib.core.map
+
+// --- FFI declarations ---
+
+extern fn fuse_map_new() -> Map<K, V>
+extern fn fuse_map_set(map: Map<K, V>, key: K, value: V)
+extern fn fuse_map_get(map: Map<K, V>, key: K) -> V
+extern fn fuse_map_len(map: Map<K, V>) -> Int
+extern fn fuse_map_contains(map: Map<K, V>, key: K) -> Bool
+extern fn fuse_map_keys(map: Map<K, V>) -> List<K>
+extern fn fuse_map_values(map: Map<K, V>) -> List<V>
+extern fn fuse_map_entries(map: Map<K, V>) -> List<(K, V)>
+extern fn fuse_list_new() -> List<T>
+extern fn fuse_list_push(list: List<T>, item: T)
+extern fn fuse_rt_list_len(list: List<T>) -> Int
+extern fn fuse_list_get(list: List<T>, index: Int) -> T
+
+// --- Functional helpers ---
+
+// Get value for key, or return default if missing.
+pub fn Map.getOrDefault(ref self, key: K, default: V) -> V {
+  if fuse_map_contains(self, key) {
+    fuse_map_get(self, key)
+  } else {
+    default
+  }
+}
+
+// Get value for key; if missing, insert default and return it.
+pub fn Map.getOrInsert(mutref self, key: K, default: V) -> V {
+  if fuse_map_contains(self, key) {
+    fuse_map_get(self, key)
+  } else {
+    fuse_map_set(self, key, default)
+    default
+  }
+}
+
+// Create a new map with values transformed by f.
+pub fn Map.mapValues(ref self, f: fn(V) -> U) -> Map<K, U> {
+  val result = fuse_map_new()
+  val entries = fuse_map_entries(self)
+  val len = fuse_rt_list_len(entries)
+  var i = 0
+  while i < len {
+    val entry = fuse_list_get(entries, i)
+    val k = fuse_list_get(entry, 0)
+    val v = fuse_list_get(entry, 1)
+    fuse_map_set(result, k, f(v))
+    i = i + 1
+  }
+  result
+}
+
+// Create a new map with only entries matching the predicate.
+pub fn Map.filter(ref self, f: fn(K, V) -> Bool) -> Map<K, V> {
+  val result = fuse_map_new()
+  val entries = fuse_map_entries(self)
+  val len = fuse_rt_list_len(entries)
+  var i = 0
+  while i < len {
+    val entry = fuse_list_get(entries, i)
+    val k = fuse_list_get(entry, 0)
+    val v = fuse_list_get(entry, 1)
+    if f(k, v) { fuse_map_set(result, k, v) }
+    i = i + 1
+  }
+  result
+}
+
+// Merge with another map. Other wins on key conflict.
+pub fn Map.merge(ref self, other: Map<K, V>) -> Map<K, V> {
+  val result = fuse_map_new()
+  val selfEntries = fuse_map_entries(self)
+  val selfLen = fuse_rt_list_len(selfEntries)
+  var i = 0
+  while i < selfLen {
+    val entry = fuse_list_get(selfEntries, i)
+    fuse_map_set(result, fuse_list_get(entry, 0), fuse_list_get(entry, 1))
+    i = i + 1
+  }
+  val otherEntries = fuse_map_entries(other)
+  val otherLen = fuse_rt_list_len(otherEntries)
+  i = 0
+  while i < otherLen {
+    val entry = fuse_list_get(otherEntries, i)
+    fuse_map_set(result, fuse_list_get(entry, 0), fuse_list_get(entry, 1))
+    i = i + 1
+  }
+  result
+}
+
+// Call f for each key-value pair.
+pub fn Map.forEach(ref self, f: fn(K, V)) {
+  val entries = fuse_map_entries(self)
+  val len = fuse_rt_list_len(entries)
+  var i = 0
+  while i < len {
+    val entry = fuse_list_get(entries, i)
+    f(fuse_list_get(entry, 0), fuse_list_get(entry, 1))
+    i = i + 1
+  }
+}
+
+// Convert to list of (key, value) tuples.
+pub fn Map.toList(ref self) -> List<(K, V)> {
+  fuse_map_entries(self)
+}
+
+// Invert: swap keys and values.
+pub fn Map.invert(ref self) -> Map<V, K> {
+  val result = fuse_map_new()
+  val entries = fuse_map_entries(self)
+  val len = fuse_rt_list_len(entries)
+  var i = 0
+  while i < len {
+    val entry = fuse_list_get(entries, i)
+    fuse_map_set(result, fuse_list_get(entry, 1), fuse_list_get(entry, 0))
+    i = i + 1
+  }
+  result
+}

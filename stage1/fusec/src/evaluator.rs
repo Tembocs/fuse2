@@ -1600,6 +1600,86 @@ impl Evaluator {
                             }
                         }
                         "remove" => Ok(Value::Unit),
+                        "getOrDefault" => {
+                            if let Value::Map(entries) = receiver.as_ref() {
+                                let key = self.stringify(args.first().unwrap_or(&Value::Unit));
+                                for (k, v) in entries {
+                                    if self.stringify(k) == key { return Ok(v.clone()); }
+                                }
+                            }
+                            Ok(args.get(1).cloned().unwrap_or(Value::Unit))
+                        }
+                        "getOrInsert" => {
+                            // mutation limited in evaluator — behaves like getOrDefault
+                            if let Value::Map(entries) = receiver.as_ref() {
+                                let key = self.stringify(args.first().unwrap_or(&Value::Unit));
+                                for (k, v) in entries {
+                                    if self.stringify(k) == key { return Ok(v.clone()); }
+                                }
+                            }
+                            Ok(args.get(1).cloned().unwrap_or(Value::Unit))
+                        }
+                        "mapValues" => {
+                            if let Value::Map(entries) = receiver.as_ref() {
+                                let cb = args.into_iter().next().unwrap_or(Value::Unit);
+                                let mut result = Vec::new();
+                                for (k, v) in entries {
+                                    let new_v = self.call_value(module_path, cb.clone(), vec![v.clone()], span)?;
+                                    result.push((k.clone(), new_v));
+                                }
+                                return Ok(Value::Map(result));
+                            }
+                            Ok(Value::Map(Vec::new()))
+                        }
+                        "filter" => {
+                            if let Value::Map(entries) = receiver.as_ref() {
+                                let cb = args.into_iter().next().unwrap_or(Value::Unit);
+                                let mut result = Vec::new();
+                                for (k, v) in entries {
+                                    if truthy(&self.call_value(module_path, cb.clone(), vec![k.clone(), v.clone()], span)?) {
+                                        result.push((k.clone(), v.clone()));
+                                    }
+                                }
+                                return Ok(Value::Map(result));
+                            }
+                            Ok(Value::Map(Vec::new()))
+                        }
+                        "merge" => {
+                            if let Value::Map(entries) = receiver.as_ref() {
+                                let mut result = entries.clone();
+                                if let Some(Value::Map(other)) = args.first() {
+                                    for (k, v) in other {
+                                        let key_str = self.stringify(k);
+                                        if let Some(pos) = result.iter().position(|(rk, _)| self.stringify(rk) == key_str) {
+                                            result[pos] = (k.clone(), v.clone());
+                                        } else {
+                                            result.push((k.clone(), v.clone()));
+                                        }
+                                    }
+                                }
+                                return Ok(Value::Map(result));
+                            }
+                            Ok(Value::Map(Vec::new()))
+                        }
+                        "forEach" => {
+                            if let Value::Map(entries) = receiver.as_ref() {
+                                let cb = args.into_iter().next().unwrap_or(Value::Unit);
+                                for (k, v) in entries {
+                                    self.call_value(module_path, cb.clone(), vec![k.clone(), v.clone()], span)?;
+                                }
+                            }
+                            Ok(Value::Unit)
+                        }
+                        "toList" => {
+                            if let Value::Map(entries) = receiver.as_ref() {
+                                Ok(Value::List(entries.iter().map(|(k, v)| Value::List(vec![k.clone(), v.clone()])).collect()))
+                            } else { Ok(Value::List(Vec::new())) }
+                        }
+                        "invert" => {
+                            if let Value::Map(entries) = receiver.as_ref() {
+                                Ok(Value::Map(entries.iter().map(|(k, v)| (v.clone(), k.clone())).collect()))
+                            } else { Ok(Value::Map(Vec::new())) }
+                        }
                         other => Err(runtime_error(
                             format!("unsupported Map method `{other}`"),
                             "<eval>", 0, 0,

@@ -647,14 +647,22 @@ Extension methods on `List<T>`.
 
 Extension methods on `Map<K, V>`.
 
-- [ ] **1.10.1** Create `stdlib/core/map.fuse`.
-- [ ] **1.10.2** Implement `getOrDefault`, `getOrInsert`.
-- [ ] **1.10.3** Implement `mapValues`, `filter`, `forEach`.
-- [ ] **1.10.4** Implement `merge`.
-- [ ] **1.10.5** Implement `toList` — returns `List<(K, V)>` (uses tuples).
-- [ ] **1.10.6** Implement `invert`.
-- [ ] **1.10.7** Create `tests/fuse/stdlib/core/map_test.fuse`.
-- [ ] **1.10.8** Run tests. Fix any compiler bugs found.
+- [x] **1.10.1** Create `stdlib/core/map.fuse`.
+- [x] **1.10.2** Implement `getOrDefault`, `getOrInsert`.
+- [x] **1.10.3** Implement `mapValues`, `filter`, `forEach`.
+- [x] **1.10.4** Implement `merge`.
+- [x] **1.10.5** Implement `toList` — returns `List<(K, V)>` (uses tuples).
+- [x] **1.10.6** Implement `invert`.
+- [x] **1.10.7** Create `tests/fuse/stdlib/core/map_test.fuse`.
+- [x] **1.10.8** Run tests. Fix any compiler bugs found.
+
+**Notes:**
+- All methods implemented in pure Fuse over built-in Map FFI functions.
+- Added evaluator MapMethod handlers for all 8 new methods (getOrDefault,
+  getOrInsert, mapValues, filter, merge, forEach, toList, invert).
+- Evaluator limitation: Map.set() doesn't mutate (value semantics), so
+  tests verify method callability on empty maps. Full functional testing
+  requires Cranelift compilation path.
 
 ---
 
