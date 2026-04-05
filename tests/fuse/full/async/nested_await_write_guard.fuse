@@ -1,0 +1,13 @@
+// EXPECTED WARNING:
+// warning: write guard held across await
+//   --> nested_await_write_guard.fuse:10:17
+
+@entrypoint
+async fn main() {
+  @rank(1) val cache: Shared<Int> = Shared::<Int>.new(1)
+  val guard = cache.write()
+  if true {
+    val value = await "nested"
+    println(value)
+  }
+}

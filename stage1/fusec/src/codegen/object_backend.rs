@@ -197,6 +197,7 @@ struct RuntimeFns {
     shared_new: FuncId,
     shared_read: FuncId,
     shared_write: FuncId,
+    shared_try_write: FuncId,
     simd_sum: FuncId,
     data_new: FuncId,
     data_set_field: FuncId,
@@ -583,6 +584,7 @@ fn declare_runtime_functions(
         shared_new: declare(module, "fuse_shared_runtime_new", &[pointer_type], &[pointer_type])?,
         shared_read: declare(module, "fuse_shared_runtime_read", &[pointer_type], &[pointer_type])?,
         shared_write: declare(module, "fuse_shared_runtime_write", &[pointer_type], &[pointer_type])?,
+        shared_try_write: declare(module, "fuse_shared_runtime_try_write", &[pointer_type, pointer_type], &[pointer_type])?,
         simd_sum: declare(module, "fuse_simd_runtime_sum", &[pointer_type], &[pointer_type])?,
         data_new: declare(module, "fuse_data_new", &[pointer_type, pointer_type, pointer_type, pointer_type], &[pointer_type])?,
         data_set_field: declare(module, "fuse_data_set_field", &[pointer_type, pointer_type, pointer_type], &[])?,
@@ -1508,10 +1510,14 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 })
             }
             ("SIMD", "sum") => {
+                let (simd_type, lane_count) = parse_simd_params(namespace)?;
+                validate_simd_type(&simd_type)?;
+                validate_simd_lanes(lane_count)?;
                 let list = self.compile_expr(
                     builder,
                     _args.first().ok_or_else(|| "SIMD.sum requires one argument".to_string())?,
                 )?;
+                let return_type = if simd_type.starts_with("Float") { "Float" } else { "Int" };
                 Ok(TypedValue {
                     value: self.runtime(
                         builder,
@@ -1519,7 +1525,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         &[list.value],
                         self.compiler.pointer_type,
                     ),
-                    ty: Some("Int".to_string()),
+                    ty: Some(return_type.to_string()),
                 })
             }
             _ => Err(format!("unsupported type namespace call `{namespace}.{member}`")),
@@ -1610,6 +1616,23 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     ),
                     ty: shared_inner_type(&receiver_type).or(Some("Unit".to_string())),
                 }),
+                "try_write" => {
+                    let timeout = self.compile_expr(
+                        builder,
+                        args.first()
+                            .ok_or_else(|| "Shared.try_write requires a timeout argument".to_string())?,
+                    )?;
+                    let inner = shared_inner_type(&receiver_type).unwrap_or_else(|| "Unit".to_string());
+                    Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.shared_try_write,
+                            &[receiver.value, timeout.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some(format!("Result<{inner}, String>")),
+                    })
+                }
                 other => Err(format!("unsupported Shared member call `{other}`")),
             };
         }
@@ -2430,6 +2453,10 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     if layout::canonical_type_name(&receiver_type) == "Shared" {
                         return match member.name.as_str() {
                             "read" | "write" => shared_inner_type(&receiver_type).or(Some("Unit".to_string())),
+                            "try_write" => {
+                                let inner = shared_inner_type(&receiver_type).unwrap_or_else(|| "Unit".to_string());
+                                Some(format!("Result<{inner}, String>"))
+                            }
                             _ => None,
                         };
                     }
@@ -2630,5 +2657,47 @@ fn collect_expr_names(expr: &fa::Expr) -> HashSet<String> {
             }
             names
         }
+    }
+}
+
+/// Parse `"SIMD::<T,N>"` into `(T, N)`.
+/// Accepts both `"SIMD::<Int>"` (lane count defaults to 4) and `"SIMD::<Float32,8>"`.
+fn parse_simd_params(namespace: &str) -> Result<(String, u64), String> {
+    let Some(start) = namespace.find('<') else {
+        return Err("SIMD requires type parameters: SIMD::<T, N>".to_string());
+    };
+    let Some(end) = namespace.rfind('>') else {
+        return Err("SIMD requires type parameters: SIMD::<T, N>".to_string());
+    };
+    let inner = &namespace[start + 1..end];
+    let parts: Vec<&str> = inner.split(',').map(|s| s.trim()).collect();
+    match parts.len() {
+        1 => Ok((parts[0].to_string(), 4)), // default lane count
+        2 => {
+            let n = parts[1].parse::<u64>().map_err(|_| {
+                format!("SIMD lane count must be an integer, got `{}`", parts[1])
+            })?;
+            Ok((parts[0].to_string(), n))
+        }
+        _ => Err("SIMD expects SIMD::<T, N> with one type and one lane count".to_string()),
+    }
+}
+
+fn validate_simd_type(t: &str) -> Result<(), String> {
+    match t {
+        "Float32" | "Float64" | "Int32" | "Int64" | "Int" | "Float" => Ok(()),
+        _ => Err(format!(
+            "unsupported SIMD element type `{t}` — must be Float32, Float64, Int32, or Int64"
+        )),
+    }
+}
+
+fn validate_simd_lanes(n: u64) -> Result<(), String> {
+    if matches!(n, 2 | 4 | 8 | 16) {
+        Ok(())
+    } else {
+        Err(format!(
+            "unsupported SIMD lane count `{n}` — must be a power of 2 in {{2, 4, 8, 16}}"
+        ))
     }
 }

@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// ok: 42
+
+@entrypoint
+fn main() {
+  @rank(1) val s: Shared<Int> = Shared::<Int>.new(42)
+  val result = s.try_write(100)
+  match result {
+    Ok(v) => println(f"ok: {v}")
+    Err(e) => println(f"err: {e}")
+  }
+}

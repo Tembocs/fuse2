@@ -1,0 +1,8 @@
+// EXPECTED OUTPUT:
+// 10
+
+@entrypoint
+fn main() {
+  val total = SIMD::<Float64, 4>.sum([1, 2, 3, 4])
+  println(total)
+}

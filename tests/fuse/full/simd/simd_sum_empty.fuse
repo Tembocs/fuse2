@@ -1,0 +1,8 @@
+// EXPECTED OUTPUT:
+// 0
+
+@entrypoint
+fn main() {
+  val total = SIMD::<Int32, 4>.sum([])
+  println(total)
+}

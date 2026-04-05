@@ -18,6 +18,7 @@ struct BindingInfo {
     type_name: Option<String>,
     rank: Option<i64>,
     held_rank: Option<i64>,
+    held_rank_is_write: bool,
     moved: bool,
 }
 
@@ -192,6 +193,7 @@ impl Checker {
                     type_name: param.type_name.clone(),
                     rank: None,
                     held_rank: None,
+                    held_rank_is_write: false,
                     moved: false,
                 },
             );
@@ -246,7 +248,9 @@ impl Checker {
                     .clone()
                     .or_else(|| self.infer_expr_type(module, &var_decl.value, scope, owner_name));
                 self.check_expr(module, &var_decl.value, scope, owner_name, loop_depth);
-                let held_rank = self.held_rank_from_expr(scope, &var_decl.value);
+                let held = self.held_rank_from_expr(scope, &var_decl.value);
+                let held_rank = held.map(|(r, _)| r);
+                let held_rank_is_write = held.map_or(false, |(_, w)| w);
                 if let Some(type_name) = ty.as_deref() {
                     if type_name.starts_with("Shared") && var_decl.rank.is_none() {
                         self.add_error(
@@ -279,6 +283,7 @@ impl Checker {
                         type_name: ty,
                         rank: var_decl.rank,
                         held_rank,
+                        held_rank_is_write,
                         moved: false,
                     },
                 );
@@ -310,6 +315,7 @@ impl Checker {
                         type_name: None,
                         rank: None,
                         held_rank: None,
+                        held_rank_is_write: false,
                         moved: false,
                     },
                 );
@@ -650,7 +656,7 @@ impl Checker {
             hir::Expr::MutRef(expr) => self.check_expr(module, &expr.value, scope, owner_name, loop_depth),
             hir::Expr::Await(expr) => {
                 self.check_expr(module, &expr.value, scope, owner_name, loop_depth);
-                if scope.values().any(|binding| binding.held_rank.is_some()) {
+                if scope.values().any(|binding| binding.held_rank.is_some() && binding.held_rank_is_write) {
                     self.diagnostics.push(Diagnostic::warning(
                         "write guard held across await",
                         display_name(&module.path),
@@ -778,24 +784,27 @@ impl Checker {
         }
     }
 
+    /// Returns `(rank, is_write)` for a guard acquisition expression.
     fn held_rank_from_expr(
         &self,
         scope: &HashMap<String, BindingInfo>,
         expr: &hir::Expr,
-    ) -> Option<i64> {
+    ) -> Option<(i64, bool)> {
         let hir::Expr::Call(call) = expr else {
             return None;
         };
         let hir::Expr::Member(member) = call.callee.as_ref() else {
             return None;
         };
-        if !matches!(member.name.as_str(), "read" | "write" | "try_write") {
-            return None;
-        }
+        let is_write = match member.name.as_str() {
+            "read" => false,
+            "write" | "try_write" => true,
+            _ => return None,
+        };
         let hir::Expr::Name(name) = member.object.as_ref() else {
             return None;
         };
-        scope.get(&name.value)?.rank
+        Some((scope.get(&name.value)?.rank?, is_write))
     }
 
     fn resolve_function(&self, name: &str) -> Option<hir::FunctionDecl> {

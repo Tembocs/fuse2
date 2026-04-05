@@ -1,0 +1,10 @@
+// EXPECTED OUTPUT:
+// ok
+
+@entrypoint
+async fn main() {
+  @rank(1) val cache: Shared<Int> = Shared::<Int>.new(1)
+  val guard = cache.read()
+  val value = await "ok"
+  println(value)
+}

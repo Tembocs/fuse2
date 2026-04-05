@@ -511,6 +511,38 @@ pub unsafe extern "C" fn fuse_shared_write(shared: FuseHandle) -> FuseHandle {
     }
 }
 
+/// `try_write(timeout)` is the Tier 3 dynamic escape hatch.
+/// Returns `Ok(inner_handle)` on success, `Err("timeout")` on failure.
+///
+/// In single-threaded Stage 1 the lock is always free, so the positive path
+/// always succeeds.  A timeout of 0 forces the error path so that tests can
+/// exercise `Err` handling without real contention.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_shared_try_write(
+    shared: FuseHandle,
+    timeout: FuseHandle,
+) -> FuseHandle {
+    unsafe {
+        let timeout_val = match &value_ref(timeout).kind {
+            ValueKind::Int(v) => *v,
+            _ => 1, // non-zero default: succeed
+        };
+        if timeout_val == 0 {
+            return fuse_err(fuse_string_new_utf8(
+                b"timeout".as_ptr(),
+                7,
+            ));
+        }
+        match &value_ref(shared).kind {
+            ValueKind::Shared(value) => fuse_ok(*value),
+            _ => fuse_err(fuse_string_new_utf8(
+                b"not a Shared value".as_ptr(),
+                18,
+            )),
+        }
+    }
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_data_new(
     type_name_ptr: *const u8,

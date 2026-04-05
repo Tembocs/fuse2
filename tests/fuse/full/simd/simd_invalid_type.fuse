@@ -1,0 +1,8 @@
+// EXPECTED ERROR:
+// error: unsupported SIMD element type `String` — must be Float32, Float64, Int32, or Int64
+
+@entrypoint
+fn main() {
+  val total = SIMD::<String, 4>.sum(["a", "b"])
+  println(total)
+}

@@ -1,0 +1,13 @@
+// EXPECTED WARNING:
+// warning: write guard held across await
+//   --> multiple_shared_ranks_await.fuse:11:15
+
+@entrypoint
+async fn main() {
+  @rank(1) val config: Shared<Int> = Shared::<Int>.new(1)
+  @rank(2) val metrics: Shared<Int> = Shared::<Int>.new(2)
+  val r = config.read()
+  val w = metrics.write()
+  val value = await "done"
+  println(value)
+}

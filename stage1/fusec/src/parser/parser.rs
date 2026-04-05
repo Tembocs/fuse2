@@ -641,6 +641,7 @@ impl Parser {
                             | TokenKind::Gt
                             | TokenKind::Comma
                             | TokenKind::Identifier
+                            | TokenKind::Int
                     ) {
                         value.push_str(&self.take().text);
                     }

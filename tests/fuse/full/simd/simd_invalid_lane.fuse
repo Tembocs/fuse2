@@ -1,0 +1,8 @@
+// EXPECTED ERROR:
+// error: unsupported SIMD lane count `3` — must be a power of 2 in {2, 4, 8, 16}
+
+@entrypoint
+fn main() {
+  val total = SIMD::<Int32, 3>.sum([1, 2, 3])
+  println(total)
+}
