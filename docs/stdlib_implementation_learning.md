@@ -258,6 +258,7 @@ string doesn't contain `.`, `NaN`, or `inf`, append `.0`.
 | Evaluator — float display | 1 | Rust's f64 Display drops `.0` for whole numbers |
 | Evaluator — float arithmetic | 1 | Float+Float fell through to string concatenation |
 | Evaluator — float comparison | 1 | compare_binary only handled Int, not Float |
+| Evaluator — ASAP name extraction | 1 | F-string `collect_expr_names` missed variables inside call args |
 
 ---
 

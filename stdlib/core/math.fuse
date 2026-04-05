@@ -1,0 +1,169 @@
+// Fuse Core stdlib — math module.
+//
+// Free mathematical functions not attached to a type.
+// All functions are pure — no side effects.
+//
+// import stdlib.core.math
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_math_sin(x: Float) -> Float
+extern fn fuse_rt_math_cos(x: Float) -> Float
+extern fn fuse_rt_math_tan(x: Float) -> Float
+extern fn fuse_rt_math_asin(x: Float) -> Float
+extern fn fuse_rt_math_acos(x: Float) -> Float
+extern fn fuse_rt_math_atan(x: Float) -> Float
+extern fn fuse_rt_math_atan2(y: Float, x: Float) -> Float
+extern fn fuse_rt_math_exp(x: Float) -> Float
+extern fn fuse_rt_math_exp2(x: Float) -> Float
+extern fn fuse_rt_math_ln(x: Float) -> Float
+extern fn fuse_rt_math_log2(x: Float) -> Float
+extern fn fuse_rt_math_log10(x: Float) -> Float
+extern fn fuse_rt_math_cbrt(x: Float) -> Float
+extern fn fuse_rt_math_hypot(x: Float, y: Float) -> Float
+extern fn fuse_rt_float_abs(x: Float) -> Float
+extern fn fuse_rt_float_floor(x: Float) -> Float
+extern fn fuse_rt_float_ceil(x: Float) -> Float
+extern fn fuse_rt_float_round(x: Float) -> Float
+extern fn fuse_rt_float_trunc(x: Float) -> Float
+extern fn fuse_rt_float_sqrt(x: Float) -> Float
+
+// --- Constants ---
+
+val math.PI: Float = 3.141592653589793
+val math.E: Float = 2.718281828459045
+val math.TAU: Float = 6.283185307179586
+val math.SQRT2: Float = 1.4142135623730951
+val math.LN2: Float = 0.6931471805599453
+val math.LN10: Float = 2.302585092994046
+
+// --- Trigonometry ---
+
+pub fn sin(x: Float) -> Float { fuse_rt_math_sin(x) }
+pub fn cos(x: Float) -> Float { fuse_rt_math_cos(x) }
+pub fn tan(x: Float) -> Float { fuse_rt_math_tan(x) }
+pub fn asin(x: Float) -> Float { fuse_rt_math_asin(x) }
+pub fn acos(x: Float) -> Float { fuse_rt_math_acos(x) }
+pub fn atan(x: Float) -> Float { fuse_rt_math_atan(x) }
+pub fn atan2(y: Float, x: Float) -> Float { fuse_rt_math_atan2(y, x) }
+
+// --- Exponential and logarithm ---
+
+pub fn exp(x: Float) -> Float { fuse_rt_math_exp(x) }
+pub fn exp2(x: Float) -> Float { fuse_rt_math_exp2(x) }
+pub fn ln(x: Float) -> Float { fuse_rt_math_ln(x) }
+pub fn log2(x: Float) -> Float { fuse_rt_math_log2(x) }
+pub fn log10(x: Float) -> Float { fuse_rt_math_log10(x) }
+
+// Logarithm with arbitrary base: ln(x) / ln(base).
+pub fn log(x: Float, base: Float) -> Float {
+  fuse_rt_math_ln(x) / fuse_rt_math_ln(base)
+}
+
+// --- Roots and powers ---
+
+pub fn sqrt(x: Float) -> Float { fuse_rt_float_sqrt(x) }
+pub fn cbrt(x: Float) -> Float { fuse_rt_math_cbrt(x) }
+pub fn hypot(x: Float, y: Float) -> Float { fuse_rt_math_hypot(x, y) }
+
+// --- Rounding ---
+
+pub fn floor(x: Float) -> Float { fuse_rt_float_floor(x) }
+pub fn ceil(x: Float) -> Float { fuse_rt_float_ceil(x) }
+pub fn round(x: Float) -> Float { fuse_rt_float_round(x) }
+pub fn trunc(x: Float) -> Float { fuse_rt_float_trunc(x) }
+pub fn abs(x: Float) -> Float { fuse_rt_float_abs(x) }
+
+pub fn absInt(x: Int) -> Int {
+  if x < 0 { 0 - x } else { x }
+}
+
+// --- Min / max / clamp ---
+
+pub fn minFloat(a: Float, b: Float) -> Float {
+  if a < b { a } else { b }
+}
+
+pub fn maxFloat(a: Float, b: Float) -> Float {
+  if a > b { a } else { b }
+}
+
+pub fn minInt(a: Int, b: Int) -> Int {
+  if a < b { a } else { b }
+}
+
+pub fn maxInt(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
+pub fn clampFloat(x: Float, low: Float, high: Float) -> Float {
+  if x < low { low }
+  else if x > high { high }
+  else { x }
+}
+
+pub fn clampInt(x: Int, low: Int, high: Int) -> Int {
+  if x < low { low }
+  else if x > high { high }
+  else { x }
+}
+
+// --- Number theory ---
+
+pub fn gcd(a: Int, b: Int) -> Int {
+  var x = absInt(a)
+  var y = absInt(b)
+  while y > 0 {
+    val t = y
+    y = x % y
+    x = t
+  }
+  x
+}
+
+pub fn lcm(a: Int, b: Int) -> Int {
+  val d = gcd(a, b)
+  if d == 0 { return 0 }
+  val product = a * b
+  absInt(product) / d
+}
+
+pub fn isPrime(n: Int) -> Bool {
+  if n < 2 { return false }
+  if n < 4 { return true }
+  if n % 2 == 0 { return false }
+  if n % 3 == 0 { return false }
+  var i = 5
+  while i * i <= n {
+    if n % i == 0 { return false }
+    if n % (i + 2) == 0 { return false }
+    i = i + 6
+  }
+  true
+}
+
+fn mathPanic(msg: String) -> ! {
+  println(msg)
+}
+
+pub fn factorial(n: Int) -> Int {
+  if n < 0 { mathPanic("math: factorial of negative number") }
+  if n > 20 { mathPanic("math: factorial overflow (n > 20)") }
+  var result = 1
+  var i = 2
+  while i <= n {
+    result = result * i
+    i = i + 1
+  }
+  result
+}
+
+// --- Conversion ---
+
+pub fn degreesToRadians(deg: Float) -> Float {
+  deg * 3.141592653589793 / 180.0
+}
+
+pub fn radiansToDegrees(rad: Float) -> Float {
+  rad * 180.0 / 3.141592653589793
+}

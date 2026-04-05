@@ -527,26 +527,26 @@ Extension methods on `Float`. FFI-backed math operations.
 
 Free mathematical functions.
 
-- [ ] **1.6.1** Create `stdlib/core/math.fuse`.
-- [ ] **1.6.2** Add FFI functions to runtime: `fuse_rt_math_sin`,
+- [x] **1.6.1** Create `stdlib/core/math.fuse`.
+- [x] **1.6.2** Add FFI functions to runtime: `fuse_rt_math_sin`,
       `fuse_rt_math_cos`, `fuse_rt_math_tan`, `fuse_rt_math_asin`,
       `fuse_rt_math_acos`, `fuse_rt_math_atan`, `fuse_rt_math_atan2`,
       `fuse_rt_math_exp`, `fuse_rt_math_exp2`, `fuse_rt_math_ln`,
       `fuse_rt_math_log2`, `fuse_rt_math_log10`, `fuse_rt_math_cbrt`,
       `fuse_rt_math_hypot`.
-- [ ] **1.6.3** Implement trig functions: `sin`, `cos`, `tan`, `asin`,
+- [x] **1.6.3** Implement trig functions: `sin`, `cos`, `tan`, `asin`,
       `acos`, `atan`, `atan2`.
-- [ ] **1.6.4** Implement exp/log: `exp`, `exp2`, `ln`, `log2`, `log10`,
+- [x] **1.6.4** Implement exp/log: `exp`, `exp2`, `ln`, `log2`, `log10`,
       `log`.
-- [ ] **1.6.5** Implement float math: `sqrt`, `cbrt`, `hypot`, `floor`,
+- [x] **1.6.5** Implement float math: `sqrt`, `cbrt`, `hypot`, `floor`,
       `ceil`, `round`, `trunc`, `abs`, `minFloat`, `maxFloat`,
       `clampFloat`.
-- [ ] **1.6.6** Implement pure-Fuse integer math: `absInt`, `minInt`,
+- [x] **1.6.6** Implement pure-Fuse integer math: `absInt`, `minInt`,
       `maxInt`, `clampInt`, `gcd`, `lcm`, `isPrime`, `factorial`.
-- [ ] **1.6.7** Implement `degreesToRadians`, `radiansToDegrees`.
-- [ ] **1.6.8** Define constants: `PI`, `E`, `TAU`, `SQRT2`, `LN2`, `LN10`.
-- [ ] **1.6.9** Create `tests/fuse/stdlib/core/math_test.fuse`.
-- [ ] **1.6.10** Run tests. Fix any compiler bugs found.
+- [x] **1.6.7** Implement `degreesToRadians`, `radiansToDegrees`.
+- [x] **1.6.8** Define constants: `PI`, `E`, `TAU`, `SQRT2`, `LN2`, `LN10`.
+- [x] **1.6.9** Create `tests/fuse/stdlib/core/math_test.fuse`.
+- [x] **1.6.10** Run tests. Fix any compiler bugs found.
 
 ---
 
@@ -1176,6 +1176,7 @@ fix commits. Full details including root cause analysis are in
 | 7 | 1.4 | Evaluator displayed whole-number floats without `.0` suffix. `42.toFloat()` printed `42` instead of `42.0`. Rust's `f64::to_string()` drops the decimal for whole numbers. | `println(42.toFloat())` → `42` | See Phase 1.4 commit |
 | 8 | 1.5 | Evaluator `+` operator for Float+Float fell through to string concatenation. `0.1 + 0.2` produced `"0.10.2"` instead of `0.30...`. Only Int+Int and String+String were handled. | `val x = 0.1 + 0.2` → `"0.10.2"` | See Phase 1.5 commit |
 | 9 | 1.5 | Evaluator `compare_binary` only handled Int comparisons. Float `<`, `>`, `<=`, `>=` all returned `false`. `1.5 < 3.7` evaluated to false. | `if 1.5 < 3.7 { ... }` → false branch taken | See Phase 1.5 commit |
+| 10 | 1.6 | F-string ASAP name extraction used hand-rolled `split('.')` that only found the first identifier. Variables inside function call arguments (e.g., `halfPi` in `{math.sin(halfPi)}`) were missed, causing premature move/destroy before the f-string evaluated. | `val x = 1.0; println(f"{math.sin(x)}")` → "cannot use x after move" | See Phase 1.6 commit |
 
 ---
 

@@ -893,6 +893,37 @@ pub unsafe extern "C" fn fuse_rt_float_parse(h: FuseHandle) -> FuseHandle {
     let msg = "float: expected string";
     fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()))
 }
+// --- Math FFI helpers ---
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_math_sin(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).sin()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_math_cos(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).cos()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_math_tan(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).tan()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_math_asin(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).asin()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_math_acos(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).acos()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_math_atan(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).atan()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_math_atan2(y: FuseHandle, x: FuseHandle) -> FuseHandle { fuse_float(extract_float(y).atan2(extract_float(x))) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_math_exp(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).exp()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_math_exp2(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).exp2()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_math_ln(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).ln()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_math_log2(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).log2()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_math_log10(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).log10()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_math_cbrt(h: FuseHandle) -> FuseHandle { fuse_float(extract_float(h).cbrt()) }
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_math_hypot(a: FuseHandle, b: FuseHandle) -> FuseHandle { fuse_float(extract_float(a).hypot(extract_float(b))) }
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_float_to_string_fixed(h: FuseHandle, decimals: FuseHandle) -> FuseHandle {
     let v = extract_float(h);

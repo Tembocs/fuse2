@@ -1,0 +1,101 @@
+// EXPECTED OUTPUT:
+// === trig ===
+// sin: 1.0
+// cos: 1.0
+// tan: 0.0
+// asin: 1.5707963267948966
+// atan2: 0.7853981633974483
+// === exp/log ===
+// exp: 2.718281828459045
+// ln: 0.0
+// log2: 10.0
+// log10: 2.0
+// log: 10.0
+// === roots ===
+// sqrt: 3.0
+// cbrt: 3.0
+// hypot: 5.0
+// === rounding ===
+// floor: 3.0
+// ceil: 4.0
+// round: 4.0
+// abs: 2.5
+// === int math ===
+// absInt: 5
+// minInt: 3
+// maxInt: 7
+// clampInt: 5
+// gcd: 6
+// lcm: 12
+// === primes ===
+// isPrime(2): true
+// isPrime(97): true
+// isPrime(100): false
+// === factorial ===
+// 1
+// 120
+// 2432902008176640000
+// === conversion ===
+// 45 deg: 0.7853981633974483
+// pi rad: 180.0
+
+import stdlib.core.math
+
+@entrypoint
+fn main() {
+  // trig
+  println("=== trig ===")
+  val halfPi = 3.141592653589793 / 2.0
+  println(f"sin: {math.sin(halfPi)}")
+  println(f"cos: {math.cos(0.0)}")
+  println(f"tan: {math.tan(0.0)}")
+  println(f"asin: {math.asin(1.0)}")
+  println(f"atan2: {math.atan2(1.0, 1.0)}")
+
+  // exp/log
+  println("=== exp/log ===")
+  println(f"exp: {math.exp(1.0)}")
+  println(f"ln: {math.ln(1.0)}")
+  println(f"log2: {math.log2(1024.0)}")
+  println(f"log10: {math.log10(100.0)}")
+  println(f"log: {math.log(1024.0, 2.0)}")
+
+  // roots
+  println("=== roots ===")
+  println(f"sqrt: {math.sqrt(9.0)}")
+  println(f"cbrt: {math.cbrt(27.0)}")
+  println(f"hypot: {math.hypot(3.0, 4.0)}")
+
+  // rounding
+  println("=== rounding ===")
+  println(f"floor: {math.floor(3.7)}")
+  println(f"ceil: {math.ceil(3.2)}")
+  println(f"round: {math.round(3.5)}")
+  println(f"abs: {math.abs(-2.5)}")
+
+  // int math
+  println("=== int math ===")
+  println(f"absInt: {math.absInt(-5)}")
+  println(f"minInt: {math.minInt(3, 7)}")
+  println(f"maxInt: {math.maxInt(3, 7)}")
+  println(f"clampInt: {math.clampInt(7, 0, 5)}")
+  println(f"gcd: {math.gcd(12, 18)}")
+  println(f"lcm: {math.lcm(4, 6)}")
+
+  // primes
+  println("=== primes ===")
+  println(f"isPrime(2): {math.isPrime(2)}")
+  println(f"isPrime(97): {math.isPrime(97)}")
+  println(f"isPrime(100): {math.isPrime(100)}")
+
+  // factorial
+  println("=== factorial ===")
+  println(math.factorial(0))
+  println(math.factorial(5))
+  println(math.factorial(20))
+
+  // conversion
+  println("=== conversion ===")
+  println(f"45 deg: {math.degreesToRadians(45.0)}")
+  println(f"pi rad: {math.radiansToDegrees(3.141592653589793)}")
+}

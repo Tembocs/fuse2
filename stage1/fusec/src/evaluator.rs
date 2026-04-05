@@ -762,6 +762,20 @@ impl Evaluator {
                     let d = match args.get(1) { Some(Value::Int(n)) => *n as usize, _ => 2 };
                     return Ok(Value::String(format!("{v:.prec$}", prec = d)));
                 }
+                "fuse_rt_math_sin" => return Ok(Value::Float(Self::extract_float(args.first()).sin())),
+                "fuse_rt_math_cos" => return Ok(Value::Float(Self::extract_float(args.first()).cos())),
+                "fuse_rt_math_tan" => return Ok(Value::Float(Self::extract_float(args.first()).tan())),
+                "fuse_rt_math_asin" => return Ok(Value::Float(Self::extract_float(args.first()).asin())),
+                "fuse_rt_math_acos" => return Ok(Value::Float(Self::extract_float(args.first()).acos())),
+                "fuse_rt_math_atan" => return Ok(Value::Float(Self::extract_float(args.first()).atan())),
+                "fuse_rt_math_atan2" => return Ok(Value::Float(Self::extract_float(args.first()).atan2(Self::extract_float(args.get(1))))),
+                "fuse_rt_math_exp" => return Ok(Value::Float(Self::extract_float(args.first()).exp())),
+                "fuse_rt_math_exp2" => return Ok(Value::Float(Self::extract_float(args.first()).exp2())),
+                "fuse_rt_math_ln" => return Ok(Value::Float(Self::extract_float(args.first()).ln())),
+                "fuse_rt_math_log2" => return Ok(Value::Float(Self::extract_float(args.first()).log2())),
+                "fuse_rt_math_log10" => return Ok(Value::Float(Self::extract_float(args.first()).log10())),
+                "fuse_rt_math_cbrt" => return Ok(Value::Float(Self::extract_float(args.first()).cbrt())),
+                "fuse_rt_math_hypot" => return Ok(Value::Float(Self::extract_float(args.first()).hypot(Self::extract_float(args.get(1))))),
                 _ => {}
             }
         }
@@ -1767,14 +1781,32 @@ fn collect_expr_names(expr: &fa::Expr) -> HashSet<String> {
     match expr {
         fa::Expr::Name(name) => HashSet::from([name.value.clone()]),
         fa::Expr::Literal(_) => HashSet::new(),
-        fa::Expr::FString(fstring) => fstring
-            .template
-            .split('{')
-            .skip(1)
-            .filter_map(|part| part.split('}').next())
-            .map(|part| part.trim().split('.').next().unwrap_or_default().to_string())
-            .filter(|part| !part.is_empty())
-            .collect(),
+        fa::Expr::FString(fstring) => {
+            // Parse each interpolated expression to extract all referenced names,
+            // not just the first dot-separated segment. This ensures ASAP destruction
+            // doesn't move variables that are still needed inside f-string expressions.
+            let mut names = HashSet::new();
+            let mut rest = fstring.template.as_str();
+            while let Some(start) = rest.find('{') {
+                if let Some(end) = rest[start + 1..].find('}') {
+                    let expr_str = rest[start + 1..start + 1 + end].trim();
+                    let source = format!("fn __names__() => {expr_str}");
+                    if let Ok(program) = parse_source(&source, "<fstring-names>") {
+                        for decl in &program.declarations {
+                            if let fa::Declaration::Function(func) = decl {
+                                if let Some(fa::Statement::Expr(expr_stmt)) = func.body.statements.first() {
+                                    names.extend(collect_expr_names(&expr_stmt.expr));
+                                }
+                            }
+                        }
+                    }
+                    rest = &rest[start + 2 + end..];
+                } else {
+                    break;
+                }
+            }
+            names
+        }
         fa::Expr::Member(member) => collect_expr_names(&member.object),
         fa::Expr::Move(move_expr) => collect_expr_names(&move_expr.value),
         fa::Expr::Ref(reference) => collect_expr_names(&reference.value),
