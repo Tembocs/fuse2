@@ -1,0 +1,32 @@
+// EXPECTED OUTPUT:
+// start
+// [del] 1
+// shared: 1
+// chan1: 2
+// [del] 2
+// chan2: 3
+// [del] 3
+// end
+
+@value
+data class Item(val id: Int) {
+  fn __del__(owned self) {
+    println(f"[del] {self.id}")
+  }
+}
+
+@entrypoint
+fn main() {
+  @rank(1) val s: Shared<Item> = Shared::<Item>.new(Item(1))
+  val ch = Chan::<Item>.new()
+  ch.send(Item(2))
+  ch.send(Item(3))
+  println("start")
+  val a = s.read()
+  println(f"shared: {a.id}")
+  val b = ch.recv()
+  println(f"chan1: {b.id}")
+  val c = ch.recv()
+  println(f"chan2: {c.id}")
+  println("end")
+}

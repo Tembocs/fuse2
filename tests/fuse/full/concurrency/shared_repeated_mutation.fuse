@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// 99
+
+@value
+data class Box(var value: Int)
+
+@entrypoint
+fn main() {
+  @rank(1) val s: Shared<Box> = Shared::<Box>.new(Box(0))
+  var i = 0
+  while i < 100 {
+    val w = s.write()
+    w.value = i
+    i = i + 1
+  }
+  println(s.read().value)
+}

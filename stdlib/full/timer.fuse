@@ -1,4 +1,10 @@
 // Fuse Full stdlib surface for timer/timeout helpers.
+//
+// STATUS: parseable stub only — NOT runtime-backed in Stage 1.
+// There are no fuse_timeout_* or fuse_timer_* runtime functions.
+// Timeout.ms(N) and Timer.sleep(timeout) cannot be compiled or executed.
+// Self-hosting (Phase 9) does not require timers; this surface exists so
+// the documented API is present in the repo and parseable by the frontend.
 
 @value
 data class Timeout() { }

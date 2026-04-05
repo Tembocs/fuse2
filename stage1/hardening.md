@@ -218,72 +218,72 @@ with type/lane validation and broader test coverage.
 Goal: Ensure important `stdlib/full/*` modules are exercised where they materially
 affect trust — not just parseable surfaces.
 
-- [ ] **H6.1** Audit each `stdlib/full/*.fuse` module. For each, determine: is it
+- [x] **H6.1** Audit each `stdlib/full/*.fuse` module. For each, determine: is it
       already exercised by a runtime-backed test, or is it just a parseable stub?
 
-- [ ] **H6.2** `chan.fuse` — already exercised by `chan_basic.fuse` and
+- [x] **H6.2** `chan.fuse` — already exercised by `chan_basic.fuse` and
       `chan_bounded_backpressure.fuse`. Verify tests are sufficient. Add edge case
       test if gaps found.
 
-- [ ] **H6.3** `shared.fuse` — already exercised by Wave 1 + Wave 2 tests. Verify
+- [x] **H6.3** `shared.fuse` — already exercised by Wave 1 + Wave 2 tests. Verify
       the stdlib surface matches what the runtime actually provides. Update the
       stub signatures if they have drifted from the implementation.
 
-- [ ] **H6.4** `simd.fuse` — already exercised by Wave 2 SIMD tests. Verify the
+- [x] **H6.4** `simd.fuse` — already exercised by Wave 2 SIMD tests. Verify the
       stdlib surface matches the implementation. Update stub signatures.
 
-- [ ] **H6.5** `timer.fuse` — currently not exercised. Add test:
+- [x] **H6.5** `timer.fuse` — currently not exercised. Add test:
       `timer_basic.fuse` — create a `Timeout.ms(N)` value and verify it is usable
       (at minimum: construct and print). If `Timer.sleep` is runtime-backed, test
       it. If it is a stub only, document that explicitly.
 
-- [ ] **H6.6** `http.fuse` — currently returns `Err("not implemented")`. This is
+- [x] **H6.6** `http.fuse` — currently returns `Err("not implemented")`. This is
       acceptable for pre-self-hosting. Document it as an intentional stub. No
       runtime test needed — self-hosting does not require HTTP.
 
-- [ ] **H6.7** Run `cargo test` — all existing + new tests green.
+- [x] **H6.7** Run `cargo test` — all existing + new tests green.
 
 ### H7 — Compiler Stress / Repetition Sanity
 
 Goal: Add narrow repeated-operation tests that stress runtime semantics harder than
 the current minimal fixtures, without becoming a full benchmark suite.
 
-- [ ] **H7.1** Add test: `shared_repeated_mutation.fuse` — write to a Shared value
+- [x] **H7.1** Add test: `shared_repeated_mutation.fuse` — write to a Shared value
       in a loop (e.g., 100 iterations). Read the final value. Verify correctness
       and no destructor-order regressions.
 
-- [ ] **H7.2** Add test: `chan_repeated_send_recv.fuse` — send and receive N values
+- [x] **H7.2** Add test: `chan_repeated_send_recv.fuse` — send and receive N values
       through a channel in a loop. Verify all values arrive in order and none are
       lost.
 
-- [ ] **H7.3** Add test: `simd_repeated_sum.fuse` — call `SIMD.sum` in a loop on
+- [x] **H7.3** Add test: `simd_repeated_sum.fuse` — call `SIMD.sum` in a loop on
       different input lists. Verify each result is correct.
 
-- [ ] **H7.4** Add test: `stress_destructor_order.fuse` — create multiple data class
+- [x] **H7.4** Add test: `stress_destructor_order.fuse` — create multiple data class
       instances with `__del__`, use them through Shared/channel/SIMD paths, and
       verify destruction order is deterministic and correct.
 
-- [ ] **H7.5** Run `cargo test` — all existing + new tests green.
+- [x] **H7.5** Run `cargo test` — all existing + new tests green.
 
 ### H8 — Phase 9 Readiness Gate
 
 Goal: Force an explicit go/no-go decision for self-hosting.
 
-- [ ] **H8.1** Run `cargo check -p fusec` — clean, no warnings.
+- [x] **H8.1** Run `cargo check -p fusec` — clean, no warnings.
 
-- [ ] **H8.2** Run `cargo test` in `stage1/` — all tests green.
+- [x] **H8.2** Run `cargo test` in `stage1/` — all tests green.
 
-- [ ] **H8.3** Review all new hardening tests — verify each one exercises the
+- [x] **H8.3** Review all new hardening tests — verify each one exercises the
       behavior it claims to exercise, not a trivial pass-through.
 
-- [ ] **H8.4** Review the language guide sections 1.17, 1.18, 1.19 one final time.
+- [x] **H8.4** Review the language guide sections 1.17, 1.18, 1.19 one final time.
       List any remaining gaps between the guide and the implementation.
 
-- [ ] **H8.5** Write the Phase 9 readiness verdict:
+- [x] **H8.5** Write the Phase 9 readiness verdict:
       - `Ready to start Phase 9` — with confidence notes
       - or `Do not start Phase 9 yet because of X` — with specific blockers
 
-- [ ] **H8.6** Place the verdict in `.omx/plans/phase-9-readiness.md`.
+- [x] **H8.6** Place the verdict in `.omx/plans/phase-9-readiness.md`.
 
 ---
 
@@ -293,5 +293,5 @@ Goal: Force an explicit go/no-go decision for self-hosting.
 |------|-------|-------|--------|
 | 1    | H1, H2 | 14 | **done** |
 | 2    | H3, H4, H5 | 23 | **done** |
-| 3    | H6, H7, H8 | 17 | not started |
-| **Total** | **8** | **54** | **not started** |
+| 3    | H6, H7, H8 | 17 | **done** |
+| **Total** | **8** | **54** | **done** |

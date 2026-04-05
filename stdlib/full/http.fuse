@@ -1,4 +1,8 @@
 // Fuse Full stdlib surface for HTTP helpers.
+//
+// STATUS: intentional stub — returns Err("not implemented").
+// Self-hosting (Phase 9) does not require HTTP.  This surface exists so
+// the documented API is present in the repo and parseable by the frontend.
 
 @value
 data class HttpResponse(val status: Int, val body: String) { }

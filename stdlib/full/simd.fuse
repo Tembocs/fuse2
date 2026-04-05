@@ -1,4 +1,11 @@
 // Fuse Full stdlib surface for SIMD helpers.
+//
+// The runtime implementation (fuse_simd_sum) returns Int for integer inputs
+// and Float when any float is present.  The codegen infers the return type
+// from the SIMD type parameter: SIMD::<Float*, N>.sum() -> Float,
+// SIMD::<Int*, N>.sum() -> Int.  Type parameter T must be one of Float32,
+// Float64, Int32, Int64.  Lane count N must be a power of 2 in {2,4,8,16}.
+// The scalar-backed fallback handles all lane counts and tail elements.
 
 @value
 data class SIMD() { }

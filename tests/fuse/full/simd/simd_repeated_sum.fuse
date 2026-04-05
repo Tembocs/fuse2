@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// 100
+
+@entrypoint
+fn main() {
+  var total = 0
+  var i = 0
+  while i < 10 {
+    total = total + SIMD::<Int, 4>.sum([1, 2, 3, 4])
+    i = i + 1
+  }
+  println(total)
+}

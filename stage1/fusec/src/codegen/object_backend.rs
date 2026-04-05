@@ -820,7 +820,13 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             break_block: exit_block,
             continue_block: cond_block,
         });
+        // Protect outer locals from ASAP release inside the loop body.
+        let snapshot = self.locals.clone();
+        for binding in self.locals.values_mut() {
+            binding.destroy = false;
+        }
         self.compile_statements(builder, &while_stmt.body.statements)?;
+        self.locals = snapshot;
         self.loops.pop();
         if !self.current_block_is_terminated(builder) {
             builder.ins().jump(cond_block, &[]);
@@ -871,7 +877,13 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             break_block: exit_block,
             continue_block: cond_block,
         });
+        // Protect outer locals from ASAP release inside the loop body.
+        let snapshot = self.locals.clone();
+        for binding in self.locals.values_mut() {
+            binding.destroy = false;
+        }
         self.compile_statements(builder, &for_stmt.body.statements)?;
+        self.locals = snapshot;
         self.loops.pop();
         if !self.current_block_is_terminated(builder) {
             let next = builder.ins().iadd_imm(index, 1);
@@ -895,7 +907,13 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             break_block: exit_block,
             continue_block: body_block,
         });
+        // Protect outer locals from ASAP release inside the loop body.
+        let snapshot = self.locals.clone();
+        for binding in self.locals.values_mut() {
+            binding.destroy = false;
+        }
         self.compile_statements(builder, statements)?;
+        self.locals = snapshot;
         self.loops.pop();
         if !self.current_block_is_terminated(builder) {
             builder.ins().jump(body_block, &[]);

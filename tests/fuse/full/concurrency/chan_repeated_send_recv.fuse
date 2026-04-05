@@ -1,0 +1,19 @@
+// EXPECTED OUTPUT:
+// 4950
+
+@entrypoint
+fn main() {
+  val ch = Chan::<Int>.new()
+  var i = 0
+  while i < 100 {
+    ch.send(i)
+    i = i + 1
+  }
+  var total = 0
+  var j = 0
+  while j < 100 {
+    total = total + ch.recv()
+    j = j + 1
+  }
+  println(total)
+}
