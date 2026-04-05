@@ -381,6 +381,97 @@ fn emit_ir_produces_output_and_exits_0() {
 }
 
 // ---------------------------------------------------------------------------
+// --repl
+// ---------------------------------------------------------------------------
+
+#[test]
+fn repl_evaluates_expression_and_prints_result() {
+    let out = fusec()
+        .arg("--repl")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            if let Some(ref mut stdin) = child.stdin {
+                stdin.write_all(b"2 + 2\nexit\n").ok();
+            }
+            child.wait_with_output()
+        })
+        .expect("run fusec --repl");
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("4"), "REPL should print expression result 4, got: {stdout}");
+}
+
+#[test]
+fn repl_val_declaration_is_silent() {
+    let out = fusec()
+        .arg("--repl")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            if let Some(ref mut stdin) = child.stdin {
+                stdin.write_all(b"val x = 42\nexit\n").ok();
+            }
+            child.wait_with_output()
+        })
+        .expect("run fusec --repl");
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // Val declaration should only produce prompt output, not "42"
+    assert!(!stdout.contains("42"), "val decl should be silent, got: {stdout}");
+}
+
+#[test]
+fn repl_error_does_not_crash_session() {
+    let out = fusec()
+        .arg("--repl")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            if let Some(ref mut stdin) = child.stdin {
+                stdin.write_all(b"bad!!!\n3 + 3\nexit\n").ok();
+            }
+            child.wait_with_output()
+        })
+        .expect("run fusec --repl");
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("6"), "REPL should recover and eval 3+3=6, got: {stdout}");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("error"), "error should be reported on stderr");
+}
+
+#[test]
+fn repl_persists_state_across_lines() {
+    let out = fusec()
+        .arg("--repl")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            if let Some(ref mut stdin) = child.stdin {
+                stdin.write_all(b"val x = 10\nprintln(x)\nexit\n").ok();
+            }
+            child.wait_with_output()
+        })
+        .expect("run fusec --repl");
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("10"), "REPL should persist val x across lines, got: {stdout}");
+}
+
+// ---------------------------------------------------------------------------
 // --color never strips ANSI codes
 // ---------------------------------------------------------------------------
 

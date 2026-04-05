@@ -268,6 +268,103 @@ extern "C" fn run_current_embedded() -> i32 {
     })
 }
 
+pub fn run_repl() -> i32 {
+    use std::io::{self, BufRead, Write};
+
+    let repl_path = PathBuf::from("<repl>");
+    let mut evaluator = Evaluator::new(repl_path.clone(), String::new());
+    let env = evaluator.base_env();
+    let mut deferred = Vec::new();
+
+    let stdin = io::stdin();
+    let mut reader = stdin.lock();
+
+    loop {
+        print!("fuse> ");
+        if io::stdout().flush().is_err() {
+            break;
+        }
+
+        let mut line = String::new();
+        match reader.read_line(&mut line) {
+            Ok(0) => break,   // Ctrl-D / EOF
+            Ok(_) => {}
+            Err(_) => break,
+        }
+
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if matches!(trimmed, "exit" | "quit") {
+            break;
+        }
+
+        // Wrap the line in a dummy function so the parser can handle it.
+        let wrapped = format!("fn __repl__() {{\n  {trimmed}\n}}");
+        let program = match parse_source(&wrapped, "<repl>") {
+            Ok(p) => p,
+            Err(error) => {
+                eprintln!("{}", error.render());
+                continue;
+            }
+        };
+
+        // Extract the body statements from the wrapper function.
+        let statements: Vec<fa::Statement> = program
+            .declarations
+            .into_iter()
+            .filter_map(|decl| match decl {
+                fa::Declaration::Function(f) if f.name == "__repl__" => {
+                    Some(f.body.statements)
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect();
+
+        let stdout_before = evaluator.stdout.len();
+        let mut last_value = None;
+        let mut last_was_expr = false;
+
+        for statement in &statements {
+            last_was_expr = matches!(statement, fa::Statement::Expr(_));
+            match evaluator.eval_statement(&repl_path, statement, &env, &mut deferred) {
+                Ok(value) => {
+                    last_value = value;
+                }
+                Err(ControlFlow::Abort(error)) => {
+                    eprintln!("{}", error.render());
+                    last_value = None;
+                    break;
+                }
+                Err(ControlFlow::Return(value)) => {
+                    last_value = Some(value);
+                    last_was_expr = true;
+                    break;
+                }
+                Err(_) => break,
+            }
+        }
+
+        // Flush any new println output.
+        for line in &evaluator.stdout[stdout_before..] {
+            println!("{line}");
+        }
+
+        // Print non-Unit result values for expression statements only.
+        if last_was_expr {
+            if let Some(value) = last_value {
+                if !matches!(value, Value::Unit) {
+                    println!("{}", evaluator.stringify(&value));
+                }
+            }
+        }
+    }
+
+    0
+}
+
 struct Evaluator {
     root_path: PathBuf,
     root_source: String,

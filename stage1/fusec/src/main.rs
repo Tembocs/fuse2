@@ -496,8 +496,8 @@ fn emit_ir(path: &PathBuf, args: &Args) -> ExitCode {
 // ---------------------------------------------------------------------------
 
 fn run_repl(_args: &Args) -> ExitCode {
-    eprintln!("--repl is not yet implemented");
-    ExitCode::from(1)
+    let exit_code = fusec::evaluator::run_repl();
+    ExitCode::from(exit_code as u8)
 }
 
 // ---------------------------------------------------------------------------
