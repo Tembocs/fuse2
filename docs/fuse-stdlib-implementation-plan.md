@@ -215,16 +215,16 @@ via extension functions. Construction is via explicit static methods.
 **What:** Support `!` as a return type meaning the function never
 returns (e.g., `sys.exit`, `panic`, `test.fail`).
 
-- [ ] **0.7.1** Lexer/Parser: parse `!` as a valid return type annotation.
-- [ ] **0.7.2** Checker: treat `!` as a bottom type that is compatible
+- [x] **0.7.1** Lexer/Parser: parse `!` as a valid return type annotation.
+- [x] **0.7.2** Checker: treat `!` as a bottom type that is compatible
       with any expected type (coerces to anything in type unification).
       Functions returning `!` need not have a `return` statement.
-- [ ] **0.7.3** Codegen: functions returning `!` emit an `unreachable`
+- [x] **0.7.3** Codegen: functions returning `!` emit an `unreachable`
       trap after their body (as a safety net).
-- [ ] **0.7.4** Test: `tests/fuse/core/types/never_type.fuse` — function
+- [x] **0.7.4** Test: `tests/fuse/core/types/never_type.fuse` — function
       returning `!` that calls a diverging operation. Verify code after
       call is not reached.
-- [ ] **0.7.5** Test: function declared `-> !` that actually returns →
+- [x] **0.7.5** Test: function declared `-> !` that actually returns →
       compile error.
 
 ---

@@ -561,15 +561,22 @@ impl<'a> BackendCompiler<'a> {
         };
         lowering.compile_statements(&mut builder, prefix_statements)?;
         if !lowering.current_block_is_terminated(&builder) {
-            let result = if let Some(expr) = final_expr.as_ref() {
-                lowering.compile_expr(&mut builder, expr)?.value
+            if function.return_type.as_deref() == Some("!") {
+                if let Some(expr) = final_expr.as_ref() {
+                    lowering.compile_expr(&mut builder, expr)?;
+                }
+                builder.ins().trap(cranelift_codegen::ir::TrapCode::user(1).unwrap());
             } else {
-                lowering.runtime_nullary(&mut builder, lowering.compiler.runtime.unit)
-            };
-            if function.return_type.is_none() && final_expr.is_none() {
-                lowering.release_remaining(&mut builder);
+                let result = if let Some(expr) = final_expr.as_ref() {
+                    lowering.compile_expr(&mut builder, expr)?.value
+                } else {
+                    lowering.runtime_nullary(&mut builder, lowering.compiler.runtime.unit)
+                };
+                if function.return_type.is_none() && final_expr.is_none() {
+                    lowering.release_remaining(&mut builder);
+                }
+                builder.ins().return_(&[result]);
             }
-            builder.ins().return_(&[result]);
         }
         builder.seal_all_blocks();
         builder.finalize();

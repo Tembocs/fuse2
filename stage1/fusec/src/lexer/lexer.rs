@@ -93,6 +93,7 @@ impl<'a> Lexer<'a> {
                 '%' => Some(TokenKind::Percent),
                 '<' => Some(TokenKind::Lt),
                 '>' => Some(TokenKind::Gt),
+                '!' => Some(TokenKind::Bang),
                 _ => None,
             };
             if let Some(kind) = single {

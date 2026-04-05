@@ -9,6 +9,7 @@ pub fn builtin_return_type(name: &str) -> Option<&'static str> {
 
 pub fn type_matches(expected: &str, actual: &str) -> bool {
     expected == actual
+        || expected == "!" || actual == "!"
         || (expected.starts_with("Result") && actual.starts_with("Result"))
         || (expected.starts_with("Option") && actual.starts_with("Option"))
 }

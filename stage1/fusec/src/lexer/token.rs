@@ -72,6 +72,7 @@ pub enum TokenKind {
     Percent,
     Lt,
     Gt,
+    Bang,
 }
 
 #[derive(Clone, Debug)]

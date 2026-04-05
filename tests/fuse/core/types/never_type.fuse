@@ -1,0 +1,20 @@
+// EXPECTED OUTPUT:
+// safe path
+// done
+fn diverge() -> ! {
+  println("should not reach")
+}
+
+fn choose(flag: Bool) -> String {
+  if flag {
+    return "safe path"
+  }
+  return diverge()
+}
+
+@entrypoint
+fn main() {
+  val result = choose(true)
+  println(result)
+  println("done")
+}
