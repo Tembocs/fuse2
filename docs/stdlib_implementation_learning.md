@@ -128,6 +128,54 @@ multiple modules need it.
 
 ---
 
+### Bug #5 — F-string interpolation silently drops method calls (Wave 1, Phase 1.2)
+
+**Symptom:** Method calls inside f-string interpolation braces returned
+the receiver value instead of the call result. For example,
+`f"{s.isSome()}"` where `s = Some(42)` produced `"42"` (the inner value
+of the receiver) instead of `"true"` (the method return value).
+
+**Minimal reproduction:**
+```fuse
+import stdlib.core.option
+
+@entrypoint
+fn main() {
+  val s = Some(42)
+  println(f"isSome: {s.isSome()}")
+  // Expected: isSome: true
+  // Actual:   isSome: 42
+}
+```
+
+**Root cause:** The evaluator's `interpolate` function used hand-rolled
+string splitting (`expr.split('.')`) that only supported simple
+`name.field` access chains. It could not handle method calls (the `()`
+suffix), operators, or any other non-trivial expression. When it
+encountered `s.isSome()`, it split on `.` to get `["s", "isSome()"]`,
+looked up `s`, then tried to resolve `"isSome()"` as a field name on an
+Option value. The field lookup fell through to a catch-all that returned
+the current value (`42`, the inner value of `Some(42)`), silently
+discarding the method call entirely.
+
+**Category:** Evaluator — f-string expression evaluation
+
+**Fix:** Replaced the hand-rolled `interpolate` function with one that
+parses the interpolated expression as real Fuse code via `parse_source`
+(wrapping it in `fn __fstr__() => EXPR`), then evaluates the parsed AST
+through the normal `eval_expr` path. This ensures that method calls,
+operators, nested calls, and all other expression forms work correctly
+inside f-string braces.
+
+**Learning:** Any time the evaluator needs to evaluate a sub-expression
+from a string (f-strings, REPL input, etc.), it should go through the
+real parser + evaluator pipeline rather than implementing a mini
+expression language. The parser already handles all Fuse syntax
+correctly — duplicating that logic in string-based form is both fragile
+and incomplete.
+
+---
+
 ## Pattern Analysis
 
 | Category | Count | Notes |
@@ -136,6 +184,7 @@ multiple modules need it.
 | Codegen — unreachable code | 1 | Match arms with early return need terminator checks |
 | Spec conformance | 1 | Always write generic signatures from the start |
 | Missing language primitive | 1 | Never type is the panic building block |
+| Evaluator — f-string evaluation | 1 | Hand-rolled expression parsers silently drop unsupported syntax |
 
 ---
 

@@ -425,19 +425,19 @@ Extension methods on the built-in `Result<T, E>` type.
 
 Extension methods on the built-in `Option<T>` type.
 
-- [ ] **1.2.1** Create `stdlib/core/option.fuse` with module header.
-- [ ] **1.2.2** Implement `Option.unwrap(owned self) -> T`.
-- [ ] **1.2.3** Implement `Option.unwrapOr(owned self, default: T) -> T`.
-- [ ] **1.2.4** Implement `Option.unwrapOrElse(owned self, f: fn() -> T) -> T`.
-- [ ] **1.2.5** Implement `Option.isSome(ref self) -> Bool`.
-- [ ] **1.2.6** Implement `Option.isNone(ref self) -> Bool`.
-- [ ] **1.2.7** Implement `Option.map(owned self, f: fn(T) -> U) -> Option<U>`.
-- [ ] **1.2.8** Implement `Option.filter(owned self, f: fn(ref T) -> Bool) -> Option<T>`.
-- [ ] **1.2.9** Implement `Option.orElse(owned self, f: fn() -> Option<T>) -> Option<T>`.
-- [ ] **1.2.10** Implement `Option.flatten(owned self) -> Option<T>`.
-- [ ] **1.2.11** Implement `Option.okOr(owned self, err: E) -> Result<T, E>`.
-- [ ] **1.2.12** Create `tests/fuse/stdlib/core/option_test.fuse`.
-- [ ] **1.2.13** Run tests. Fix any compiler bugs found.
+- [x] **1.2.1** Create `stdlib/core/option.fuse` with module header.
+- [x] **1.2.2** Implement `Option.unwrap(owned self) -> T`.
+- [x] **1.2.3** Implement `Option.unwrapOr(owned self, default: T) -> T`.
+- [x] **1.2.4** Implement `Option.unwrapOrElse(owned self, f: fn() -> T) -> T`.
+- [x] **1.2.5** Implement `Option.isSome(ref self) -> Bool`.
+- [x] **1.2.6** Implement `Option.isNone(ref self) -> Bool`.
+- [x] **1.2.7** Implement `Option.map(owned self, f: fn(T) -> U) -> Option<U>`.
+- [x] **1.2.8** Implement `Option.filter(owned self, f: fn(T) -> Bool) -> Option<T>`.
+- [x] **1.2.9** Implement `Option.orElse(owned self, f: fn() -> Option<T>) -> Option<T>`.
+- [x] **1.2.10** Implement `Option.flatten(owned self) -> Option<T>`.
+- [x] **1.2.11** Implement `Option.okOr(owned self, err: E) -> Result<T, E>`.
+- [x] **1.2.12** Create `tests/fuse/stdlib/core/option_test.fuse`.
+- [x] **1.2.13** Run tests. Fix any compiler bugs found.
 
 ---
 
@@ -1152,6 +1152,7 @@ fix commits. Full details including root cause analysis are in
 | 2 | 1.1 | `compile_two_arm_match` and `compile_match` emitted `runtime_nullary` (Unit value) after a match arm body block containing `return`, causing "block already filled" Cranelift panic. | `match x { Ok(v) => v, Err(e) => { return 0 } }` | See Phase 1.1 commit |
 | 3 | 1.1 | `result.fuse` shipped with concrete types (`Int`, `String`) instead of generic type variables (`T`, `E`, `U`, `F`). Only worked for `Result<Int, String>`. | N/A — spec conformance issue | Retroactive fix |
 | 4 | 1.1 | `Result.unwrap()` returned `0` on Err instead of panicking. No panic mechanism existed. Fixed with never-type helper `resultPanic(msg) -> !`. | `Err("x").unwrap()` returned 0 | Retroactive fix |
+| 5 | 1.2 | Evaluator f-string interpolation used hand-rolled string splitting that only supported `name.field` access. Method calls like `{s.isSome()}` silently returned the receiver value instead of the call result. | `val s = Some(42); println(f"{s.isSome()}")` → `42` instead of `true` | See Phase 1.2 commit |
 
 ---
 

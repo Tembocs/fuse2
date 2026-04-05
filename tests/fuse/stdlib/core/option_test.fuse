@@ -1,0 +1,92 @@
+// EXPECTED OUTPUT:
+// === unwrap ===
+// 42
+// === unwrapOr ===
+// 42
+// 99
+// === unwrapOrElse ===
+// 42
+// 99
+// === isSome / isNone ===
+// isSome: true
+// isNone: false
+// isSome: false
+// isNone: true
+// === map ===
+// Some(84)
+// None
+// === filter ===
+// Some(42)
+// None
+// None
+// === orElse ===
+// Some(42)
+// Some(99)
+// === flatten ===
+// Some(42)
+// None
+// None
+// === okOr ===
+// Ok(42)
+// Err(missing)
+
+import stdlib.core.option
+
+fn some() -> Option<Int> => Some(42)
+fn none() -> Option<Int> => None
+
+@entrypoint
+fn main() {
+  // unwrap
+  println("=== unwrap ===")
+  println(some().unwrap())
+
+  // unwrapOr
+  println("=== unwrapOr ===")
+  println(some().unwrapOr(99))
+  println(none().unwrapOr(99))
+
+  // unwrapOrElse
+  println("=== unwrapOrElse ===")
+  println(some().unwrapOrElse(fn() -> Int => 99))
+  println(none().unwrapOrElse(fn() -> Int => 99))
+
+  // isSome / isNone
+  println("=== isSome / isNone ===")
+  val s = some()
+  val n = none()
+  println(f"isSome: {s.isSome()}")
+  println(f"isNone: {s.isNone()}")
+  println(f"isSome: {n.isSome()}")
+  println(f"isNone: {n.isNone()}")
+
+  // map
+  println("=== map ===")
+  println(some().map(fn(n: Int) -> Int => n * 2))
+  println(none().map(fn(n: Int) -> Int => n * 2))
+
+  // filter
+  println("=== filter ===")
+  println(some().filter(fn(n: Int) -> Bool => n > 10))
+  println(some().filter(fn(n: Int) -> Bool => n > 100))
+  println(none().filter(fn(n: Int) -> Bool => n > 10))
+
+  // orElse
+  println("=== orElse ===")
+  println(some().orElse(fn() -> Option<Int> => Some(99)))
+  println(none().orElse(fn() -> Option<Int> => Some(99)))
+
+  // flatten
+  println("=== flatten ===")
+  val nested_some = Some(Some(42))
+  println(nested_some.flatten())
+  val nested_none: Option<Option<Int>> = Some(None)
+  println(nested_none.flatten())
+  val outer_none: Option<Option<Int>> = None
+  println(outer_none.flatten())
+
+  // okOr
+  println("=== okOr ===")
+  println(some().okOr("missing"))
+  println(none().okOr("missing"))
+}

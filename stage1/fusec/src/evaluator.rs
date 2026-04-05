@@ -917,7 +917,7 @@ impl Evaluator {
                 fa::LiteralValue::String(value) => Value::String(value.clone()),
                 fa::LiteralValue::Bool(value) => Value::Bool(*value),
             }),
-            fa::Expr::FString(fstring) => Ok(Value::String(self.render_fstring(&fstring.template, env))),
+            fa::Expr::FString(fstring) => Ok(Value::String(self.render_fstring(&fstring.template, module_path, env))),
             fa::Expr::Name(name) => {
                 if name.value == "None" {
                     Ok(Value::Option(None))
@@ -1392,14 +1392,14 @@ impl Evaluator {
         Ok(())
     }
 
-    fn render_fstring(&self, template: &str, env: &Environment) -> String {
+    fn render_fstring(&mut self, template: &str, module_path: &Path, env: &Environment) -> String {
         let mut output = String::new();
         let mut rest = template;
         while let Some(start) = rest.find('{') {
             output.push_str(&rest[..start]);
             if let Some(end) = rest[start + 1..].find('}') {
-                let expr = &rest[start + 1..start + 1 + end];
-                output.push_str(&self.interpolate(expr.trim(), env));
+                let expr_str = rest[start + 1..start + 1 + end].trim();
+                output.push_str(&self.interpolate(expr_str, module_path, env));
                 rest = &rest[start + 2 + end..];
             } else {
                 output.push_str(&rest[start..]);
@@ -1410,26 +1410,22 @@ impl Evaluator {
         output
     }
 
-    fn interpolate(&self, expr: &str, env: &Environment) -> String {
-        let mut parts = expr.split('.');
-        let Some(first) = parts.next() else {
-            return String::new();
-        };
-        let mut value = match env.get(first) {
-            Ok(value) => value,
-            Err(_) => return String::new(),
-        };
-        for part in parts {
-            value = match value {
-                Value::Data(instance) => instance.borrow().fields.get(part).cloned().unwrap_or(Value::Unit),
-                Value::Option(Some(value)) => match *value {
-                    Value::Data(instance) => instance.borrow().fields.get(part).cloned().unwrap_or(Value::Unit),
-                    other => other,
-                },
-                other => other,
-            };
+    fn interpolate(&mut self, expr_str: &str, module_path: &Path, env: &Environment) -> String {
+        // Parse the interpolated expression as real Fuse code via a wrapper function,
+        // then evaluate it through eval_expr so method calls, operators, etc. all work.
+        let source = format!("fn __fstr__() => {expr_str}");
+        if let Ok(program) = parse_source(&source, "<fstring>") {
+            for decl in &program.declarations {
+                if let fa::Declaration::Function(func) = decl {
+                    if let Some(fa::Statement::Expr(expr_stmt)) = func.body.statements.first() {
+                        if let Ok(value) = self.eval_expr(module_path, &expr_stmt.expr, env) {
+                            return self.stringify(&value);
+                        }
+                    }
+                }
+            }
         }
-        self.stringify(&value)
+        String::new()
     }
 }
 

@@ -1,0 +1,97 @@
+// Fuse Core stdlib — Option<T> extension methods.
+//
+// The Option type is built into the language. This module provides
+// convenience methods via extension functions.
+//
+// import stdlib.core.option
+
+// Internal panic helper — prints message and aborts via never-type trap.
+fn optionPanic(msg: String) -> ! {
+  println(msg)
+}
+
+// Unwrap the Some value or panic with a message.
+pub fn Option.unwrap(owned self) -> T {
+  match self {
+    Some(value) => value
+    None => optionPanic("panic: unwrap called on None")
+  }
+}
+
+// Unwrap the Some value or return a default.
+pub fn Option.unwrapOr(owned self, default: T) -> T {
+  match self {
+    Some(value) => value
+    None => default
+  }
+}
+
+// Unwrap the Some value or compute a default.
+pub fn Option.unwrapOrElse(owned self, f: fn() -> T) -> T {
+  match self {
+    Some(value) => value
+    None => f()
+  }
+}
+
+// True if Some.
+pub fn Option.isSome(ref self) -> Bool {
+  match self {
+    Some(_) => true
+    None => false
+  }
+}
+
+// True if None.
+pub fn Option.isNone(ref self) -> Bool {
+  match self {
+    Some(_) => false
+    None => true
+  }
+}
+
+// Map Some value through a function; None passes through.
+pub fn Option.map(owned self, f: fn(T) -> U) -> Option<U> {
+  match self {
+    Some(value) => Some(f(value))
+    None => None
+  }
+}
+
+// Filter: return None if predicate fails, Some(value) otherwise.
+pub fn Option.filter(owned self, f: fn(T) -> Bool) -> Option<T> {
+  match self {
+    Some(value) => {
+      if f(value) {
+        Some(value)
+      } else {
+        None
+      }
+    }
+    None => None
+  }
+}
+
+// Return self if Some; compute alternative otherwise.
+pub fn Option.orElse(owned self, f: fn() -> Option<T>) -> Option<T> {
+  match self {
+    Some(value) => Some(value)
+    None => f()
+  }
+}
+
+// Flatten Option<Option<T>> into Option<T>.
+pub fn Option.flatten(owned self) -> Option<T> {
+  match self {
+    Some(inner) => inner
+    None => None
+  }
+}
+
+// Convert to Result: Some(v) -> Ok(v), None -> Err(err).
+pub fn Option.okOr(owned self, err: E) -> Result<T, E> {
+  match self {
+    Some(value) => Ok(value)
+    None => Err(err)
+  }
+}
