@@ -1,0 +1,28 @@
+// EXPECTED OUTPUT:
+// before remove: 3
+// after remove: 2
+// has b: false
+// update: 99
+@entrypoint
+fn main() {
+  var m = Map::<String, Int>.new()
+  m.set("a", 1)
+  m.set("b", 2)
+  m.set("c", 3)
+
+  val len1 = m.len()
+  println(f"before remove: {len1}")
+
+  m.remove("b")
+
+  val len2 = m.len()
+  println(f"after remove: {len2}")
+
+  val key = "b"
+  val hasB = m.contains(key)
+  println(f"has b: {hasB}")
+
+  m.set("a", 99)
+  val updated = m.get("a")
+  println(f"update: {updated}")
+}

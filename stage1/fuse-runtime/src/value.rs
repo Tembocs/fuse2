@@ -18,6 +18,7 @@ enum ValueKind {
     Bool(bool),
     String(String),
     List(Vec<FuseHandle>),
+    Map(MapValue),
     Channel(ChannelValue),
     Shared(FuseHandle),
     Data(DataValue),
@@ -25,6 +26,10 @@ enum ValueKind {
     Result { is_ok: bool, value: FuseHandle },
     Enum(EnumValue),
     Unit,
+}
+
+struct MapValue {
+    entries: Vec<(FuseHandle, FuseHandle)>,
 }
 
 struct EnumValue {
@@ -92,6 +97,19 @@ unsafe fn clone_to_string(handle: FuseHandle) -> String {
                 rendered.push_str(&unsafe { clone_to_string(*item) });
             }
             rendered.push(']');
+            rendered
+        }
+        ValueKind::Map(map) => {
+            let mut rendered = String::from("{");
+            for (index, (key, value)) in map.entries.iter().enumerate() {
+                if index > 0 {
+                    rendered.push_str(", ");
+                }
+                rendered.push_str(&unsafe { clone_to_string(*key) });
+                rendered.push_str(": ");
+                rendered.push_str(&unsafe { clone_to_string(*value) });
+            }
+            rendered.push('}');
             rendered
         }
         ValueKind::Channel(_) => "Chan(..)".to_string(),
@@ -282,6 +300,7 @@ pub unsafe extern "C" fn fuse_is_truthy(handle: FuseHandle) -> bool {
             ValueKind::Shared(_) => true,
             ValueKind::Data(_) => true,
             ValueKind::Enum(_) => true,
+            ValueKind::Map(map) => !map.entries.is_empty(),
             ValueKind::Unit => false,
         }
     }
@@ -425,6 +444,135 @@ pub unsafe extern "C" fn fuse_list_get(list: FuseHandle, index: usize) -> FuseHa
     }
 }
 
+// ---- Map operations ----
+
+fn map_key_eq(a: FuseHandle, b: FuseHandle) -> bool {
+    unsafe { clone_to_string(a) == clone_to_string(b) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_map_new() -> FuseHandle {
+    FuseValue::new(ValueKind::Map(MapValue {
+        entries: Vec::new(),
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_map_set(map: FuseHandle, key: FuseHandle, value: FuseHandle) {
+    unsafe {
+        if let ValueKind::Map(m) = &mut value_mut(map).kind {
+            for entry in m.entries.iter_mut() {
+                if map_key_eq(entry.0, key) {
+                    entry.1 = value;
+                    return;
+                }
+            }
+            m.entries.push((key, value));
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_map_get(map: FuseHandle, key: FuseHandle) -> FuseHandle {
+    unsafe {
+        match &value_ref(map).kind {
+            ValueKind::Map(m) => {
+                for (k, v) in &m.entries {
+                    if map_key_eq(*k, key) {
+                        return *v;
+                    }
+                }
+                ptr::null_mut()
+            }
+            _ => ptr::null_mut(),
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_map_remove(map: FuseHandle, key: FuseHandle) -> FuseHandle {
+    unsafe {
+        if let ValueKind::Map(m) = &mut value_mut(map).kind {
+            if let Some(pos) = m.entries.iter().position(|(k, _)| map_key_eq(*k, key)) {
+                let (_, value) = m.entries.remove(pos);
+                return value;
+            }
+        }
+        ptr::null_mut()
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_map_len(map: FuseHandle) -> usize {
+    unsafe {
+        match &value_ref(map).kind {
+            ValueKind::Map(m) => m.entries.len(),
+            _ => 0,
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_map_contains(map: FuseHandle, key: FuseHandle) -> bool {
+    unsafe {
+        match &value_ref(map).kind {
+            ValueKind::Map(m) => m.entries.iter().any(|(k, _)| map_key_eq(*k, key)),
+            _ => false,
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_map_keys(map: FuseHandle) -> FuseHandle {
+    unsafe {
+        match &value_ref(map).kind {
+            ValueKind::Map(m) => {
+                let list = fuse_list_new();
+                for (k, _) in &m.entries {
+                    fuse_list_push(list, *k);
+                }
+                list
+            }
+            _ => fuse_list_new(),
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_map_values(map: FuseHandle) -> FuseHandle {
+    unsafe {
+        match &value_ref(map).kind {
+            ValueKind::Map(m) => {
+                let list = fuse_list_new();
+                for (_, v) in &m.entries {
+                    fuse_list_push(list, *v);
+                }
+                list
+            }
+            _ => fuse_list_new(),
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_map_entries(map: FuseHandle) -> FuseHandle {
+    unsafe {
+        match &value_ref(map).kind {
+            ValueKind::Map(m) => {
+                let list = fuse_list_new();
+                for (k, v) in &m.entries {
+                    let pair = fuse_list_new();
+                    fuse_list_push(pair, *k);
+                    fuse_list_push(pair, *v);
+                    fuse_list_push(list, pair);
+                }
+                list
+            }
+            _ => fuse_list_new(),
+        }
+    }
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_simd_sum(list: FuseHandle) -> FuseHandle {
     unsafe {
@@ -535,6 +683,9 @@ unsafe fn clone_value(handle: FuseHandle) -> FuseHandle {
         ValueKind::String(v) => FuseValue::new(ValueKind::String(v.clone())),
         ValueKind::Unit => unsafe { fuse_unit() },
         ValueKind::List(items) => FuseValue::new(ValueKind::List(items.clone())),
+        ValueKind::Map(map) => FuseValue::new(ValueKind::Map(MapValue {
+            entries: map.entries.clone(),
+        })),
         ValueKind::Data(data) => FuseValue::new(ValueKind::Data(DataValue {
             type_name: data.type_name.clone(),
             fields: data.fields.clone(),

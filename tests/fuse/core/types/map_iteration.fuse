@@ -1,0 +1,35 @@
+// EXPECTED OUTPUT:
+// keys: a, b, c
+// values: 1, 2, 3
+// entry: a=1
+// entry: b=2
+// entry: c=3
+@entrypoint
+fn main() {
+  var m = Map::<String, Int>.new()
+  m.set("a", 1)
+  m.set("b", 2)
+  m.set("c", 3)
+
+  var keyList = ""
+  for k in m.keys() {
+    if keyList != "" {
+      keyList = keyList + ", "
+    }
+    keyList = keyList + k
+  }
+  println(f"keys: {keyList}")
+
+  var valList = ""
+  for v in m.values() {
+    if valList != "" {
+      valList = valList + ", "
+    }
+    valList = valList + v
+  }
+  println(f"values: {valList}")
+
+  for entry in m.entries() {
+    println(f"entry: {entry.0}={entry.1}")
+  }
+}

@@ -1,0 +1,15 @@
+// EXPECTED OUTPUT:
+// 2
+// alice
+// true
+// false
+@entrypoint
+fn main() {
+  var m = Map::<String, String>.new()
+  m.set("name", "alice")
+  m.set("role", "admin")
+  println(m.len())
+  println(m.get("name"))
+  println(m.contains("role"))
+  println(m.contains("missing"))
+}

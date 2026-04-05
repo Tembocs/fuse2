@@ -247,6 +247,15 @@ struct RuntimeFns {
     enum_new: FuncId,
     enum_tag: FuncId,
     enum_payload: FuncId,
+    map_new: FuncId,
+    map_set: FuncId,
+    map_get: FuncId,
+    map_remove: FuncId,
+    map_len: FuncId,
+    map_contains: FuncId,
+    map_keys: FuncId,
+    map_values: FuncId,
+    map_entries: FuncId,
 }
 
 struct PendingLambda {
@@ -763,6 +772,15 @@ fn declare_runtime_functions(
         enum_new: declare(module, "fuse_enum_new", &[pointer_type, pointer_type, types::I64, pointer_type, pointer_type, pointer_type], &[pointer_type])?,
         enum_tag: declare(module, "fuse_enum_tag", &[pointer_type], &[types::I64])?,
         enum_payload: declare(module, "fuse_enum_payload", &[pointer_type, pointer_type], &[pointer_type])?,
+        map_new: declare(module, "fuse_map_new", &[], &[pointer_type])?,
+        map_set: declare(module, "fuse_map_set", &[pointer_type, pointer_type, pointer_type], &[])?,
+        map_get: declare(module, "fuse_map_get", &[pointer_type, pointer_type], &[pointer_type])?,
+        map_remove: declare(module, "fuse_map_remove", &[pointer_type, pointer_type], &[pointer_type])?,
+        map_len: declare(module, "fuse_map_len", &[pointer_type], &[types::I64])?,
+        map_contains: declare(module, "fuse_map_contains", &[pointer_type, pointer_type], &[types::I8])?,
+        map_keys: declare(module, "fuse_map_keys", &[pointer_type], &[pointer_type])?,
+        map_values: declare(module, "fuse_map_values", &[pointer_type], &[pointer_type])?,
+        map_entries: declare(module, "fuse_map_entries", &[pointer_type], &[pointer_type])?,
     })
 }
 
@@ -1269,6 +1287,74 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     ty: chan_inner_type(&receiver_type),
                 }),
                 other => Err(format!("unsupported Chan zero-arg member `{other}()`")),
+            };
+        }
+        if layout::canonical_type_name(&receiver_type) == "Map" {
+            return match name {
+                "len" => {
+                    let raw_len = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.map_len,
+                        &[receiver.value],
+                        types::I64,
+                    );
+                    Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.int,
+                            &[raw_len],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Int".to_string()),
+                    })
+                }
+                "isEmpty" => {
+                    let raw_len = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.map_len,
+                        &[receiver.value],
+                        types::I64,
+                    );
+                    let is_zero = builder.ins().icmp_imm(IntCC::Equal, raw_len, 0);
+                    let extended = builder.ins().uextend(types::I8, is_zero);
+                    Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.bool_,
+                            &[extended],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Bool".to_string()),
+                    })
+                }
+                "keys" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.map_keys,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some("List<String>".to_string()),
+                }),
+                "values" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.map_values,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some("List<String>".to_string()),
+                }),
+                "entries" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.map_entries,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some("List<(String,String)>".to_string()),
+                }),
+                other => Err(format!("unsupported Map zero-arg member `{other}()`")),
             };
         }
         if layout::canonical_type_name(&receiver_type) == "String" {
@@ -1836,6 +1922,10 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     ty: Some(return_type.to_string()),
                 })
             }
+            ("Map", "new") => Ok(TypedValue {
+                value: self.runtime_nullary(builder, self.compiler.runtime.map_new),
+                ty: Some(namespace.replace("::", "").to_string()),
+            }),
             _ => {
                 if let Some(enum_decl) = self.compiler.session.find_enum(base) {
                     let variant_index = enum_decl
@@ -1994,6 +2084,129 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     })
                 }
                 other => Err(format!("unsupported Shared member call `{other}`")),
+            };
+        }
+        if layout::canonical_type_name(&receiver_type) == "Map" {
+            return match member.name.as_str() {
+                "set" => {
+                    let key = self.compile_expr(builder, &args[0])?;
+                    let value = self.compile_expr(builder, &args[1])?;
+                    self.runtime_void(
+                        builder,
+                        self.compiler.runtime.map_set,
+                        &[receiver.value, key.value, value.value],
+                    );
+                    Ok(TypedValue {
+                        value: self.runtime_nullary(builder, self.compiler.runtime.unit),
+                        ty: Some("Unit".to_string()),
+                    })
+                }
+                "get" => {
+                    let key = self.compile_expr(builder, &args[0])?;
+                    Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.map_get,
+                            &[receiver.value, key.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: None,
+                    })
+                }
+                "remove" => {
+                    let key = self.compile_expr(builder, &args[0])?;
+                    Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.map_remove,
+                            &[receiver.value, key.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: None,
+                    })
+                }
+                "len" => {
+                    let raw_len = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.map_len,
+                        &[receiver.value],
+                        types::I64,
+                    );
+                    Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.int,
+                            &[raw_len],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Int".to_string()),
+                    })
+                }
+                "isEmpty" => {
+                    let raw_len = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.map_len,
+                        &[receiver.value],
+                        types::I64,
+                    );
+                    let is_zero = builder.ins().icmp_imm(IntCC::Equal, raw_len, 0);
+                    let extended = builder.ins().uextend(types::I8, is_zero);
+                    Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.bool_,
+                            &[extended],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Bool".to_string()),
+                    })
+                }
+                "contains" => {
+                    let key = self.compile_expr(builder, &args[0])?;
+                    let raw = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.map_contains,
+                        &[receiver.value, key.value],
+                        types::I8,
+                    );
+                    Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.bool_,
+                            &[raw],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Bool".to_string()),
+                    })
+                }
+                "keys" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.map_keys,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some("List<String>".to_string()),
+                }),
+                "values" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.map_values,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some("List<String>".to_string()),
+                }),
+                "entries" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.map_entries,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some("List<(String,String)>".to_string()),
+                }),
+                other => Err(format!("unsupported Map member call `{other}`")),
             };
         }
         if layout::canonical_type_name(&receiver_type) == "String" {
@@ -2921,6 +3134,8 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                             Some(data_name.replace("::", ""))
                         } else if layout::canonical_type_name(data_name) == "Shared" {
                             Some(data_name.replace("::", ""))
+                        } else if layout::canonical_type_name(data_name) == "Map" {
+                            Some(data_name.replace("::", ""))
                         } else {
                             self.compiler
                                 .session
@@ -2952,6 +3167,16 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                                 let inner = shared_inner_type(&receiver_type).unwrap_or_else(|| "Unit".to_string());
                                 Some(format!("Result<{inner}, String>"))
                             }
+                            _ => None,
+                        };
+                    }
+                    if layout::canonical_type_name(&receiver_type) == "Map" {
+                        return match member.name.as_str() {
+                            "len" => Some("Int".to_string()),
+                            "isEmpty" | "contains" => Some("Bool".to_string()),
+                            "keys" | "values" => Some("List<String>".to_string()),
+                            "entries" => Some("List<(String,String)>".to_string()),
+                            "set" => Some("Unit".to_string()),
                             _ => None,
                         };
                     }

@@ -298,24 +298,24 @@ introduces `U` which is not part of `Result<T, E>`.
 parsed but actually constructible, readable, writable, and iterable
 from compiled code.
 
-- [ ] **0.11.1** Runtime: verify or add `fuse_map_new()`,
+- [x] **0.11.1** Runtime: verify or add `fuse_map_new()`,
       `fuse_map_set(map, key, value)`, `fuse_map_get(map, key)`,
       `fuse_map_remove(map, key)`, `fuse_map_len(map)`,
       `fuse_map_contains(map, key)`, `fuse_map_keys(map)`,
       `fuse_map_values(map)`, `fuse_map_entries(map)`.
-- [ ] **0.11.2** Codegen: handle `Map::<K,V>.new()` construction.
-- [ ] **0.11.3** Codegen: handle `map.set(key, val)`, `map.get(key)`,
+- [x] **0.11.2** Codegen: handle `Map::<K,V>.new()` construction.
+- [x] **0.11.3** Codegen: handle `map.set(key, val)`, `map.get(key)`,
       `map.remove(key)`, `map.len()`, `map.isEmpty()`, `map.contains(key)`
       method calls — dispatch to runtime functions.
-- [ ] **0.11.4** Codegen: handle `map.keys()`, `map.values()`,
+- [x] **0.11.4** Codegen: handle `map.keys()`, `map.values()`,
       `map.entries()` — return `List` values.
-- [ ] **0.11.5** Codegen: handle `for entry in map.entries() { ... }` —
+- [x] **0.11.5** Codegen: handle `for entry in map.entries() { ... }` —
       iteration over map entries.
-- [ ] **0.11.6** Test: `tests/fuse/core/types/map_basic.fuse` — create
+- [x] **0.11.6** Test: `tests/fuse/core/types/map_basic.fuse` — create
       map, set/get/remove, print len.
-- [ ] **0.11.7** Test: `tests/fuse/core/types/map_iteration.fuse` —
+- [x] **0.11.7** Test: `tests/fuse/core/types/map_iteration.fuse` —
       iterate keys, values, entries.
-- [ ] **0.11.8** Test: `tests/fuse/core/types/map_contains.fuse` —
+- [x] **0.11.8** Test: `tests/fuse/core/types/map_contains.fuse` —
       contains check on present and absent keys.
 
 ---

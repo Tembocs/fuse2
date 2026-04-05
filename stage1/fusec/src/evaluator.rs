@@ -109,6 +109,7 @@ enum Value {
     Bool(bool),
     String(String),
     List(Vec<Value>),
+    Map(Vec<(Value, Value)>),
     Data(Rc<RefCell<DataInstance>>),
     Option(Option<Box<Value>>),
     Result { is_ok: bool, value: Box<Value> },
@@ -618,6 +619,13 @@ impl Evaluator {
                 let tag = if *is_ok { "Ok" } else { "Err" };
                 format!("{tag}({})", self.stringify(value))
             }
+            Value::Map(entries) => {
+                let pairs: Vec<String> = entries
+                    .iter()
+                    .map(|(k, v)| format!("{}: {}", self.stringify(k), self.stringify(v)))
+                    .collect();
+                format!("{{{}}}", pairs.join(", "))
+            }
             Value::Moved(value) => self.stringify(value),
             Value::Unit => "Unit".to_string(),
             Value::NativeFunction(_) | Value::UserFunction(_) | Value::BoundMethod(_) | Value::ModuleValue(_) => {
@@ -655,6 +663,12 @@ impl Evaluator {
                     destroyed: false,
                 })))
             }
+            Value::Map(entries) => Value::Map(
+                entries
+                    .iter()
+                    .map(|(k, v)| (Self::deep_clone(k), Self::deep_clone(v)))
+                    .collect(),
+            ),
             Value::NativeFunction(function) => Value::NativeFunction(function.clone()),
             Value::UserFunction(function) => Value::UserFunction(function.clone()),
             Value::BoundMethod(method) => Value::BoundMethod(method.clone()),

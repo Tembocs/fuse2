@@ -16,5 +16,8 @@ pub use value::{
     fuse_unit, fuse_chan_bounded, fuse_chan_new, fuse_chan_recv, fuse_chan_send, fuse_shared_new,
     fuse_shared_read, fuse_shared_write, fuse_simd_sum,
     fuse_enum_new, fuse_enum_tag, fuse_enum_payload,
+    fuse_map_new, fuse_map_set, fuse_map_get, fuse_map_remove,
+    fuse_map_len, fuse_map_contains, fuse_map_keys, fuse_map_values,
+    fuse_map_entries,
     FuseHandle, FuseValue,
 };
