@@ -1,0 +1,27 @@
+// EXPECTED OUTPUT:
+// Some(10)
+// None
+fn Option.mapInt(owned self, f: fn(Int) -> Int) -> Option<Int> {
+  match self {
+    Some(value) => Some(f(value))
+    None => None
+  }
+}
+
+fn Option.orDefault(owned self, default: Int) -> Int {
+  match self {
+    Some(value) => value
+    None => default
+  }
+}
+
+@entrypoint
+fn main() {
+  val x = Some(5)
+  val doubled = x.mapInt(fn(n: Int) -> Int => n * 2)
+  println(doubled)
+
+  val y: Option<Int> = None
+  val mapped = y.mapInt(fn(n: Int) -> Int => n + 1)
+  println(mapped)
+}

@@ -1,0 +1,27 @@
+// EXPECTED OUTPUT:
+// Ok(42)
+// Err(missing)
+fn Result.mapOk(owned self, f: fn(Int) -> Int) -> Result<Int, String> {
+  match self {
+    Ok(value) => Ok(f(value))
+    Err(err) => Err(err)
+  }
+}
+
+fn Result.unwrapOrElse(owned self, f: fn(String) -> Int) -> Int {
+  match self {
+    Ok(value) => value
+    Err(err) => f(err)
+  }
+}
+
+@entrypoint
+fn main() {
+  val a: Result<Int, String> = Ok(21)
+  val doubled = a.mapOk(fn(n: Int) -> Int => n * 2)
+  println(doubled)
+
+  val b: Result<Int, String> = Err("missing")
+  val mapped = b.mapOk(fn(n: Int) -> Int => n + 1)
+  println(mapped)
+}

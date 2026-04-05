@@ -278,17 +278,17 @@ beyond those of the receiver type. E.g.,
 `fn Result<T,E>.map(owned self, f: fn(T) -> U) -> Result<U, E>`
 introduces `U` which is not part of `Result<T, E>`.
 
-- [ ] **0.10.1** Checker: when type-checking an extension function call,
+- [x] **0.10.1** Checker: when type-checking an extension function call,
       infer new type parameters from the argument types. If `f` has type
       `fn(Int) -> String`, then `U = String`.
-- [ ] **0.10.2** Checker: propagate inferred type parameters to the
+- [x] **0.10.2** Checker: propagate inferred type parameters to the
       return type. `Result<U, E>` becomes `Result<String, E>`.
-- [ ] **0.10.3** Codegen: no changes needed if generics remain erased
+- [x] **0.10.3** Codegen: no changes needed if generics remain erased
       (untyped handles at runtime). The type parameters only affect
       compile-time checking.
-- [ ] **0.10.4** Test: extension function on `Option<T>` that maps to
+- [x] **0.10.4** Test: extension function on `Option<T>` that maps to
       `Option<U>` via a lambda. Verify the output type is correct.
-- [ ] **0.10.5** Test: chained generic extension calls.
+- [x] **0.10.5** Test: chained generic extension calls.
 
 ---
 
