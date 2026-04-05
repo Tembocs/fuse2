@@ -1,0 +1,18 @@
+// EXPECTED OUTPUT:
+// 0
+// 3
+// 6
+fn sum(items: Int...) -> Int {
+  var total = 0
+  for item in items {
+    total = total + item
+  }
+  return total
+}
+
+@entrypoint
+fn main() {
+  println(sum())
+  println(sum(1, 2))
+  println(sum(1, 2, 3))
+}

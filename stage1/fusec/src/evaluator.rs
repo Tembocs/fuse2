@@ -673,13 +673,24 @@ impl Evaluator {
         let base = caller_env.unwrap_or(self.module_env(&module)?);
         let env = Environment::new(Some(base));
         let mut deferred = Vec::new();
-        for (param, arg) in function.params.iter().zip(args.into_iter()) {
-            let (value, destroy) = match arg {
-                Value::Moved(value) => (*value, true),
-                value if param.convention.as_deref() == Some("owned") => (Self::deep_clone(&value), true),
-                value => (value, false),
-            };
-            env.define(param.name.clone(), value, true, destroy);
+        let has_variadic = function.params.last().is_some_and(|p| p.variadic);
+        let fixed_count = if has_variadic { function.params.len() - 1 } else { function.params.len() };
+        let mut args_iter = args.into_iter();
+        for param in function.params.iter().take(fixed_count) {
+            if let Some(arg) = args_iter.next() {
+                let (value, destroy) = match arg {
+                    Value::Moved(value) => (*value, true),
+                    value if param.convention.as_deref() == Some("owned") => (Self::deep_clone(&value), true),
+                    value => (value, false),
+                };
+                env.define(param.name.clone(), value, true, destroy);
+            }
+        }
+        if has_variadic {
+            if let Some(param) = function.params.last() {
+                let rest: Vec<Value> = args_iter.collect();
+                env.define(param.name.clone(), Value::List(rest), true, false);
+            }
         }
         match self.eval_block(module_path, &function.body, &env, &mut deferred) {
             Ok(Some(value)) => {

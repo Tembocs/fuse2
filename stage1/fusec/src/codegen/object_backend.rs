@@ -1719,15 +1719,40 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             .get(&symbol)
             .ok_or_else(|| format!("missing function id for `{symbol}`"))?;
         let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
-        let mut lowered_args = Vec::with_capacity(args.len());
-        for arg in args {
-            lowered_args.push(self.compile_expr(builder, arg)?.value);
-        }
+        let lowered_args = self.lower_args_with_variadic(builder, &function.params, args)?;
         let call = builder.ins().call(local, &lowered_args);
         Ok(TypedValue {
             value: builder.inst_results(call)[0],
             ty: function.return_type.clone(),
         })
+    }
+
+    fn lower_args_with_variadic(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        params: &[fa::Param],
+        args: &[fa::Expr],
+    ) -> Result<Vec<Value>, String> {
+        let has_variadic = params.last().is_some_and(|p| p.variadic);
+        if !has_variadic {
+            let mut lowered = Vec::with_capacity(args.len());
+            for arg in args {
+                lowered.push(self.compile_expr(builder, arg)?.value);
+            }
+            return Ok(lowered);
+        }
+        let fixed_count = params.len() - 1;
+        let mut lowered = Vec::with_capacity(params.len());
+        for arg in args.iter().take(fixed_count) {
+            lowered.push(self.compile_expr(builder, arg)?.value);
+        }
+        let list = self.runtime_nullary(builder, self.compiler.runtime.list_new);
+        for arg in args.iter().skip(fixed_count) {
+            let val = self.compile_expr(builder, arg)?.value;
+            self.runtime_void(builder, self.compiler.runtime.list_push, &[list, val]);
+        }
+        lowered.push(list);
+        Ok(lowered)
     }
 
     fn compile_type_namespace_call(

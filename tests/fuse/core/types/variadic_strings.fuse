@@ -1,0 +1,20 @@
+// EXPECTED OUTPUT:
+// hello world !
+fn joinAll(sep: String, parts: String...) -> String {
+  var result = ""
+  var first = true
+  for part in parts {
+    if first {
+      result = part
+      first = false
+    } else {
+      result = result + sep + part
+    }
+  }
+  return result
+}
+
+@entrypoint
+fn main() {
+  println(joinAll(" ", "hello", "world", "!"))
+}

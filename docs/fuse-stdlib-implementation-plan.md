@@ -173,19 +173,19 @@ and destructuring in `val` bindings and `match` patterns.
 **What:** Support `T...` in function parameter lists, allowing callers
 to pass zero or more arguments that are collected into a `List<T>`.
 
-- [ ] **0.5.1** Lexer/Parser: parse `name: T...` as a variadic parameter.
+- [x] **0.5.1** Lexer/Parser: parse `name: T...` as a variadic parameter.
       Must be the last parameter.
-- [ ] **0.5.2** AST: mark parameter as variadic in `Param` node.
-- [ ] **0.5.3** Checker: validate that variadic is the last param. At
+- [x] **0.5.2** AST: mark parameter as variadic in `Param` node.
+- [x] **0.5.3** Checker: validate that variadic is the last param. At
       call sites, collect extra arguments into a list.
-- [ ] **0.5.4** Codegen: at the call site, pack variadic arguments into
+- [x] **0.5.4** Codegen: at the call site, pack variadic arguments into
       a `List<T>`. Inside the function, the parameter is a normal
       `List<T>`.
-- [ ] **0.5.5** Test: `tests/fuse/core/types/variadic_basic.fuse` —
+- [x] **0.5.5** Test: `tests/fuse/core/types/variadic_basic.fuse` —
       function taking `items: Int...`, call with 0, 1, and 3 args.
-- [ ] **0.5.6** Test: `tests/fuse/core/types/variadic_strings.fuse` —
+- [x] **0.5.6** Test: `tests/fuse/core/types/variadic_strings.fuse` —
       variadic `String...` parameter.
-- [ ] **0.5.7** Test: variadic not last param → compile error.
+- [x] **0.5.7** Test: variadic not last param → compile error.
 
 ---
 

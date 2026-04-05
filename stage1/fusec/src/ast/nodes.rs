@@ -36,6 +36,7 @@ pub struct Param {
     pub convention: Option<String>,
     pub name: String,
     pub type_name: Option<String>,
+    pub variadic: bool,
     pub span: Span,
 }
 

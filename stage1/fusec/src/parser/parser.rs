@@ -218,8 +218,15 @@ impl Parser {
         let name = self
             .expect(TokenKind::Identifier, "expected parameter name")?
             .text;
+        let mut variadic = false;
         let type_name = if self.match_kind(TokenKind::Colon).is_some() {
-            Some(self.parse_type_name(&[TokenKind::Comma, TokenKind::RParen]))
+            let raw = self.parse_type_name(&[TokenKind::Comma, TokenKind::RParen]);
+            if let Some(stripped) = raw.strip_suffix("...") {
+                variadic = true;
+                Some(stripped.to_string())
+            } else {
+                Some(raw)
+            }
         } else {
             None
         };
@@ -227,6 +234,7 @@ impl Parser {
             convention,
             name,
             type_name,
+            variadic,
             span: start,
         })
     }
