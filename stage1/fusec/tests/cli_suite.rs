@@ -577,6 +577,176 @@ fn no_warn_unused_flag_is_silent() {
 }
 
 // ---------------------------------------------------------------------------
+// Additional edge cases and flag combinations (Phase 8)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn error_format_bad_value_exits_2() {
+    let out = fusec()
+        .args(["--check", "foo.fuse", "--error-format", "json"])
+        .output()
+        .expect("run fusec");
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("invalid error format"));
+}
+
+#[test]
+fn multiple_files_rejected() {
+    let root = harness::repo_root().join("tests").join("fuse").join("milestone");
+    let out = fusec()
+        .arg(root.join("four_functions.fuse"))
+        .arg(root.join("four_functions.fuse"))
+        .arg("-o")
+        .arg("out.exe")
+        .output()
+        .expect("run fusec");
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("multi-file compilation"));
+}
+
+#[test]
+fn help_takes_precedence_over_other_args() {
+    let out = fusec()
+        .args(["--help", "--check", "nonexistent.fuse"])
+        .output()
+        .expect("run fusec");
+    assert!(out.status.success(), "--help should still exit 0");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("fusec — the Fuse compiler"));
+}
+
+#[test]
+fn compile_with_warn_unused_deny_warnings_blocks_on_warnings() {
+    let fixture = harness::repo_root()
+        .join("stage1")
+        .join("target")
+        .join("cli_compile_warn_test.fuse");
+    std::fs::write(
+        &fixture,
+        "@entrypoint\nfn main() {\n  val unused = 42\n  println(\"ok\")\n}\n",
+    )
+    .expect("write fixture");
+    let output = harness::unique_output_path("cli_compile_warn_test");
+    let out = fusec()
+        .arg(&fixture)
+        .arg("-o")
+        .arg(&output)
+        .args(["--warn-unused", "--deny-warnings"])
+        .output()
+        .expect("run fusec");
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "compile with --warn-unused --deny-warnings should fail on unused binding"
+    );
+    assert!(!output.exists(), "no binary when warnings denied");
+}
+
+#[test]
+fn run_mode_diagnostics_go_to_stderr_not_stdout() {
+    let fixture = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("shared_no_rank.fuse");
+    let out = fusec()
+        .args(["--run"])
+        .arg(&fixture)
+        .output()
+        .expect("run fusec");
+    assert_eq!(out.status.code(), Some(1));
+    assert!(out.stdout.is_empty(), "diagnostics must go to stderr, not stdout");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!stderr.is_empty(), "stderr must contain diagnostics");
+}
+
+#[test]
+fn check_triple_flag_combination() {
+    let fixture = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("shared_no_rank.fuse");
+    let out = fusec()
+        .args(["--check", "--color", "never", "--error-format", "short"])
+        .arg(&fixture)
+        .output()
+        .expect("run fusec");
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    // Short format, no ANSI codes
+    assert!(!stderr.contains("\x1b["), "no ANSI with --color never");
+    assert!(
+        stderr.contains("shared_no_rank.fuse:7:3: error:"),
+        "short format expected, got:\n{stderr}"
+    );
+}
+
+#[test]
+fn emit_ast_on_error_file_exits_1_with_stderr() {
+    let fixture = harness::repo_root()
+        .join("stage1")
+        .join("target")
+        .join("cli_emit_parse_error.fuse");
+    std::fs::write(&fixture, "fn main() {\n  val x =\n}\n").expect("write fixture");
+    let out = fusec()
+        .args(["--emit", "ast"])
+        .arg(&fixture)
+        .output()
+        .expect("run fusec");
+    assert_eq!(out.status.code(), Some(1), "parse error should exit 1");
+    assert!(out.stdout.is_empty(), "no AST output on parse error");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!stderr.is_empty(), "parse error should go to stderr");
+}
+
+#[test]
+fn run_mode_short_format_diagnostics() {
+    let fixture = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("shared_no_rank.fuse");
+    let out = fusec()
+        .args(["--run", "--error-format", "short", "--color", "never"])
+        .arg(&fixture)
+        .output()
+        .expect("run fusec");
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("shared_no_rank.fuse:7:3: error:"),
+        "short format in --run mode, got:\n{stderr}"
+    );
+}
+
+#[test]
+fn compile_diagnostics_go_to_stderr_not_stdout() {
+    let fixture = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("shared_no_rank.fuse");
+    let output = harness::unique_output_path("cli_compile_stderr_test");
+    let out = fusec()
+        .arg(&fixture)
+        .arg("-o")
+        .arg(&output)
+        .output()
+        .expect("run fusec");
+    assert_eq!(out.status.code(), Some(1));
+    assert!(out.stdout.is_empty(), "compile diagnostics must go to stderr");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("Shared<T> requires @rank annotation"));
+}
+
+// ---------------------------------------------------------------------------
 // --color never strips ANSI codes
 // ---------------------------------------------------------------------------
 

@@ -271,12 +271,12 @@ future change breaks the CLI, these tests catch it.
 
 | Phase | Tasks | Status |
 |-------|-------|--------|
-| 1 — Arg parsing      | 6  | not started |
-| 2 — Meta commands    | 3  | not started |
-| 3 — Diagnostics      | 9  | not started |
-| 4 — Core modes       | 5  | not started |
-| 5 — Emit modes       | 6  | not started |
-| 6 — REPL             | 4  | not started |
-| 7 — Warning flags    | 3  | not started |
-| 8 — Integration tests| 9  | not started |
-| **Total**            | **45** | **not started** |
+| 1 — Arg parsing      | 6  | **done** |
+| 2 — Meta commands    | 3  | **done** |
+| 3 — Diagnostics      | 9  | **done** |
+| 4 — Core modes       | 5  | **done** |
+| 5 — Emit modes       | 6  | **done** |
+| 6 — REPL             | 4  | **done** |
+| 7 — Warning flags    | 3  | **done** |
+| 8 — Integration tests| 9  | **done** |
+| **Total**            | **45** | **done** |

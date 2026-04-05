@@ -141,6 +141,30 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
         i += 1;
     }
 
+    // --help and --version take absolute precedence regardless of position.
+    if raw.iter().any(|a| a == "--help" || a == "-h") {
+        return Ok(Args {
+            mode: Mode::Help,
+            file: None,
+            output: None,
+            color,
+            error_format,
+            warn_unused,
+            deny_warnings,
+        });
+    }
+    if raw.iter().any(|a| a == "--version" || a == "-V") {
+        return Ok(Args {
+            mode: Mode::Version,
+            file: None,
+            output: None,
+            color,
+            error_format,
+            warn_unused,
+            deny_warnings,
+        });
+    }
+
     // Infer mode from context when no explicit mode flag was given.
     let mode = match mode {
         Some(m) => m,
