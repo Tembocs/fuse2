@@ -1,0 +1,18 @@
+// EXPECTED OUTPUT:
+// alive
+// [del] Resource released: sensor-1
+// done
+
+@value
+data class Resource(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] Resource released: {self.name}")
+  }
+}
+
+@entrypoint
+fn main() {
+  println("alive")
+  @rank(1) val s: Shared<Resource> = Shared::<Resource>.new(Resource("sensor-1"))
+  println("done")
+}

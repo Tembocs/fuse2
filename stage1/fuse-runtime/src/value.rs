@@ -446,19 +446,69 @@ pub unsafe extern "C" fn fuse_shared_new(value: FuseHandle) -> FuseHandle {
     FuseValue::new(ValueKind::Shared(value))
 }
 
+/// Clone a FuseValue, producing an independent snapshot.
+///
+/// Primitives (Int, Float, Bool, String, Unit) are deep-copied.
+/// Compound types (List, Data, Option, Result) get a new container whose
+/// children are the *same* handles — a shallow structural copy.
+/// Data clones intentionally carry **no destructor** so that only the
+/// original owner fires `__del__`.
+/// Reference-like types (Channel, Shared) are not cloned — the original
+/// handle is returned as-is.
+unsafe fn clone_value(handle: FuseHandle) -> FuseHandle {
+    if handle.is_null() {
+        return handle;
+    }
+    let src = unsafe { value_ref(handle) };
+    match &src.kind {
+        ValueKind::Int(v) => unsafe { fuse_int(*v) },
+        ValueKind::Float(v) => unsafe { fuse_float(*v) },
+        ValueKind::Bool(v) => unsafe { fuse_bool(*v) },
+        ValueKind::String(v) => FuseValue::new(ValueKind::String(v.clone())),
+        ValueKind::Unit => unsafe { fuse_unit() },
+        ValueKind::List(items) => FuseValue::new(ValueKind::List(items.clone())),
+        ValueKind::Data(data) => FuseValue::new(ValueKind::Data(DataValue {
+            type_name: data.type_name.clone(),
+            fields: data.fields.clone(),
+            destructor: None, // read snapshot — no destructor ownership
+        })),
+        ValueKind::Option(opt) => FuseValue::new(ValueKind::Option(*opt)),
+        ValueKind::Result { is_ok, value } => {
+            FuseValue::new(ValueKind::Result {
+                is_ok: *is_ok,
+                value: *value,
+            })
+        }
+        // Reference-like types: return the original handle, not a copy.
+        ValueKind::Channel(_) => handle,
+        ValueKind::Shared(v) => FuseValue::new(ValueKind::Shared(*v)),
+    }
+}
+
+/// `read()` returns an immutable snapshot — a clone of the inner value.
+/// The caller receives an independent copy; mutations to the Shared storage
+/// after this call do not affect the snapshot, and vice-versa.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_shared_read(shared: FuseHandle) -> FuseHandle {
+    unsafe {
+        match &value_ref(shared).kind {
+            ValueKind::Shared(value) => clone_value(*value),
+            _ => ptr::null_mut(),
+        }
+    }
+}
+
+/// `write()` returns the live inner handle — direct mutable access to the
+/// Shared storage.  Mutations through this handle are immediately visible
+/// to subsequent `read()` or `write()` calls.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_shared_write(shared: FuseHandle) -> FuseHandle {
     unsafe {
         match &value_ref(shared).kind {
             ValueKind::Shared(value) => *value,
             _ => ptr::null_mut(),
         }
     }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fuse_shared_write(shared: FuseHandle) -> FuseHandle {
-    unsafe { fuse_shared_read(shared) }
 }
 
 #[unsafe(no_mangle)]

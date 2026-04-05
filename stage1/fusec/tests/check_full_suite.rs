@@ -28,7 +28,7 @@ fn full_suite_fixtures_are_classified_for_output_error_and_warning() {
         }
     }
 
-    assert_eq!(output, 6, "unexpected number of full output fixtures");
+    assert_eq!(output, 15, "unexpected number of full output fixtures");
     assert_eq!(error, 3, "unexpected number of full error fixtures");
     assert_eq!(warning, 1, "unexpected number of full warning fixtures");
 }
@@ -105,6 +105,35 @@ fn shared_rank_ascending_is_checker_clean() {
         "{}: expected success, got `{actual}`",
         path.display()
     );
+}
+
+#[test]
+fn hardening_shared_fixtures_are_checker_clean() {
+    let concurrency = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency");
+    let fixtures = [
+        "shared_read_after_write.fuse",
+        "shared_multiple_reads.fuse",
+        "shared_write_read_cycles.fuse",
+        "shared_nested_data.fuse",
+        "shared_destruction.fuse",
+        "shared_read_then_write.fuse",
+        "shared_identity.fuse",
+        "shared_no_aliasing.fuse",
+        "shared_value_rendering.fuse",
+    ];
+    for name in fixtures {
+        let path = concurrency.join(name);
+        let actual = check_path_output(&path);
+        assert!(
+            actual.trim().is_empty(),
+            "{}: expected checker success, got `{actual}`",
+            path.display()
+        );
+    }
 }
 
 #[test]

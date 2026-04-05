@@ -43,57 +43,57 @@
 Goal: Explicitly define what `Shared.read()`, `Shared.write()`, and `Shared` value
 identity mean in Stage 1, and prove it with tests.
 
-- [ ] **H1.1** Audit current `Shared<T>` runtime: document that `read()` and `write()`
+- [x] **H1.1** Audit current `Shared<T>` runtime: document that `read()` and `write()`
       are currently identical (both return inner handle). Identify what must change
       so that `write()` is semantically distinct.
 
-- [ ] **H1.2** Make `write()` semantically distinct from `read()` in the runtime.
+- [x] **H1.2** Make `write()` semantically distinct from `read()` in the runtime.
       `read()` returns an immutable view. `write()` returns a mutable view. The
       distinction must be observable (the checker already enforces ref vs mutref at
       call sites — the runtime should not contradict that).
 
-- [ ] **H1.3** Add test: `shared_read_after_write.fuse` — write a value into Shared,
+- [x] **H1.3** Add test: `shared_read_after_write.fuse` — write a value into Shared,
       then read it back and verify the value is correct.
 
-- [ ] **H1.4** Add test: `shared_multiple_reads.fuse` — call `.read()` multiple times
+- [x] **H1.4** Add test: `shared_multiple_reads.fuse` — call `.read()` multiple times
       on the same Shared value and verify each read returns the same value.
 
-- [ ] **H1.5** Add test: `shared_write_read_cycles.fuse` — write, read, write again,
+- [x] **H1.5** Add test: `shared_write_read_cycles.fuse` — write, read, write again,
       read again. Verify mutation visibility across cycles.
 
-- [ ] **H1.6** Add test: `shared_nested_data.fuse` — wrap a data class (not just Int)
+- [x] **H1.6** Add test: `shared_nested_data.fuse` ��� wrap a data class (not just Int)
       inside `Shared<T>`. Read and verify field access works through shared storage.
 
-- [ ] **H1.7** Add test: `shared_destruction.fuse` — verify ASAP destruction of values
+- [x] **H1.7** Add test: `shared_destruction.fuse` — verify ASAP destruction of values
       inside Shared. The `__del__` of the inner value must fire when the Shared
       wrapper is destroyed.
 
-- [ ] **H1.8** Run `cargo test` — all existing + new tests green.
+- [x] **H1.8** Run `cargo test` — all existing + new tests green.
 
 ### H2 — Shared Guard / Ownership Boundary
 
 Goal: Clarify whether Stage 1 models read/write as plain exposed values or as
 guard-like handles, and make that model consistent and tested.
 
-- [ ] **H2.1** Decide and document the Stage 1 model: plain-value-with-rank-checked-access
+- [x] **H2.1** Decide and document the Stage 1 model: plain-value-with-rank-checked-access
       (no real RwLock) is the expected answer for single-threaded Stage 1. Document
       this explicitly in a comment block at the top of `shared.rs`.
 
-- [ ] **H2.2** Add test: `shared_read_then_write.fuse` — interleaved read then write
+- [x] **H2.2** Add test: `shared_read_then_write.fuse` — interleaved read then write
       on the same Shared value. Verify the read value is not corrupted by the
       subsequent write.
 
-- [ ] **H2.3** Add test: `shared_identity.fuse` — verify that values read from Shared
+- [x] **H2.3** Add test: `shared_identity.fuse` — verify that values read from Shared
       can be compared, printed, and used in expressions like any other value.
 
-- [ ] **H2.4** Verify no accidental aliasing: if a value is read from Shared and then
+- [x] **H2.4** Verify no accidental aliasing: if a value is read from Shared and then
       the Shared is written to, the previously read value must not change (copy
       semantics, not reference aliasing). Add test: `shared_no_aliasing.fuse`.
 
-- [ ] **H2.5** Add test: `shared_value_rendering.fuse` — print a value read from
+- [x] **H2.5** Add test: `shared_value_rendering.fuse` — print a value read from
       Shared. Verify the output matches what was written.
 
-- [ ] **H2.6** Run `cargo test` — all existing + new tests green.
+- [x] **H2.6** Run `cargo test` — all existing + new tests green.
 
 ---
 
@@ -290,7 +290,7 @@ Goal: Force an explicit go/no-go decision for self-hosting.
 
 | Wave | Units | Tasks | Status |
 |------|-------|-------|--------|
-| 1    | H1, H2 | 14 | not started |
+| 1    | H1, H2 | 14 | **done** |
 | 2    | H3, H4, H5 | 23 | not started |
 | 3    | H6, H7, H8 | 17 | not started |
 | **Total** | **8** | **54** | **not started** |

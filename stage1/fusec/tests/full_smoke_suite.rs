@@ -258,10 +258,289 @@ fn simd_sum_fixture_compiles_and_runs() {
 }
 
 #[test]
+fn shared_read_after_write_fixture_compiles_and_runs() {
+    let _guard = COMPILE_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+    let fixture = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("shared_read_after_write.fuse");
+    let output = harness::unique_output_path("shared_read_after_write_full");
+    let compile = harness::compile_fixture(&fixture, &output);
+    assert!(
+        compile.status.success(),
+        "compile failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&compile.stdout),
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let run = harness::run_compiled_binary(&output);
+    assert!(
+        run.status.success(),
+        "binary failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let actual = String::from_utf8(run.stdout).expect("utf-8 stdout");
+    let (_, expected) = harness::extract_expected_block(&fixture);
+    assert_eq!(actual.trim(), expected.trim(), "{}", fixture.display());
+}
+
+#[test]
+fn shared_multiple_reads_fixture_compiles_and_runs() {
+    let _guard = COMPILE_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+    let fixture = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("shared_multiple_reads.fuse");
+    let output = harness::unique_output_path("shared_multiple_reads_full");
+    let compile = harness::compile_fixture(&fixture, &output);
+    assert!(
+        compile.status.success(),
+        "compile failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&compile.stdout),
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let run = harness::run_compiled_binary(&output);
+    assert!(
+        run.status.success(),
+        "binary failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let actual = String::from_utf8(run.stdout).expect("utf-8 stdout");
+    let (_, expected) = harness::extract_expected_block(&fixture);
+    assert_eq!(actual.trim(), expected.trim(), "{}", fixture.display());
+}
+
+#[test]
+fn shared_write_read_cycles_fixture_compiles_and_runs() {
+    let _guard = COMPILE_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+    let fixture = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("shared_write_read_cycles.fuse");
+    let output = harness::unique_output_path("shared_write_read_cycles_full");
+    let compile = harness::compile_fixture(&fixture, &output);
+    assert!(
+        compile.status.success(),
+        "compile failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&compile.stdout),
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let run = harness::run_compiled_binary(&output);
+    assert!(
+        run.status.success(),
+        "binary failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let actual = String::from_utf8(run.stdout).expect("utf-8 stdout");
+    let (_, expected) = harness::extract_expected_block(&fixture);
+    assert_eq!(actual.trim(), expected.trim(), "{}", fixture.display());
+}
+
+#[test]
+fn shared_nested_data_fixture_compiles_and_runs() {
+    let _guard = COMPILE_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+    let fixture = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("shared_nested_data.fuse");
+    let output = harness::unique_output_path("shared_nested_data_full");
+    let compile = harness::compile_fixture(&fixture, &output);
+    assert!(
+        compile.status.success(),
+        "compile failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&compile.stdout),
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let run = harness::run_compiled_binary(&output);
+    assert!(
+        run.status.success(),
+        "binary failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let actual = String::from_utf8(run.stdout).expect("utf-8 stdout");
+    let (_, expected) = harness::extract_expected_block(&fixture);
+    assert_eq!(actual.trim(), expected.trim(), "{}", fixture.display());
+}
+
+#[test]
+fn shared_destruction_fixture_compiles_and_runs() {
+    let _guard = COMPILE_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+    let fixture = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("shared_destruction.fuse");
+    let output = harness::unique_output_path("shared_destruction_full");
+    let compile = harness::compile_fixture(&fixture, &output);
+    assert!(
+        compile.status.success(),
+        "compile failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&compile.stdout),
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let run = harness::run_compiled_binary(&output);
+    assert!(
+        run.status.success(),
+        "binary failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let actual = String::from_utf8(run.stdout).expect("utf-8 stdout");
+    let (_, expected) = harness::extract_expected_block(&fixture);
+    assert_eq!(actual.trim(), expected.trim(), "{}", fixture.display());
+}
+
+#[test]
+fn shared_read_then_write_fixture_compiles_and_runs() {
+    let _guard = COMPILE_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+    let fixture = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("shared_read_then_write.fuse");
+    let output = harness::unique_output_path("shared_read_then_write_full");
+    let compile = harness::compile_fixture(&fixture, &output);
+    assert!(
+        compile.status.success(),
+        "compile failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&compile.stdout),
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let run = harness::run_compiled_binary(&output);
+    assert!(
+        run.status.success(),
+        "binary failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let actual = String::from_utf8(run.stdout).expect("utf-8 stdout");
+    let (_, expected) = harness::extract_expected_block(&fixture);
+    assert_eq!(actual.trim(), expected.trim(), "{}", fixture.display());
+}
+
+#[test]
+fn shared_identity_fixture_compiles_and_runs() {
+    let _guard = COMPILE_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+    let fixture = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("shared_identity.fuse");
+    let output = harness::unique_output_path("shared_identity_full");
+    let compile = harness::compile_fixture(&fixture, &output);
+    assert!(
+        compile.status.success(),
+        "compile failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&compile.stdout),
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let run = harness::run_compiled_binary(&output);
+    assert!(
+        run.status.success(),
+        "binary failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let actual = String::from_utf8(run.stdout).expect("utf-8 stdout");
+    let (_, expected) = harness::extract_expected_block(&fixture);
+    assert_eq!(actual.trim(), expected.trim(), "{}", fixture.display());
+}
+
+#[test]
+fn shared_no_aliasing_fixture_compiles_and_runs() {
+    let _guard = COMPILE_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+    let fixture = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("shared_no_aliasing.fuse");
+    let output = harness::unique_output_path("shared_no_aliasing_full");
+    let compile = harness::compile_fixture(&fixture, &output);
+    assert!(
+        compile.status.success(),
+        "compile failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&compile.stdout),
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let run = harness::run_compiled_binary(&output);
+    assert!(
+        run.status.success(),
+        "binary failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let actual = String::from_utf8(run.stdout).expect("utf-8 stdout");
+    let (_, expected) = harness::extract_expected_block(&fixture);
+    assert_eq!(actual.trim(), expected.trim(), "{}", fixture.display());
+}
+
+#[test]
+fn shared_value_rendering_fixture_compiles_and_runs() {
+    let _guard = COMPILE_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+    let fixture = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("full")
+        .join("concurrency")
+        .join("shared_value_rendering.fuse");
+    let output = harness::unique_output_path("shared_value_rendering_full");
+    let compile = harness::compile_fixture(&fixture, &output);
+    assert!(
+        compile.status.success(),
+        "compile failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&compile.stdout),
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    let run = harness::run_compiled_binary(&output);
+    assert!(
+        run.status.success(),
+        "binary failed for {}:\nstdout:\n{}\nstderr:\n{}",
+        fixture.display(),
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let actual = String::from_utf8(run.stdout).expect("utf-8 stdout");
+    let (_, expected) = harness::extract_expected_block(&fixture);
+    assert_eq!(actual.trim(), expected.trim(), "{}", fixture.display());
+}
+
+#[test]
 fn full_fixture_files_are_present() {
     let root = harness::repo_root().join("tests").join("fuse").join("full");
     let count = walk(&root);
-    assert_eq!(count, 10, "unexpected full fixture count");
+    assert_eq!(count, 19, "unexpected full fixture count");
 }
 
 fn walk(path: &std::path::Path) -> usize {

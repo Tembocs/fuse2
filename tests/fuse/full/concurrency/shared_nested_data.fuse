@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// Alice
+// 30
+
+@value
+data class User(val name: String, val age: Int)
+
+@entrypoint
+fn main() {
+  @rank(1) val s: Shared<User> = Shared::<User>.new(User("Alice", 30))
+  val u = s.read()
+  println(u.name)
+  println(u.age)
+}

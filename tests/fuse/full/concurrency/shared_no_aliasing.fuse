@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// 10
+// 99
+
+@value
+data class Box(var value: Int)
+
+@entrypoint
+fn main() {
+  @rank(1) val s: Shared<Box> = Shared::<Box>.new(Box(10))
+  val snapshot = s.read()
+  val w = s.write()
+  w.value = 99
+  println(snapshot.value)
+  println(w.value)
+}

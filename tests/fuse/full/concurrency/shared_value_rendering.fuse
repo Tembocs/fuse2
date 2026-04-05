@@ -1,0 +1,9 @@
+// EXPECTED OUTPUT:
+// hello world
+
+@entrypoint
+fn main() {
+  @rank(1) val s: Shared<String> = Shared::<String>.new("hello world")
+  val v = s.read()
+  println(v)
+}
