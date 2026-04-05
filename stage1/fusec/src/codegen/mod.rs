@@ -10,3 +10,7 @@ pub fn backend_name() -> &'static str {
 pub fn compile_path_to_native(input: &std::path::Path, output: &std::path::Path) -> Result<(), String> {
     object_backend::compile_path_to_native(input, output)
 }
+
+pub fn compile_path_to_ir_text(input: &std::path::Path) -> Result<String, String> {
+    object_backend::compile_path_to_ir_text(input)
+}

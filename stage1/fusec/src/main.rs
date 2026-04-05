@@ -470,17 +470,25 @@ fn emit_hir(path: &PathBuf) -> ExitCode {
     }
 }
 
-fn emit_ir(path: &PathBuf, _args: &Args) -> ExitCode {
+fn emit_ir(path: &PathBuf, args: &Args) -> ExitCode {
+    let source = fs::read_to_string(path).ok();
     let diagnostics = fusec::check_path(path);
     if !diagnostics.is_empty() {
-        for diag in &diagnostics {
-            eprintln!("{}", diag.render());
-        }
+        let rendered = render_diagnostics(&diagnostics, source.as_deref(), args);
+        eprintln!("{rendered}");
         return ExitCode::from(1);
     }
 
-    eprintln!("--emit ir is not yet implemented");
-    ExitCode::from(1)
+    match fusec::codegen::compile_path_to_ir_text(path) {
+        Ok(ir_text) => {
+            println!("{ir_text}");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("error: {error}");
+            ExitCode::from(1)
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

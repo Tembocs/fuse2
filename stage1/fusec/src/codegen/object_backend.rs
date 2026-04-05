@@ -33,6 +33,12 @@ pub fn compile_path_to_native(input: &Path, output: &Path) -> Result<(), String>
     build_wrapper(&input, output, &object)
 }
 
+pub fn compile_path_to_ir_text(input: &Path) -> Result<String, String> {
+    let input = input.canonicalize().unwrap_or_else(|_| input.to_path_buf());
+    let session = BuildSession::load(&input)?;
+    BackendCompiler::new(&session)?.collect_ir_text()
+}
+
 #[derive(Clone)]
 struct LoadedModule {
     path: PathBuf,
@@ -338,6 +344,104 @@ impl<'a> BackendCompiler<'a> {
         self.compile_entry()?;
         let product = self.module.finish();
         product.emit().map_err(|error| error.to_string())
+    }
+
+    fn collect_ir_text(mut self) -> Result<String, String> {
+        let mut ir_parts = Vec::new();
+        for loaded in self.session.modules.values() {
+            for function in loaded.functions.values() {
+                if let Some(ir) = self.compile_function_to_ir(loaded.path.as_path(), function)? {
+                    ir_parts.push(ir);
+                }
+            }
+            for function in loaded.extensions.values() {
+                let mut function = function.clone();
+                if let Some(receiver_type) = &function.receiver_type {
+                    if let Some(param) = function.params.first_mut() {
+                        if param.name == "self" && param.type_name.is_none() {
+                            param.type_name = Some(receiver_type.clone());
+                        }
+                    }
+                }
+                if let Some(ir) = self.compile_function_to_ir(loaded.path.as_path(), &function)? {
+                    ir_parts.push(ir);
+                }
+            }
+            for data in loaded.data_classes.values() {
+                for method in &data.methods {
+                    let mut method = method.clone();
+                    if let Some(param) = method.params.first_mut() {
+                        if param.name == "self" && param.type_name.is_none() {
+                            param.type_name = Some(data.name.clone());
+                        }
+                    }
+                    if let Some(ir) = self.compile_function_to_ir(loaded.path.as_path(), &method)? {
+                        ir_parts.push(ir);
+                    }
+                }
+            }
+        }
+        Ok(ir_parts.join("\n"))
+    }
+
+    fn compile_function_to_ir(
+        &mut self,
+        module_path: &Path,
+        function: &fa::FunctionDecl,
+    ) -> Result<Option<String>, String> {
+        let name = layout::function_symbol(module_path, &function.name);
+        let func_id = match self.function_ids.get(&name) {
+            Some(id) => *id,
+            None => return Ok(None),
+        };
+        let sig = self.handle_signature(function.params.len());
+        let mut ctx = self.module.make_context();
+        ctx.func = Function::with_name_signature(UserFuncName::user(0, func_id.as_u32()), sig);
+        let mut builder_ctx = FunctionBuilderContext::new();
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
+        let entry = builder.create_block();
+        builder.append_block_params_for_function_params(entry);
+        builder.switch_to_block(entry);
+        builder.seal_block(entry);
+
+        let mut lowering = LoweringState::new(self, module_path, function);
+        for (index, param) in function.params.iter().enumerate() {
+            let variable = lowering.new_var(&mut builder, lowering.compiler.pointer_type);
+            let value = builder.block_params(entry)[index];
+            builder.def_var(variable, value);
+            lowering.locals.insert(
+                param.name.clone(),
+                LocalBinding {
+                    var: variable,
+                    ty: param.type_name.clone(),
+                    destroy: param.convention.as_deref() == Some("owned"),
+                },
+            );
+        }
+        let (prefix_statements, final_expr) = match function.body.statements.split_last() {
+            Some((fa::Statement::Expr(expr_stmt), prefix)) if function.return_type.is_some() => {
+                (prefix, Some(expr_stmt.expr.clone()))
+            }
+            _ => (function.body.statements.as_slice(), None),
+        };
+        lowering.compile_statements(&mut builder, prefix_statements)?;
+        if !lowering.current_block_is_terminated(&builder) {
+            let result = if let Some(expr) = final_expr.as_ref() {
+                lowering.compile_expr(&mut builder, expr)?.value
+            } else {
+                lowering.runtime_nullary(&mut builder, lowering.compiler.runtime.unit)
+            };
+            if function.return_type.is_none() && final_expr.is_none() {
+                lowering.release_remaining(&mut builder);
+            }
+            builder.ins().return_(&[result]);
+        }
+        builder.seal_all_blocks();
+        builder.finalize();
+
+        // Capture IR text before verification/definition.
+        let ir_text = format!("; {name}\n{}", ctx.func.display());
+        Ok(Some(ir_text))
     }
 
     fn handle_signature(&self, arity: usize) -> cranelift_codegen::ir::Signature {

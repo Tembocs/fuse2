@@ -362,6 +362,24 @@ fn emit_hir_produces_output_and_exits_0() {
     assert!(stdout.contains("FnDecl"), "should contain FnDecl nodes");
 }
 
+#[test]
+fn emit_ir_produces_output_and_exits_0() {
+    let fixture = harness::repo_root()
+        .join("tests")
+        .join("fuse")
+        .join("milestone")
+        .join("four_functions.fuse");
+    let out = fusec()
+        .args(["--emit", "ir"])
+        .arg(&fixture)
+        .output()
+        .expect("run fusec");
+    assert!(out.status.success(), "expected exit 0");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("function"), "IR should contain function definitions");
+    assert!(stdout.contains("block"), "IR should contain block labels");
+}
+
 // ---------------------------------------------------------------------------
 // --color never strips ANSI codes
 // ---------------------------------------------------------------------------
