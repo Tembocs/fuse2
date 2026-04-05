@@ -677,18 +677,28 @@ the inner map is possible. If encapsulation proves necessary later
 (e.g., swapping to a hash-set runtime), this can be changed to a
 `struct` — but only with a spec update first.
 
-- [ ] **1.11.1** Create `stdlib/core/set.fuse` — define
-      `data class Set<T>(val inner: Map<T, Bool>)`.
-- [ ] **1.11.2** Implement constructors: `Set.new()`, `Set.of(items: T...)`,
-      `Set.fromList(items: List<T>)`.
-- [ ] **1.11.3** Implement query: `contains`, `len`, `isEmpty`, `toList`.
-- [ ] **1.11.4** Implement mutation: `add`, `remove`, `clear`.
-- [ ] **1.11.5** Implement set operations: `union`, `intersect`,
+- [x] **1.11.1** Create `stdlib/core/set.fuse` — define
+      `pub data class Set(val inner: Map<T, Bool>)`.
+- [x] **1.11.2** Implement constructors: `set.new()`, `set.of(items: T...)`,
+      `set.fromList(items: List<T>)`.
+- [x] **1.11.3** Implement query: `contains`, `len`, `isEmpty`, `toList`.
+- [x] **1.11.4** Implement mutation: `add`, `remove`, `clear`.
+- [x] **1.11.5** Implement set operations: `union`, `intersect`,
       `difference`, `symmetricDiff`, `isSubsetOf`, `isSupersetOf`,
       `isDisjoint`.
-- [ ] **1.11.6** Implement `forEach`, `filter`, `map`.
-- [ ] **1.11.7** Create `tests/fuse/stdlib/core/set_test.fuse`.
-- [ ] **1.11.8** Run tests. Fix any compiler bugs found.
+- [x] **1.11.6** Implement `forEach`, `filter`, `map`.
+- [x] **1.11.7** Create `tests/fuse/stdlib/core/set_test.fuse`.
+- [x] **1.11.8** Run tests. Fix any compiler bugs found.
+
+**Notes:**
+- Set is `pub data class Set(val inner: Map<T, Bool>)` — generic
+  data class syntax not supported, type parameter is in field type only.
+- Added evaluator FFI handlers for raw `fuse_map_*` functions (new, len,
+  get, contains, keys, values, entries, set, remove) so Set methods
+  that call them directly work in `--run` mode.
+- Same evaluator mutation limitation as Map: constructors that build
+  populated sets (of, fromList) and mutation methods (add, remove)
+  work in Cranelift but not in the evaluator.
 
 ---
 

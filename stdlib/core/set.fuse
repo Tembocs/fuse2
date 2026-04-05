@@ -1,0 +1,242 @@
+// Fuse Core stdlib — Set<T> type and extension methods.
+//
+// Set is an unordered collection of unique values, implemented
+// over Map<T, Bool>.
+//
+// import stdlib.core.set
+
+// --- FFI declarations ---
+
+extern fn fuse_map_new() -> Map<T, Bool>
+extern fn fuse_map_set(map: Map<T, Bool>, key: T, value: Bool)
+extern fn fuse_map_get(map: Map<T, Bool>, key: T) -> Bool
+extern fn fuse_map_len(map: Map<T, Bool>) -> Int
+extern fn fuse_map_contains(map: Map<T, Bool>, key: T) -> Bool
+extern fn fuse_map_keys(map: Map<T, Bool>) -> List<T>
+extern fn fuse_map_remove(map: Map<T, Bool>, key: T) -> Bool
+extern fn fuse_map_entries(map: Map<T, Bool>) -> List<(T, Bool)>
+extern fn fuse_rt_list_len(list: List<T>) -> Int
+extern fn fuse_list_get(list: List<T>, index: Int) -> T
+extern fn fuse_list_new() -> List<T>
+extern fn fuse_list_push(list: List<T>, item: T)
+
+// --- Type definition ---
+
+pub data class Set(val inner: Map<T, Bool>)
+
+// --- Constructors (module-level functions) ---
+
+pub fn new() -> Set {
+  Set(fuse_map_new())
+}
+
+pub fn of(items: T...) -> Set {
+  val m = fuse_map_new()
+  val len = fuse_rt_list_len(items)
+  var i = 0
+  while i < len {
+    fuse_map_set(m, fuse_list_get(items, i), true)
+    i = i + 1
+  }
+  Set(m)
+}
+
+pub fn fromList(items: List<T>) -> Set {
+  val m = fuse_map_new()
+  val len = fuse_rt_list_len(items)
+  var i = 0
+  while i < len {
+    fuse_map_set(m, fuse_list_get(items, i), true)
+    i = i + 1
+  }
+  Set(m)
+}
+
+// --- Query ---
+
+pub fn Set.contains(ref self, item: T) -> Bool {
+  fuse_map_contains(self.inner, item)
+}
+
+pub fn Set.len(ref self) -> Int {
+  fuse_map_len(self.inner)
+}
+
+pub fn Set.isEmpty(ref self) -> Bool {
+  fuse_map_len(self.inner) == 0
+}
+
+pub fn Set.toList(ref self) -> List<T> {
+  fuse_map_keys(self.inner)
+}
+
+// --- Mutation ---
+
+pub fn Set.add(mutref self, item: T) {
+  fuse_map_set(self.inner, item, true)
+}
+
+pub fn Set.remove(mutref self, item: T) -> Bool {
+  val had = fuse_map_contains(self.inner, item)
+  fuse_map_remove(self.inner, item)
+  had
+}
+
+pub fn Set.clear(mutref self) {
+  // Replace inner with empty map.
+  // Note: evaluator limitation — mutation doesn't propagate.
+  val empty = fuse_map_new()
+  self = Set(empty)
+}
+
+// --- Set operations ---
+
+pub fn Set.union(ref self, other: Set) -> Set {
+  val m = fuse_map_new()
+  val selfKeys = fuse_map_keys(self.inner)
+  val selfLen = fuse_rt_list_len(selfKeys)
+  var i = 0
+  while i < selfLen {
+    fuse_map_set(m, fuse_list_get(selfKeys, i), true)
+    i = i + 1
+  }
+  val otherKeys = fuse_map_keys(other.inner)
+  val otherLen = fuse_rt_list_len(otherKeys)
+  i = 0
+  while i < otherLen {
+    fuse_map_set(m, fuse_list_get(otherKeys, i), true)
+    i = i + 1
+  }
+  Set(m)
+}
+
+pub fn Set.intersect(ref self, other: Set) -> Set {
+  val m = fuse_map_new()
+  val selfKeys = fuse_map_keys(self.inner)
+  val selfLen = fuse_rt_list_len(selfKeys)
+  var i = 0
+  while i < selfLen {
+    val key = fuse_list_get(selfKeys, i)
+    if fuse_map_contains(other.inner, key) {
+      fuse_map_set(m, key, true)
+    }
+    i = i + 1
+  }
+  Set(m)
+}
+
+pub fn Set.difference(ref self, other: Set) -> Set {
+  val m = fuse_map_new()
+  val selfKeys = fuse_map_keys(self.inner)
+  val selfLen = fuse_rt_list_len(selfKeys)
+  var i = 0
+  while i < selfLen {
+    val key = fuse_list_get(selfKeys, i)
+    if fuse_map_contains(other.inner, key) == false {
+      fuse_map_set(m, key, true)
+    }
+    i = i + 1
+  }
+  Set(m)
+}
+
+pub fn Set.symmetricDiff(ref self, other: Set) -> Set {
+  val m = fuse_map_new()
+  val selfKeys = fuse_map_keys(self.inner)
+  val selfLen = fuse_rt_list_len(selfKeys)
+  var i = 0
+  while i < selfLen {
+    val key = fuse_list_get(selfKeys, i)
+    if fuse_map_contains(other.inner, key) == false {
+      fuse_map_set(m, key, true)
+    }
+    i = i + 1
+  }
+  val otherKeys = fuse_map_keys(other.inner)
+  val otherLen = fuse_rt_list_len(otherKeys)
+  i = 0
+  while i < otherLen {
+    val key = fuse_list_get(otherKeys, i)
+    if fuse_map_contains(self.inner, key) == false {
+      fuse_map_set(m, key, true)
+    }
+    i = i + 1
+  }
+  Set(m)
+}
+
+pub fn Set.isSubsetOf(ref self, other: Set) -> Bool {
+  val selfKeys = fuse_map_keys(self.inner)
+  val selfLen = fuse_rt_list_len(selfKeys)
+  var i = 0
+  while i < selfLen {
+    if fuse_map_contains(other.inner, fuse_list_get(selfKeys, i)) == false {
+      return false
+    }
+    i = i + 1
+  }
+  true
+}
+
+pub fn Set.isSupersetOf(ref self, other: Set) -> Bool {
+  val otherKeys = fuse_map_keys(other.inner)
+  val otherLen = fuse_rt_list_len(otherKeys)
+  var i = 0
+  while i < otherLen {
+    if fuse_map_contains(self.inner, fuse_list_get(otherKeys, i)) == false {
+      return false
+    }
+    i = i + 1
+  }
+  true
+}
+
+pub fn Set.isDisjoint(ref self, other: Set) -> Bool {
+  val selfKeys = fuse_map_keys(self.inner)
+  val selfLen = fuse_rt_list_len(selfKeys)
+  var i = 0
+  while i < selfLen {
+    if fuse_map_contains(other.inner, fuse_list_get(selfKeys, i)) {
+      return false
+    }
+    i = i + 1
+  }
+  true
+}
+
+// --- Iteration ---
+
+pub fn Set.forEach(ref self, f: fn(T)) {
+  val keys = fuse_map_keys(self.inner)
+  val len = fuse_rt_list_len(keys)
+  var i = 0
+  while i < len {
+    f(fuse_list_get(keys, i))
+    i = i + 1
+  }
+}
+
+pub fn Set.filter(ref self, f: fn(T) -> Bool) -> Set {
+  val m = fuse_map_new()
+  val keys = fuse_map_keys(self.inner)
+  val len = fuse_rt_list_len(keys)
+  var i = 0
+  while i < len {
+    val key = fuse_list_get(keys, i)
+    if f(key) { fuse_map_set(m, key, true) }
+    i = i + 1
+  }
+  Set(m)
+}
+
+pub fn Set.map(ref self, f: fn(T) -> U) -> Set {
+  val m = fuse_map_new()
+  val keys = fuse_map_keys(self.inner)
+  val len = fuse_rt_list_len(keys)
+  var i = 0
+  while i < len {
+    fuse_map_set(m, f(fuse_list_get(keys, i)), true)
+    i = i + 1
+  }
+  Set(m)
+}

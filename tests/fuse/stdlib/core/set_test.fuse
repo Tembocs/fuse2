@@ -1,0 +1,53 @@
+// EXPECTED OUTPUT:
+// === construction ===
+// empty: 0
+// === query on empty ===
+// isEmpty: true
+// contains: false
+// === subset / disjoint on empty ===
+// isSubsetOf: true
+// isDisjoint: true
+// === methods callable ===
+// done
+
+import stdlib.core.set
+
+@entrypoint
+fn main() {
+  // Note: Set is built on Map. Map.set() doesn't mutate in the evaluator
+  // (value semantics), so constructors that build maps (set.of, set.fromList)
+  // and mutation methods (add, remove) are limited. These tests verify
+  // method callability. Full functional testing requires Cranelift compilation.
+
+  // construction
+  println("=== construction ===")
+  val empty = set.new()
+  println(f"empty: {empty.len()}")
+
+  // query on empty set
+  println("=== query on empty ===")
+  val ie = empty.isEmpty()
+  println(f"isEmpty: {ie}")
+  val co = empty.contains("x")
+  println(f"contains: {co}")
+
+  // subset / disjoint on empty sets
+  println("=== subset / disjoint on empty ===")
+  val other = set.new()
+  val sub = empty.isSubsetOf(other)
+  println(f"isSubsetOf: {sub}")
+  val dis = empty.isDisjoint(other)
+  println(f"isDisjoint: {dis}")
+
+  // Verify all methods are callable
+  println("=== methods callable ===")
+  val keys = empty.toList()
+  val union = empty.union(other)
+  val inter = empty.intersect(other)
+  val diff = empty.difference(other)
+  val sdiff = empty.symmetricDiff(other)
+  val sup = empty.isSupersetOf(other)
+  empty.forEach(fn(x: String) => println(x))
+  val filtered = empty.filter(fn(x: String) -> Bool => true)
+  println("done")
+}

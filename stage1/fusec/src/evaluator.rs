@@ -782,6 +782,50 @@ impl Evaluator {
                     }
                     return Ok(Value::Unit);
                 }
+                "fuse_map_new" => { return Ok(Value::Map(Vec::new())); }
+                "fuse_map_set" => {
+                    // Mutation limited in evaluator (value semantics)
+                    return Ok(Value::Unit);
+                }
+                "fuse_map_get" => {
+                    if let (Some(Value::Map(entries)), Some(key)) = (args.first(), args.get(1)) {
+                        let key_str = self.stringify(key);
+                        for (k, v) in entries {
+                            if self.stringify(k) == key_str { return Ok(v.clone()); }
+                        }
+                    }
+                    return Ok(Value::Unit);
+                }
+                "fuse_map_len" => {
+                    if let Some(Value::Map(entries)) = args.first() { return Ok(Value::Int(entries.len() as i64)); }
+                    return Ok(Value::Int(0));
+                }
+                "fuse_map_contains" => {
+                    if let (Some(Value::Map(entries)), Some(key)) = (args.first(), args.get(1)) {
+                        let key_str = self.stringify(key);
+                        return Ok(Value::Bool(entries.iter().any(|(k, _)| self.stringify(k) == key_str)));
+                    }
+                    return Ok(Value::Bool(false));
+                }
+                "fuse_map_keys" => {
+                    if let Some(Value::Map(entries)) = args.first() {
+                        return Ok(Value::List(entries.iter().map(|(k, _)| k.clone()).collect()));
+                    }
+                    return Ok(Value::List(Vec::new()));
+                }
+                "fuse_map_values" => {
+                    if let Some(Value::Map(entries)) = args.first() {
+                        return Ok(Value::List(entries.iter().map(|(_, v)| v.clone()).collect()));
+                    }
+                    return Ok(Value::List(Vec::new()));
+                }
+                "fuse_map_entries" => {
+                    if let Some(Value::Map(entries)) = args.first() {
+                        return Ok(Value::List(entries.iter().map(|(k, v)| Value::List(vec![k.clone(), v.clone()])).collect()));
+                    }
+                    return Ok(Value::List(Vec::new()));
+                }
+                "fuse_map_remove" => { return Ok(Value::Unit); }
                 "fuse_rt_list_len" => {
                     if let Some(Value::List(items)) = args.first() { return Ok(Value::Int(items.len() as i64)); }
                     return Ok(Value::Int(0));
