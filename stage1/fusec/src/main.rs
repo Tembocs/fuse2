@@ -671,6 +671,9 @@ fn print_ast_stmt(stmt: &fusec::ast::nodes::Statement, depth: usize) {
             println!("{indent}Defer [{}:{}]", d.span.line, d.span.column);
             print_ast_expr(&d.expr, depth + 1, "Expr");
         }
+        fusec::ast::nodes::Statement::TupleDestruct(td) => {
+            println!("{indent}TupleDestruct ({} bindings)", td.names.len());
+        }
     }
 }
 
@@ -749,6 +752,9 @@ fn print_ast_expr(expr: &fusec::ast::nodes::Expr, depth: usize, label: &str) {
         fusec::ast::nodes::Expr::Question(q) => {
             println!("{indent}{prefix}Question");
             print_ast_expr(&q.value, depth + 1, "");
+        }
+        fusec::ast::nodes::Expr::Tuple(t) => {
+            println!("{indent}{prefix}Tuple ({} items)", t.items.len());
         }
         fusec::ast::nodes::Expr::Lambda(l) => {
             println!(

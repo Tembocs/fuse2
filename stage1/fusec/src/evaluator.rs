@@ -812,6 +812,16 @@ impl Evaluator {
                 });
                 Ok(None)
             }
+            fa::Statement::TupleDestruct(td) => {
+                let value = self.eval_expr(module_path, &td.value, env)?;
+                if let Value::List(items) = value {
+                    for (i, name) in td.names.iter().enumerate() {
+                        let item = items.get(i).cloned().unwrap_or(Value::Unit);
+                        env.define(name, item, false, true);
+                    }
+                }
+                Ok(None)
+            }
             fa::Statement::Expr(expr_stmt) => {
                 let value = self.eval_expr(module_path, &expr_stmt.expr, env)?;
                 Ok(Some(value))
@@ -1026,6 +1036,13 @@ impl Evaluator {
                 }
                 Ok(Value::Unit)
             }
+            fa::Expr::Tuple(tuple) => {
+                let mut items = Vec::new();
+                for item in &tuple.items {
+                    items.push(self.eval_expr(module_path, item, env)?);
+                }
+                Ok(Value::List(items))
+            }
             fa::Expr::Lambda(lambda) => {
                 let decl = fa::FunctionDecl {
                     name: format!("__lambda_{}", lambda.span.line),
@@ -1088,6 +1105,13 @@ impl Evaluator {
                 }
                 _ => {}
             },
+            Value::List(items) => {
+                if let Ok(index) = name.parse::<usize>() {
+                    if let Some(item) = items.get(index) {
+                        return Ok(item.clone());
+                    }
+                }
+            }
             _ => {}
         }
         let receiver_type = runtime_type(&object);
@@ -1493,6 +1517,7 @@ fn collect_stmt_names(statement: &fa::Statement) -> HashSet<String> {
         }
         fa::Statement::Defer(defer_stmt) => collect_expr_names(&defer_stmt.expr),
         fa::Statement::Expr(expr_stmt) => collect_expr_names(&expr_stmt.expr),
+        fa::Statement::TupleDestruct(td) => collect_expr_names(&td.value),
         fa::Statement::Break(_) | fa::Statement::Continue(_) => HashSet::new(),
     }
 }
@@ -1510,6 +1535,7 @@ fn statement_span(statement: &fa::Statement) -> crate::error::Span {
         fa::Statement::Loop(node) => node.span,
         fa::Statement::Defer(node) => node.span,
         fa::Statement::Expr(node) => node.span,
+        fa::Statement::TupleDestruct(node) => node.span,
     }
 }
 
@@ -1596,6 +1622,13 @@ fn collect_expr_names(expr: &fa::Expr) -> HashSet<String> {
                     }
                     fa::ArmBody::Expr(expr) => names.extend(collect_expr_names(expr)),
                 }
+            }
+            names
+        }
+        fa::Expr::Tuple(tuple) => {
+            let mut names = HashSet::new();
+            for item in &tuple.items {
+                names.extend(collect_expr_names(item));
             }
             names
         }

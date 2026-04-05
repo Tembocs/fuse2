@@ -405,7 +405,12 @@ impl Parser {
         };
         let token = self.peek(0).clone();
         match token.kind {
-            TokenKind::Val | TokenKind::Var => Ok(Statement::VarDecl(self.parse_var_decl(rank)?)),
+            TokenKind::Val | TokenKind::Var => {
+                if self.peek(1).kind == TokenKind::LParen {
+                    return Ok(Statement::TupleDestruct(self.parse_tuple_destruct()?));
+                }
+                Ok(Statement::VarDecl(self.parse_var_decl(rank)?))
+            }
             TokenKind::Return => {
                 self.take();
                 let value = if matches!(self.peek(0).kind, TokenKind::RBrace | TokenKind::Semi) {
@@ -454,6 +459,28 @@ impl Parser {
         let value = self.expect(TokenKind::Int, "expected rank integer")?;
         self.expect(TokenKind::RParen, "expected `)` after rank value")?;
         Ok(value.text.parse().unwrap_or_default())
+    }
+
+    fn parse_tuple_destruct(&mut self) -> Result<TupleDestructStmt, Diagnostic> {
+        let start = self.take(); // val or var
+        self.expect(TokenKind::LParen, "expected `(` for tuple destructuring")?;
+        let mut names = vec![self
+            .expect(TokenKind::Identifier, "expected binding name")?
+            .text];
+        while self.match_kind(TokenKind::Comma).is_some() {
+            names.push(
+                self.expect(TokenKind::Identifier, "expected binding name")?
+                    .text,
+            );
+        }
+        self.expect(TokenKind::RParen, "expected `)` after tuple bindings")?;
+        self.expect(TokenKind::Eq, "expected `=` in tuple destructuring")?;
+        let value = self.parse_expression()?;
+        Ok(TupleDestructStmt {
+            names,
+            value,
+            span: start.span,
+        })
     }
 
     fn parse_var_decl(&mut self, rank: Option<i64>) -> Result<VarDecl, Diagnostic> {
@@ -619,9 +646,14 @@ impl Parser {
                 continue;
             }
             if self.match_kind(TokenKind::Dot).is_some() {
-                let name =
-                    self.expect(TokenKind::Identifier, "expected member name after `.`")?;
-                expr = Expr::Member(Member { object: Box::new(expr), name: name.text, optional: false, span: name.span });
+                if self.peek(0).kind == TokenKind::Int {
+                    let index = self.take();
+                    expr = Expr::Member(Member { object: Box::new(expr), name: index.text, optional: false, span: index.span });
+                } else {
+                    let name =
+                        self.expect(TokenKind::Identifier, "expected member name after `.`")?;
+                    expr = Expr::Member(Member { object: Box::new(expr), name: name.text, optional: false, span: name.span });
+                }
                 continue;
             }
             if self.match_kind(TokenKind::QDot).is_some() {
@@ -685,9 +717,23 @@ impl Parser {
             }
             TokenKind::LParen => {
                 self.take();
-                let expr = self.parse_expression()?;
-                self.expect(TokenKind::RParen, "expected `)`")?;
-                Ok(expr)
+                let first = self.parse_expression()?;
+                if self.match_kind(TokenKind::Comma).is_some() {
+                    let mut items = vec![first];
+                    if self.peek(0).kind != TokenKind::RParen {
+                        loop {
+                            items.push(self.parse_expression()?);
+                            if self.match_kind(TokenKind::Comma).is_none() {
+                                break;
+                            }
+                        }
+                    }
+                    self.expect(TokenKind::RParen, "expected `)` after tuple")?;
+                    Ok(Expr::Tuple(TupleExpr { items, span: token.span }))
+                } else {
+                    self.expect(TokenKind::RParen, "expected `)`")?;
+                    Ok(first)
+                }
             }
             TokenKind::LBracket => {
                 self.take();

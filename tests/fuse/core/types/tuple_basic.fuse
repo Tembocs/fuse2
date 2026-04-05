@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// 1
+// hello
+// 3
+fn getFirst(pair: (Int, String)) -> Int {
+  return pair.0
+}
+
+@entrypoint
+fn main() {
+  val t = (1, "hello")
+  println(t.0)
+  println(t.1)
+
+  val result = getFirst((3, "world"))
+  println(result)
+}

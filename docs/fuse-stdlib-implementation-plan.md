@@ -145,25 +145,25 @@ Rust-backed operations (file I/O, math, networking, etc.).
 **What:** Support `(T, U)` as a type, `(expr1, expr2)` as construction,
 and destructuring in `val` bindings and `match` patterns.
 
-- [ ] **0.4.1** Lexer/Parser: parse tuple type syntax `(T, U)` and
+- [x] **0.4.1** Lexer/Parser: parse tuple type syntax `(T, U)` and
       `(T, U, V)` in type annotations. Distinguish from parenthesised
       expressions by context.
-- [ ] **0.4.2** Lexer/Parser: parse tuple construction `(expr1, expr2)`.
-- [ ] **0.4.3** Lexer/Parser: parse tuple destructuring in `val`:
+- [x] **0.4.2** Lexer/Parser: parse tuple construction `(expr1, expr2)`.
+- [x] **0.4.3** Lexer/Parser: parse tuple destructuring in `val`:
       `val (a, b) = someTuple`.
-- [ ] **0.4.4** AST: add `Tuple` expression node and `TupleType`.
-- [ ] **0.4.5** Checker: infer and check tuple types. Validate element
+- [x] **0.4.4** AST: add `Tuple` expression node and `TupleType`.
+- [x] **0.4.5** Checker: infer and check tuple types. Validate element
       access via `.0`, `.1`, etc.
-- [ ] **0.4.6** Codegen: represent tuples at runtime. Options: reuse
+- [x] **0.4.6** Codegen: represent tuples at runtime. Options: reuse
       data class machinery (anonymous 2/3-field struct) or a dedicated
       `ValueKind::Tuple`.
-- [ ] **0.4.7** Codegen: emit tuple construction, element access, and
+- [x] **0.4.7** Codegen: emit tuple construction, element access, and
       destructuring.
-- [ ] **0.4.8** Test: `tests/fuse/core/types/tuple_basic.fuse` — create
+- [x] **0.4.8** Test: `tests/fuse/core/types/tuple_basic.fuse` — create
       tuple, access `.0` and `.1`, print values.
-- [ ] **0.4.9** Test: `tests/fuse/core/types/tuple_destructure.fuse` —
+- [x] **0.4.9** Test: `tests/fuse/core/types/tuple_destructure.fuse` —
       `val (a, b) = ...` binding.
-- [ ] **0.4.10** Test: `tests/fuse/core/types/tuple_in_list.fuse` —
+- [x] **0.4.10** Test: `tests/fuse/core/types/tuple_in_list.fuse` —
       `List<(Int, String)>`, iterate and access elements.
 
 ---

@@ -905,6 +905,28 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             fa::Statement::For(for_stmt) => self.compile_for(builder, for_stmt)?,
             fa::Statement::Loop(loop_stmt) => self.compile_loop(builder, &loop_stmt.body.statements)?,
             fa::Statement::Defer(_) => {}
+            fa::Statement::TupleDestruct(td) => {
+                let value = self.compile_expr(builder, &td.value)?;
+                for (i, name) in td.names.iter().enumerate() {
+                    let idx = builder.ins().iconst(self.compiler.pointer_type, i as i64);
+                    let item = self.runtime(
+                        builder,
+                        self.compiler.runtime.list_get,
+                        &[value.value, idx],
+                        self.compiler.pointer_type,
+                    );
+                    let variable = self.new_var(builder, self.compiler.pointer_type);
+                    builder.def_var(variable, item);
+                    self.locals.insert(
+                        name.clone(),
+                        LocalBinding {
+                            var: variable,
+                            ty: None,
+                            destroy: true,
+                        },
+                    );
+                }
+            }
             fa::Statement::Expr(expr_stmt) => {
                 let _ = self.compile_expr(builder, &expr_stmt.expr)?;
             }
@@ -1017,11 +1039,19 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         );
         let item_var = self.new_var(builder, self.compiler.pointer_type);
         builder.def_var(item_var, item);
+        let element_type = iterable.ty.as_deref()
+            .and_then(|t| {
+                if t.starts_with("List<") && t.ends_with('>') {
+                    Some(t[5..t.len()-1].to_string())
+                } else {
+                    None
+                }
+            });
         self.locals.insert(
             for_stmt.name.clone(),
             LocalBinding {
                 var: item_var,
-                ty: Some("String".to_string()),
+                ty: element_type,
                 destroy: false,
             },
         );
@@ -1097,6 +1127,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             fa::Expr::Match(match_expr) => self.compile_match(builder, match_expr),
             fa::Expr::When(when_expr) => self.compile_when(builder, when_expr),
             fa::Expr::Lambda(lambda) => self.compile_lambda(builder, lambda),
+            fa::Expr::Tuple(tuple) => self.compile_tuple(builder, tuple),
         }
     }
 
@@ -1292,6 +1323,24 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 "List<{}>",
                 item_type.unwrap_or_else(|| "Unknown".to_string())
             )),
+        })
+    }
+
+    fn compile_tuple(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        tuple: &fa::TupleExpr,
+    ) -> Result<TypedValue, String> {
+        let handle = self.runtime_nullary(builder, self.compiler.runtime.list_new);
+        let mut types = Vec::new();
+        for item in &tuple.items {
+            let item_value = self.compile_expr(builder, item)?;
+            types.push(item_value.ty.clone().unwrap_or_else(|| "Unknown".to_string()));
+            self.runtime_void(builder, self.compiler.runtime.list_push, &[handle, item_value.value]);
+        }
+        Ok(TypedValue {
+            value: handle,
+            ty: Some(format!("({})", types.join(","))),
         })
     }
 
@@ -2085,6 +2134,20 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 other => Err(format!("unsupported String member `{other}`")),
             };
         }
+        if object_type.starts_with('(') {
+            if let Ok(index) = name.parse::<i64>() {
+                let index_val = self.usize_const(builder, index);
+                return Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.list_get,
+                        &[object.value, index_val],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: None,
+                });
+            }
+        }
         let layout = self
             .compiler
             .session
@@ -2867,6 +2930,10 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 let ret = lambda.return_type.clone().unwrap_or_else(|| "Any".to_string());
                 Some(format!("fn({}) -> {}", param_types.join(", "), ret))
             }
+            fa::Expr::Tuple(tuple) => {
+                let types: Vec<String> = tuple.items.iter().filter_map(|item| self.infer_expr_type(item)).collect();
+                Some(format!("({})", types.join(",")))
+            }
         }
     }
 }
@@ -2941,6 +3008,7 @@ fn collect_stmt_names(statement: &fa::Statement) -> HashSet<String> {
             .collect(),
         fa::Statement::Defer(defer_stmt) => collect_expr_names(&defer_stmt.expr),
         fa::Statement::Expr(expr_stmt) => collect_expr_names(&expr_stmt.expr),
+        fa::Statement::TupleDestruct(td) => collect_expr_names(&td.value),
         fa::Statement::Break(_) | fa::Statement::Continue(_) => HashSet::new(),
     }
 }
@@ -3024,6 +3092,13 @@ fn collect_expr_names(expr: &fa::Expr) -> HashSet<String> {
                     }
                     fa::ArmBody::Expr(expr) => names.extend(collect_expr_names(expr)),
                 }
+            }
+            names
+        }
+        fa::Expr::Tuple(tuple) => {
+            let mut names = HashSet::new();
+            for item in &tuple.items {
+                names.extend(collect_expr_names(item));
             }
             names
         }

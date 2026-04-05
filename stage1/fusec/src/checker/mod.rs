@@ -394,6 +394,21 @@ impl Checker {
             }
             hir::Statement::Defer(stmt) => self.check_expr(module, &stmt.expr, scope, owner_name, loop_depth),
             hir::Statement::Expr(stmt) => self.check_expr(module, &stmt.expr, scope, owner_name, loop_depth),
+            hir::Statement::TupleDestruct(td) => {
+                self.check_expr(module, &td.value, scope, owner_name, loop_depth);
+                for name in &td.names {
+                    scope.insert(name.clone(), BindingInfo {
+                        mutable: false,
+                        param_convention: None,
+                        type_name: None,
+                        rank: None,
+                        held_rank: None,
+                        held_rank_is_write: false,
+                        moved: false,
+                        used: false,
+                    });
+                }
+            }
         }
     }
 
@@ -516,6 +531,9 @@ impl Checker {
             hir::Statement::Defer(stmt) => {
                 self.check_spawn_expr(module, &stmt.expr, outer_names, local_names);
             }
+            hir::Statement::TupleDestruct(td) => {
+                self.check_spawn_expr(module, &td.value, outer_names, local_names);
+            }
             hir::Statement::Expr(stmt) => {
                 self.check_spawn_expr(module, &stmt.expr, outer_names, local_names);
             }
@@ -628,6 +646,11 @@ impl Checker {
                 }
             }
             hir::Expr::Literal(_) | hir::Expr::FString(_) | hir::Expr::Name(_) => {}
+            hir::Expr::Tuple(tuple) => {
+                for item in &tuple.items {
+                    self.check_spawn_expr(module, item, outer_names, local_names);
+                }
+            }
             hir::Expr::Lambda(lambda) => {
                 for statement in &lambda.body.statements {
                     self.check_spawn_statement(module, statement, outer_names, &mut local_names.clone());
@@ -783,6 +806,11 @@ impl Checker {
                 }
                 for statement in &lambda.body.statements {
                     self.check_statement(module, statement, &mut lambda_scope, loop_depth, owner_name);
+                }
+            }
+            hir::Expr::Tuple(tuple) => {
+                for item in &tuple.items {
+                    self.check_expr(module, item, scope, owner_name, loop_depth);
                 }
             }
         }
@@ -1076,6 +1104,10 @@ impl Checker {
             hir::Expr::MutRef(expr) => self.infer_expr_type(module, &expr.value, scope, owner_name),
             hir::Expr::Await(expr) => self.infer_expr_type(module, &expr.value, scope, owner_name),
             hir::Expr::When(_) => None,
+            hir::Expr::Tuple(tuple) => {
+                let types: Vec<String> = tuple.items.iter().filter_map(|item| self.infer_expr_type(module, item, scope, owner_name)).collect();
+                Some(format!("({})", types.join(",")))
+            }
             hir::Expr::Lambda(lambda) => {
                 let param_types: Vec<String> = lambda.params.iter()
                     .map(|p| p.type_name.clone().unwrap_or_else(|| "Any".to_string()))

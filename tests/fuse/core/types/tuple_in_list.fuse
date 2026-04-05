@@ -1,0 +1,10 @@
+// EXPECTED OUTPUT:
+// alice: 90
+// bob: 85
+@entrypoint
+fn main() {
+  val pairs = [("alice", 90), ("bob", 85)]
+  for pair in pairs {
+    println(f"{pair.0}: {pair.1}")
+  }
+}

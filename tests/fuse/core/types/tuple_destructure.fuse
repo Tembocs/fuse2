@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// 10
+// 20
+fn makePair() -> (Int, Int) {
+  return (10, 20)
+}
+
+@entrypoint
+fn main() {
+  val (a, b) = makePair()
+  println(a)
+  println(b)
+}

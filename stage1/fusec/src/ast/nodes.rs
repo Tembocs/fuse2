@@ -95,6 +95,7 @@ pub struct Block {
 #[derive(Clone, Debug)]
 pub enum Statement {
     VarDecl(VarDecl),
+    TupleDestruct(TupleDestructStmt),
     Assign(Assign),
     Return(ReturnStmt),
     Break(Span),
@@ -105,6 +106,13 @@ pub enum Statement {
     Loop(LoopStmt),
     Defer(DeferStmt),
     Expr(ExprStmt),
+}
+
+#[derive(Clone, Debug)]
+pub struct TupleDestructStmt {
+    pub names: Vec<String>,
+    pub value: Expr,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug)]
@@ -176,6 +184,7 @@ pub enum Expr {
     FString(FString),
     Name(Name),
     List(ListExpr),
+    Tuple(TupleExpr),
     Unary(UnaryOp),
     Binary(BinaryOp),
     Call(Call),
@@ -198,6 +207,8 @@ impl Expr {
             Self::FString(node) => node.span,
             Self::Name(node) => node.span,
             Self::List(node) => node.span,
+            Self::Tuple(node) => node.span,
+            #[allow(unreachable_patterns)]
             Self::Unary(node) => node.span,
             Self::Binary(node) => node.span,
             Self::Call(node) => node.span,
@@ -243,6 +254,12 @@ pub struct Name {
 
 #[derive(Clone, Debug)]
 pub struct ListExpr {
+    pub items: Vec<Expr>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct TupleExpr {
     pub items: Vec<Expr>,
     pub span: Span,
 }
