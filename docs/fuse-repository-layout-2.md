@@ -111,22 +111,43 @@ fuse/
 │               └── simd_sum.fuse
 │
 ├── stdlib/                            # Standard library — written in Fuse
-│   ├── README.md                      # Which stdlib files are available at each stage
-│   ├── core/                          # Available in Fuse Core (Stage 0+)
-│   │   ├── result.fuse                # Result<T,E>, Ok, Err
-│   │   ├── option.fuse                # Option<T>, Some, None
-│   │   ├── list.fuse                  # List<T> — map, filter, sorted, retainWhere, etc.
-│   │   ├── map.fuse                   # Map<K, V> — set, get, remove, keys, values, entries
-│   │   ├── string.fuse                # String — interpolation, slicing, parsing
-│   │   ├── int.fuse                   # Int — arithmetic, conversions
-│   │   ├── float.fuse                 # Float — arithmetic, SIMD-ready layout
-│   │   └── bool.fuse                  # Bool — and, or, not
-│   └── full/                          # Available in Fuse Full (Stage 1+)
-│       ├── chan.fuse                   # Chan<T> — bounded, unbounded, send, recv
-│       ├── shared.fuse                # Shared<T> — read, write, try_write
-│       ├── timer.fuse                 # Timer — sleep, timeout
-│       ├── simd.fuse                  # SIMD<T,N> — sum, dot, broadcast
-│       └── http.fuse                  # Http — get, post (used in canonical example)
+│   ├── core/                          # Pure computation, no OS/FFI (Stage 0+)
+│   │   ├── result.fuse                # Extension methods on Result<T, E>
+│   │   ├── option.fuse                # Extension methods on Option<T>
+│   │   ├── bool.fuse                  # Extension methods on Bool
+│   │   ├── int.fuse                   # Extension methods on Int
+│   │   ├── float.fuse                 # Extension methods on Float
+│   │   ├── math.fuse                  # Free math functions (trig, exp, log, gcd, etc.)
+│   │   ├── fmt.fuse                   # String formatting utilities
+│   │   ├── string.fuse                # Extension methods on String
+│   │   ├── list.fuse                  # Extension methods on List<T>
+│   │   ├── map.fuse                   # Extension methods on Map<K, V>
+│   │   └── set.fuse                   # Set<T> — built on Map<T, Bool>
+│   ├── full/                          # FFI-backed, OS, concurrency (Stage 1+)
+│   │   ├── io.fuse                    # File I/O, stdin/stdout
+│   │   ├── path.fuse                  # Path manipulation (pure string ops)
+│   │   ├── os.fuse                    # Filesystem operations
+│   │   ├── env.fuse                   # Environment variables
+│   │   ├── sys.fuse                   # Process info, exit, platform
+│   │   ├── time.fuse                  # Timestamps, durations, dates
+│   │   ├── random.fuse                # Pseudo-random number generation
+│   │   ├── process.fuse               # Child process spawning
+│   │   ├── net.fuse                   # TCP/UDP networking
+│   │   ├── json.fuse                  # JSON parsing and serialisation
+│   │   ├── http.fuse                  # HTTP client
+│   │   ├── chan.fuse                   # Chan<T> — typed channels
+│   │   ├── shared.fuse                # Shared<T> — rank-based concurrent state
+│   │   ├── timer.fuse                 # Async sleep and timeouts
+│   │   └── simd.fuse                  # SIMD vector operations
+│   └── ext/                           # Optional, heavyweight (not bundled)
+│       ├── test.fuse                  # Test assertions
+│       ├── log.fuse                   # Structured logging
+│       ├── regex.fuse                 # Regular expressions
+│       ├── toml.fuse                  # TOML parsing
+│       ├── yaml.fuse                  # YAML parsing
+│       ├── json_schema.fuse           # JSON Schema validation
+│       ├── crypto.fuse                # Cryptographic primitives
+│       └── http_server.fuse           # HTTP server
 │
 ├── examples/                          # Standalone Fuse programs for learning and testing
 │   ├── README.md
@@ -294,13 +315,24 @@ expected snapshot.
 
 ### `stdlib/`
 
-Standard library definitions written in Fuse. Core stdlib (`stdlib/core/`) is
-available to the Stage 0 interpreter. Full stdlib (`stdlib/full/`) is available
-from Stage 1 onward.
+Standard library written in Fuse, organised into three tiers:
 
-These files are source of truth for the standard library API. The Stage 0
-interpreter may implement them natively in Python for performance; the Stage 1
-compiler compiles them as ordinary Fuse source. The API must be identical.
+- **`stdlib/core/`** — Pure computation, no OS interaction, no FFI. Available
+  in all stages (Stage 0+). Every function is deterministic and side-effect-free
+  except where documented. 11 modules.
+- **`stdlib/full/`** — Requires FFI to Rust, OS syscalls, async, or concurrency.
+  Stage 1 and Stage 2 only. 15 modules.
+- **`stdlib/ext/`** — Optional, heavyweight, or opinionated. Not bundled by
+  default. Installed per project. 8 modules.
+
+The authoritative API specification is `docs/fuse-stdlib-spec.md`. Every function
+signature there is final. Implementation progress is tracked in
+`docs/fuse-stdlib-implementation-plan.md`.
+
+Import paths mirror directory paths:
+- `import stdlib.core.list` → `stdlib/core/list.fuse`
+- `import stdlib.full.io.{readFile, IOError}` → `stdlib/full/io.fuse`
+- `import stdlib.ext.test.{assertEq}` → `stdlib/ext/test.fuse`
 
 ---
 
