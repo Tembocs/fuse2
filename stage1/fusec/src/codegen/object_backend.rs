@@ -46,6 +46,7 @@ struct LoadedModule {
     extensions: HashMap<(String, String), fa::FunctionDecl>,
     data_classes: HashMap<String, fa::DataClassDecl>,
     enums: HashMap<String, fa::EnumDecl>,
+    extern_fns: HashMap<String, fa::ExternFnDecl>,
 }
 
 struct BuildSession {
@@ -120,6 +121,10 @@ impl BuildSession {
         })
     }
 
+    fn find_extern_fn(&self, name: &str) -> Option<&fa::ExternFnDecl> {
+        self.modules.values().find_map(|module| module.extern_fns.get(name))
+    }
+
     fn find_enum(&self, type_name: &str) -> Option<&fa::EnumDecl> {
         let key = layout::canonical_type_name(type_name);
         self.modules.values().find_map(|module| module.enums.get(key))
@@ -163,6 +168,11 @@ fn load_module_recursive(
             .collect(),
         enums: module
             .enums
+            .iter()
+            .map(|e| (e.name.clone(), e.clone()))
+            .collect(),
+        extern_fns: module
+            .extern_fns
             .iter()
             .map(|e| (e.name.clone(), e.clone()))
             .collect(),
@@ -325,6 +335,13 @@ impl<'a> BackendCompiler<'a> {
                         .map_err(|error| error.to_string())?;
                     self.destructor_ids.insert(name, func_id);
                 }
+            }
+            for extern_fn in loaded.extern_fns.values() {
+                let func_id = self
+                    .module
+                    .declare_function(&extern_fn.name, Linkage::Import, &self.handle_signature(extern_fn.params.len()))
+                    .map_err(|error| error.to_string())?;
+                self.function_ids.insert(extern_fn.name.clone(), func_id);
             }
         }
         self.module
@@ -1621,6 +1638,24 @@ impl<'a, 'b> LoweringState<'a, 'b> {
 
         if let Some((data_module, data)) = self.compiler.session.find_data(name) {
             return self.compile_data_constructor(builder, data_module, data, args);
+        }
+
+        if let Some(extern_fn) = self.compiler.session.find_extern_fn(name) {
+            let func_id = *self
+                .compiler
+                .function_ids
+                .get(&extern_fn.name)
+                .ok_or_else(|| format!("missing extern function id for `{}`", extern_fn.name))?;
+            let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
+            let mut lowered_args = Vec::with_capacity(args.len());
+            for arg in args {
+                lowered_args.push(self.compile_expr(builder, arg)?.value);
+            }
+            let call = builder.ins().call(local, &lowered_args);
+            return Ok(TypedValue {
+                value: builder.inst_results(call)[0],
+                ty: extern_fn.return_type.clone(),
+            });
         }
 
         let (target_module, function) = self

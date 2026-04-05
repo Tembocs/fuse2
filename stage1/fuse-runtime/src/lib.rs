@@ -14,5 +14,7 @@ pub use value::{
     fuse_println, fuse_release, fuse_result_is_ok, fuse_result_unwrap, fuse_some,
     fuse_string_is_empty, fuse_string_new_utf8, fuse_sub, fuse_to_string, fuse_to_upper,
     fuse_unit, fuse_chan_bounded, fuse_chan_new, fuse_chan_recv, fuse_chan_send, fuse_shared_new,
-    fuse_shared_read, fuse_shared_write, fuse_simd_sum, FuseHandle, FuseValue,
+    fuse_shared_read, fuse_shared_write, fuse_simd_sum,
+    fuse_enum_new, fuse_enum_tag, fuse_enum_payload,
+    FuseHandle, FuseValue,
 };

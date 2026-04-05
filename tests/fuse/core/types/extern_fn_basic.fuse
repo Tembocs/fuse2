@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// 30
+// hello world
+extern fn fuse_add(a: Int, b: Int) -> Int
+extern fn fuse_concat(a: String, b: String) -> String
+
+@entrypoint
+fn main() {
+  val result = fuse_add(10, 20)
+  println(result)
+
+  val greeting = fuse_concat("hello ", "world")
+  println(greeting)
+}

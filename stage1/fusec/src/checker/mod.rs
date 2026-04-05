@@ -120,6 +120,30 @@ impl Checker {
                 },
             );
         }
+        for extern_fn in &info.module.extern_fns {
+            let synthetic = hir::FunctionDecl {
+                name: extern_fn.name.clone(),
+                params: extern_fn.params.clone(),
+                return_type: extern_fn.return_type.clone(),
+                body: hir::Block {
+                    statements: Vec::new(),
+                    span: extern_fn.span,
+                },
+                is_pub: extern_fn.is_pub,
+                decorators: Vec::new(),
+                is_async: false,
+                is_suspend: false,
+                receiver_type: None,
+                span: extern_fn.span,
+            };
+            info.symbols.insert(
+                extern_fn.name.clone(),
+                Symbol::Function {
+                    node: synthetic,
+                    is_pub: extern_fn.is_pub,
+                },
+            );
+        }
 
         self.module_cache.insert(path.to_path_buf(), info.clone());
         Ok(info)

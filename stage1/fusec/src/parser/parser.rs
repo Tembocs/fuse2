@@ -95,6 +95,11 @@ impl Parser {
                 enum_decl.is_pub = is_pub;
                 Ok(Declaration::Enum(enum_decl))
             }
+            TokenKind::Extern => {
+                let mut extern_fn = self.parse_extern_fn()?;
+                extern_fn.is_pub = is_pub;
+                Ok(Declaration::ExternFn(extern_fn))
+            }
             _ => Err(self.syntax_error(
                 format!("unexpected top-level token {}", self.peek(0).text),
                 self.peek(0).span,
@@ -343,6 +348,36 @@ impl Parser {
         Ok(EnumDecl {
             name,
             variants,
+            is_pub: false,
+            span: start.span,
+        })
+    }
+
+    fn parse_extern_fn(&mut self) -> Result<ExternFnDecl, Diagnostic> {
+        let start = self.expect(TokenKind::Extern, "expected `extern`")?;
+        self.expect(TokenKind::Fn, "expected `fn` after `extern`")?;
+        let name = self
+            .expect(TokenKind::Identifier, "expected extern function name")?
+            .text;
+        self.expect(TokenKind::LParen, "expected `(` after extern function name")?;
+        let mut params = Vec::new();
+        if self.peek(0).kind != TokenKind::RParen {
+            loop {
+                params.push(self.parse_param()?);
+                if self.match_kind(TokenKind::Comma).is_none() {
+                    break;
+                }
+            }
+        }
+        self.expect(TokenKind::RParen, "expected `)` after parameters")?;
+        let mut return_type = None;
+        if self.match_kind(TokenKind::Arrow).is_some() {
+            return_type = Some(self.parse_type_name(&[TokenKind::LBrace, TokenKind::FatArrow, TokenKind::Fn, TokenKind::Extern, TokenKind::Pub, TokenKind::Data, TokenKind::Enum, TokenKind::Import, TokenKind::At, TokenKind::Eof]));
+        }
+        Ok(ExternFnDecl {
+            name,
+            params,
+            return_type,
             is_pub: false,
             span: start.span,
         })

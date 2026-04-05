@@ -586,6 +586,19 @@ fn print_ast_decl(decl: &fusec::ast::nodes::Declaration, depth: usize) {
                 e.name, e.span.line, e.span.column
             );
         }
+        fusec::ast::nodes::Declaration::ExternFn(e) => {
+            let ret = e
+                .return_type
+                .as_deref()
+                .unwrap_or("Unit");
+            println!(
+                "{indent}ExternFn '{}' ({} params) -> {ret} [{}:{}]",
+                e.name,
+                e.params.len(),
+                e.span.line,
+                e.span.column
+            );
+        }
     }
 }
 
@@ -778,6 +791,10 @@ fn print_hir_module(module: &fusec::hir::Module) {
             let ty = field.type_name.as_deref().unwrap_or("?");
             println!("    {} {}: {ty}", if field.mutable { "var" } else { "val" }, field.name);
         }
+    }
+    for ext in &module.extern_fns {
+        let ret = ext.return_type.as_deref().unwrap_or("Unit");
+        println!("  ExternFn '{}' ({} params) -> {ret}", ext.name, ext.params.len());
     }
 }
 

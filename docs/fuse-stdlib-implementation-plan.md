@@ -118,25 +118,25 @@ passed around — not just the built-in `Result`/`Option`.
 from the runtime. This is the bridge between Fuse stdlib modules and
 Rust-backed operations (file I/O, math, networking, etc.).
 
-- [ ] **0.3.1** Parser: parse `extern fn name(params) -> RetType` as a
+- [x] **0.3.1** Parser: parse `extern fn name(params) -> RetType` as a
       top-level declaration. No body — just signature.
-- [ ] **0.3.2** AST/HIR: add `ExternFn` declaration node.
-- [ ] **0.3.3** Checker: register extern functions in scope. Validate
+- [x] **0.3.2** AST/HIR: add `ExternFn` declaration node.
+- [x] **0.3.3** Checker: register extern functions in scope. Validate
       calls to extern functions like normal calls (arity, types).
-- [ ] **0.3.4** Codegen: declare extern functions as imported symbols in
+- [x] **0.3.4** Codegen: declare extern functions as imported symbols in
       the Cranelift module. Map Fuse types to ABI types (Int → i64,
       Float → f64, String → FuseHandle, Bool → i64, etc.).
-- [ ] **0.3.5** Codegen: emit call instructions to extern function
+- [x] **0.3.5** Codegen: emit call instructions to extern function
       symbols at call sites.
-- [ ] **0.3.6** Runtime: create `fuse-runtime/src/ffi.rs` as the
+- [x] **0.3.6** Runtime: create `fuse-runtime/src/ffi.rs` as the
       canonical home for all `#[unsafe(no_mangle)] pub unsafe extern "C"`
       functions that Fuse code can call.
-- [ ] **0.3.7** Test: add a simple FFI function to the runtime (e.g.,
+- [x] **0.3.7** Test: add a simple FFI function to the runtime (e.g.,
       `fuse_rt_test_add_ints(a: i64, b: i64) -> i64`). Write
       `tests/fuse/core/types/extern_fn_basic.fuse` that calls it.
-- [ ] **0.3.8** Test: FFI function that takes and returns a FuseHandle
+- [x] **0.3.8** Test: FFI function that takes and returns a FuseHandle
       (String or List). Verify no memory corruption.
-- [ ] **0.3.9** Test: calling extern fn with wrong arity → compile error.
+- [x] **0.3.9** Test: calling extern fn with wrong arity → compile error.
 
 ---
 

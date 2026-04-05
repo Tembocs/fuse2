@@ -12,6 +12,16 @@ pub enum Declaration {
     Function(FunctionDecl),
     DataClass(DataClassDecl),
     Enum(EnumDecl),
+    ExternFn(ExternFnDecl),
+}
+
+#[derive(Clone, Debug)]
+pub struct ExternFnDecl {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub return_type: Option<String>,
+    pub is_pub: bool,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug)]
