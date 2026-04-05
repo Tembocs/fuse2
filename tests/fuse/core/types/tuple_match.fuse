@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// x=1, y=2
+// x=3, y=4
+@entrypoint
+fn main() {
+  val pairs = [(1, 2), (3, 4)]
+  for pair in pairs {
+    val (x, y) = pair
+    println(f"x={x}, y={y}")
+  }
+}

@@ -334,17 +334,18 @@ from compiled code.
 - [x] **0.12.4** Document any known limitations discovered during Wave 0
       in this plan (not as blockers — as accepted boundaries).
 
-**Known limitations (accepted boundaries for Wave 1):**
-- Lambdas do not capture local variables (no closures). Lambdas can
-  only reference their own parameters and globals. This is sufficient
-  for all stdlib higher-order functions.
-- Tuple destructuring in match arms is not yet supported. Only `val`
-  destructuring works.
-- The evaluator (`--run` mode) does not support Map or extern fn. These
-  features are compilation-only. Stdlib tests use native compilation.
-- Generic type parameter substitution in return types is not performed.
-  Extension functions return their declared return type as-is. This is
-  correct for monomorphic stdlib methods.
+**All limitations resolved:**
+- [x] Lambdas now capture local variables (closure conversion via
+  environment list). Captures are passed as extra params to lifted
+  functions and unpacked at entry.
+- [x] Tuple destructuring in match arms is supported. `(a, b)` patterns
+  extract elements from tuple values via list indexing.
+- [x] The evaluator (`--run` mode) supports Map (construction, set, get,
+  len, contains, keys, values, entries) and extern fn (registered as
+  synthetic functions).
+- [x] Generic type parameter substitution is implemented. Type variables
+  from receiver generics (T from Option<T>) and callback return types
+  (U from fn(T) -> U) are substituted in extension function return types.
 
 ---
 

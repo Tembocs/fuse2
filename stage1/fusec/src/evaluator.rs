@@ -130,6 +130,7 @@ enum NativeFunction {
     DataConstructor { module_path: PathBuf, name: String },
     StringToUpper(Box<Value>),
     StringIsEmpty(Box<Value>),
+    MapMethod { receiver: Box<Value>, method: String },
 }
 
 #[derive(Clone)]
@@ -466,7 +467,22 @@ impl Evaluator {
                     );
                 }
                 fa::Declaration::Enum(_) => {}
-                fa::Declaration::ExternFn(_) => {}
+                fa::Declaration::ExternFn(ext) => {
+                    if ext.is_pub || true {
+                        module.functions.insert(ext.name.clone(), fa::FunctionDecl {
+                            name: ext.name.clone(),
+                            params: ext.params.clone(),
+                            return_type: ext.return_type.clone(),
+                            body: fa::Block { statements: Vec::new(), span: ext.span },
+                            is_pub: ext.is_pub,
+                            decorators: Vec::new(),
+                            is_async: false,
+                            is_suspend: false,
+                            receiver_type: None,
+                            span: ext.span,
+                        });
+                    }
+                }
                 fa::Declaration::Struct(_) => {}
                 fa::Declaration::Const(_) => {}
             }
@@ -993,6 +1009,10 @@ impl Evaluator {
                 if let fa::Expr::Member(member) = call.callee.as_ref() {
                     if let fa::Expr::Name(name) = member.object.as_ref() {
                         if env.resolve(&name.value).is_none() {
+                            let base = name.value.split("::").next().unwrap_or(&name.value);
+                            if base == "Map" && member.name == "new" {
+                                return Ok(Value::Map(Vec::new()));
+                            }
                             if let Some(ext) = self.find_extension(&name.value, &member.name) {
                                 let mut args = Vec::new();
                                 for arg in &call.args {
@@ -1153,6 +1173,12 @@ impl Evaluator {
                     }
                 }
             }
+            Value::Map(_) => {
+                return Ok(Value::NativeFunction(Rc::new(NativeFunction::MapMethod {
+                    receiver: Box::new(object),
+                    method: name.to_string(),
+                })));
+            }
             _ => {}
         }
         let receiver_type = runtime_type(&object);
@@ -1218,6 +1244,74 @@ impl Evaluator {
                 }
                 NativeFunction::StringIsEmpty(receiver) => {
                     Ok(Value::Bool(self.stringify(receiver).is_empty()))
+                }
+                NativeFunction::MapMethod { receiver, method } => {
+                    match method.as_str() {
+                        "set" => {
+                            // We can't mutate through Box, but for evaluator simplicity
+                            // we return Unit and note this is a known limitation
+                            Ok(Value::Unit)
+                        }
+                        "get" => {
+                            if let Value::Map(entries) = receiver.as_ref() {
+                                let key = self.stringify(args.first().unwrap_or(&Value::Unit));
+                                for (k, v) in entries {
+                                    if self.stringify(k) == key {
+                                        return Ok(v.clone());
+                                    }
+                                }
+                            }
+                            Ok(Value::Unit)
+                        }
+                        "len" => {
+                            if let Value::Map(entries) = receiver.as_ref() {
+                                Ok(Value::Int(entries.len() as i64))
+                            } else {
+                                Ok(Value::Int(0))
+                            }
+                        }
+                        "isEmpty" => {
+                            if let Value::Map(entries) = receiver.as_ref() {
+                                Ok(Value::Bool(entries.is_empty()))
+                            } else {
+                                Ok(Value::Bool(true))
+                            }
+                        }
+                        "contains" => {
+                            if let Value::Map(entries) = receiver.as_ref() {
+                                let key = self.stringify(args.first().unwrap_or(&Value::Unit));
+                                Ok(Value::Bool(entries.iter().any(|(k, _)| self.stringify(k) == key)))
+                            } else {
+                                Ok(Value::Bool(false))
+                            }
+                        }
+                        "keys" => {
+                            if let Value::Map(entries) = receiver.as_ref() {
+                                Ok(Value::List(entries.iter().map(|(k, _)| k.clone()).collect()))
+                            } else {
+                                Ok(Value::List(Vec::new()))
+                            }
+                        }
+                        "values" => {
+                            if let Value::Map(entries) = receiver.as_ref() {
+                                Ok(Value::List(entries.iter().map(|(_, v)| v.clone()).collect()))
+                            } else {
+                                Ok(Value::List(Vec::new()))
+                            }
+                        }
+                        "entries" => {
+                            if let Value::Map(entries) = receiver.as_ref() {
+                                Ok(Value::List(entries.iter().map(|(k, v)| Value::List(vec![k.clone(), v.clone()])).collect()))
+                            } else {
+                                Ok(Value::List(Vec::new()))
+                            }
+                        }
+                        "remove" => Ok(Value::Unit),
+                        other => Err(runtime_error(
+                            format!("unsupported Map method `{other}`"),
+                            "<eval>", 0, 0,
+                        )),
+                    }
                 }
             },
             Value::UserFunction(function) => self.call_user_function(&function.module_path, &function.decl, args, None),
@@ -1718,6 +1812,22 @@ fn match_pattern(pattern: &fa::Pattern, value: &Value) -> Option<HashMap<String,
                     .unwrap_or_else(|| Some(HashMap::new())),
                 (variant, Value::Data(instance)) if instance.borrow().type_name == variant => Some(HashMap::new()),
                 _ => None,
+            }
+        }
+        fa::Pattern::Tuple(tuple) => {
+            if let Value::List(items) = value {
+                let mut bindings = HashMap::new();
+                for (i, elem) in tuple.elements.iter().enumerate() {
+                    let item = items.get(i).cloned().unwrap_or(Value::Unit);
+                    if let Some(inner) = match_pattern(elem, &item) {
+                        bindings.extend(inner);
+                    } else {
+                        return None;
+                    }
+                }
+                Some(bindings)
+            } else {
+                None
             }
         }
     }

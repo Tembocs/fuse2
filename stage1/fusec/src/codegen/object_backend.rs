@@ -261,6 +261,7 @@ struct RuntimeFns {
 struct PendingLambda {
     module_path: PathBuf,
     decl: fa::FunctionDecl,
+    captures: Vec<(String, Option<String>)>,
 }
 
 struct BackendCompiler<'a> {
@@ -613,7 +614,115 @@ impl<'a> BackendCompiler<'a> {
             .map_err(|error| error.to_string())?;
 
         while let Some(pending) = self.pending_lambdas.pop() {
-            self.compile_function(&pending.module_path, &pending.decl)?;
+            self.compile_closure_function(&pending.module_path, &pending.decl, &pending.captures)?;
+        }
+        Ok(())
+    }
+
+    fn compile_closure_function(
+        &mut self,
+        module_path: &Path,
+        function: &fa::FunctionDecl,
+        captures: &[(String, Option<String>)],
+    ) -> Result<(), String> {
+        let name = layout::function_symbol(module_path, &function.name);
+        let func_id = *self
+            .function_ids
+            .get(&name)
+            .ok_or_else(|| format!("missing function id for `{name}`"))?;
+        let sig = self.handle_signature(function.params.len());
+        let mut ctx = self.module.make_context();
+        ctx.func = Function::with_name_signature(UserFuncName::user(0, func_id.as_u32()), sig);
+        let mut builder_ctx = FunctionBuilderContext::new();
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
+        let entry = builder.create_block();
+        builder.append_block_params_for_function_params(entry);
+        builder.switch_to_block(entry);
+        builder.seal_block(entry);
+
+        let mut lowering = LoweringState::new(self, module_path, function);
+
+        // Set up all params (including __env as first)
+        for (index, param) in function.params.iter().enumerate() {
+            let variable = lowering.new_var(&mut builder, lowering.compiler.pointer_type);
+            let value = builder.block_params(entry)[index];
+            builder.def_var(variable, value);
+            lowering.locals.insert(
+                param.name.clone(),
+                LocalBinding {
+                    var: variable,
+                    ty: param.type_name.clone(),
+                    destroy: param.convention.as_deref() == Some("owned"),
+                },
+            );
+        }
+
+        // Extract captures from __env (closure list). Index 0 is fn_ptr, captures start at 1.
+        if !captures.is_empty() {
+            let env_binding = &lowering.locals["__env"];
+            let env_val = builder.use_var(env_binding.var);
+            for (i, (cap_name, cap_ty)) in captures.iter().enumerate() {
+                let idx = lowering.usize_const(&mut builder, (i + 1) as i64);
+                let cap_val = lowering.runtime(
+                    &mut builder,
+                    lowering.compiler.runtime.list_get,
+                    &[env_val, idx],
+                    lowering.compiler.pointer_type,
+                );
+                let variable = lowering.new_var(&mut builder, lowering.compiler.pointer_type);
+                builder.def_var(variable, cap_val);
+                lowering.locals.insert(
+                    cap_name.clone(),
+                    LocalBinding {
+                        var: variable,
+                        ty: cap_ty.clone(),
+                        destroy: false,
+                    },
+                );
+            }
+        }
+
+        let (prefix_statements, final_expr) = match function.body.statements.split_last() {
+            Some((fa::Statement::Expr(expr_stmt), prefix)) if function.return_type.is_some() => {
+                (prefix, Some(expr_stmt.expr.clone()))
+            }
+            _ => (function.body.statements.as_slice(), None),
+        };
+        lowering.compile_statements(&mut builder, prefix_statements)?;
+        if !lowering.current_block_is_terminated(&builder) {
+            if function.return_type.as_deref() == Some("!") {
+                if let Some(expr) = final_expr.as_ref() {
+                    lowering.compile_expr(&mut builder, expr)?;
+                }
+                builder.ins().trap(cranelift_codegen::ir::TrapCode::user(1).unwrap());
+            } else {
+                let result = if let Some(expr) = final_expr.as_ref() {
+                    lowering.compile_expr(&mut builder, expr)?.value
+                } else {
+                    lowering.runtime_nullary(&mut builder, lowering.compiler.runtime.unit)
+                };
+                if function.return_type.is_none() && final_expr.is_none() {
+                    lowering.release_remaining(&mut builder);
+                }
+                builder.ins().return_(&[result]);
+            }
+        }
+        builder.seal_all_blocks();
+        builder.finalize();
+        let flags = settings::Flags::new(settings::builder());
+        if let Err(err) = cranelift_codegen::verify_function(&ctx.func, &flags) {
+            return Err(cranelift_codegen::print_errors::pretty_verifier_error(
+                &ctx.func,
+                None,
+                err,
+            ));
+        }
+        self.module
+            .define_function(func_id, &mut ctx)
+            .map_err(|error| error.to_string())?;
+
+        while let Some(pending) = self.pending_lambdas.pop() {
+            self.compile_closure_function(&pending.module_path, &pending.decl, &pending.captures)?;
         }
         Ok(())
     }
@@ -1717,14 +1826,22 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         builder: &mut FunctionBuilder,
         call: &fa::Call,
     ) -> Result<TypedValue, String> {
-        let callee = self.compile_expr(builder, &call.callee)?;
-        let mut lowered_args = Vec::with_capacity(call.args.len());
+        let closure = self.compile_expr(builder, &call.callee)?;
+        let zero = self.usize_const(builder, 0);
+        let fn_ptr = self.runtime(
+            builder,
+            self.compiler.runtime.list_get,
+            &[closure.value, zero],
+            self.compiler.pointer_type,
+        );
+        // Uniform ABI: (closure_list, user_arg1, user_arg2, ...) -> result
+        let mut lowered_args = vec![closure.value];
         for arg in &call.args {
             lowered_args.push(self.compile_expr(builder, arg)?.value);
         }
-        let sig = self.compiler.handle_signature(call.args.len());
+        let sig = self.compiler.handle_signature(lowered_args.len());
         let sig_ref = builder.import_signature(sig);
-        let inst = builder.ins().call_indirect(sig_ref, callee.value, &lowered_args);
+        let inst = builder.ins().call_indirect(sig_ref, fn_ptr, &lowered_args);
         Ok(TypedValue {
             value: builder.inst_results(inst)[0],
             ty: None,
@@ -2774,8 +2891,27 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         self.compiler.lambda_counter += 1;
         let lambda_name = format!("__lambda_{id}");
         let module_path = self.module_path.to_path_buf();
+
+        let param_names: HashSet<String> = lambda.params.iter().map(|p| p.name.clone()).collect();
+        let body_names = collect_block_names(&lambda.body);
+        let captures: Vec<String> = body_names
+            .iter()
+            .filter(|name| !param_names.contains(*name) && self.locals.contains_key(*name))
+            .cloned()
+            .collect();
+
+        // __env param (closure list) + user params only. Captures unpacked from __env in compile_function.
+        let mut all_params = vec![fa::Param {
+            convention: None,
+            name: "__env".to_string(),
+            type_name: None,
+            variadic: false,
+            span: lambda.span,
+        }];
+        all_params.extend(lambda.params.clone());
+
         let symbol = layout::function_symbol(&module_path, &lambda_name);
-        let sig = self.compiler.handle_signature(lambda.params.len());
+        let sig = self.compiler.handle_signature(all_params.len());
         let func_id = self
             .compiler
             .module
@@ -2785,7 +2921,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
 
         let decl = fa::FunctionDecl {
             name: lambda_name,
-            params: lambda.params.clone(),
+            params: all_params,
             return_type: lambda.return_type.clone(),
             body: lambda.body.clone(),
             is_pub: false,
@@ -2795,13 +2931,27 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             receiver_type: None,
             span: lambda.span,
         };
+        let capture_info: Vec<(String, Option<String>)> = captures
+            .iter()
+            .map(|c| (c.clone(), self.locals.get(c).and_then(|b| b.ty.clone())))
+            .collect();
         self.compiler.pending_lambdas.push(PendingLambda {
             module_path,
             decl,
+            captures: capture_info,
         });
 
         let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
         let addr = builder.ins().func_addr(self.compiler.pointer_type, local);
+
+        let closure_list = self.runtime_nullary(builder, self.compiler.runtime.list_new);
+        self.runtime_void(builder, self.compiler.runtime.list_push, &[closure_list, addr]);
+        for cap in &captures {
+            let binding = &self.locals[cap];
+            let val = builder.use_var(binding.var);
+            self.runtime_void(builder, self.compiler.runtime.list_push, &[closure_list, val]);
+        }
+
         let param_types: Vec<String> = lambda
             .params
             .iter()
@@ -2812,7 +2962,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             .clone()
             .unwrap_or_else(|| "Any".to_string());
         Ok(TypedValue {
-            value: addr,
+            value: closure_list,
             ty: Some(format!("fn({}) -> {}", param_types.join(", "), ret)),
         })
     }
@@ -2825,7 +2975,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         pattern: &fa::Pattern,
     ) -> Result<Value, String> {
         match pattern {
-            fa::Pattern::Wildcard(_) | fa::Pattern::Name(_) => {
+            fa::Pattern::Wildcard(_) | fa::Pattern::Name(_) | fa::Pattern::Tuple(_) => {
                 Ok(builder.ins().iconst(types::I8, 1))
             }
             fa::Pattern::Literal(literal) => {
@@ -2957,6 +3107,29 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                             destroy: false,
                         },
                     );
+                }
+            }
+            fa::Pattern::Tuple(tuple) => {
+                for (i, elem) in tuple.elements.iter().enumerate() {
+                    if let fa::Pattern::Name(name) = elem {
+                        let idx = self.usize_const(builder, i as i64);
+                        let val = self.runtime(
+                            builder,
+                            self.compiler.runtime.list_get,
+                            &[subject, idx],
+                            self.compiler.pointer_type,
+                        );
+                        let variable = self.new_var(builder, self.compiler.pointer_type);
+                        builder.def_var(variable, val);
+                        self.locals.insert(
+                            name.name.clone(),
+                            LocalBinding {
+                                var: variable,
+                                ty: None,
+                                destroy: false,
+                            },
+                        );
+                    }
                 }
             }
             _ => {}
@@ -3307,6 +3480,14 @@ fn collect_stmt_names(statement: &fa::Statement) -> HashSet<String> {
         fa::Statement::TupleDestruct(td) => collect_expr_names(&td.value),
         fa::Statement::Break(_) | fa::Statement::Continue(_) => HashSet::new(),
     }
+}
+
+fn collect_block_names(block: &fa::Block) -> HashSet<String> {
+    let mut names = HashSet::new();
+    for stmt in &block.statements {
+        names.extend(collect_stmt_names(stmt));
+    }
+    names
 }
 
 fn collect_expr_names(expr: &fa::Expr) -> HashSet<String> {

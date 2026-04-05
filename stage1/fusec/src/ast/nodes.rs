@@ -397,6 +397,7 @@ pub enum Pattern {
     Literal(LiteralPattern),
     Name(NamePattern),
     Variant(VariantPattern),
+    Tuple(TuplePattern),
 }
 
 impl Pattern {
@@ -406,8 +407,15 @@ impl Pattern {
             Self::Literal(pattern) => pattern.span,
             Self::Name(pattern) => pattern.span,
             Self::Variant(pattern) => pattern.span,
+            Self::Tuple(pattern) => pattern.span,
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct TuplePattern {
+    pub elements: Vec<Pattern>,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug)]

@@ -948,6 +948,15 @@ impl Parser {
                 }
                 Ok(Pattern::Name(NamePattern { name, span: token.span }))
             }
+            TokenKind::LParen => {
+                self.take();
+                let mut elements = vec![self.parse_pattern()?];
+                while self.match_kind(TokenKind::Comma).is_some() {
+                    elements.push(self.parse_pattern()?);
+                }
+                self.expect(TokenKind::RParen, "expected `)` after tuple pattern")?;
+                Ok(Pattern::Tuple(TuplePattern { elements, span: token.span }))
+            }
             _ => Err(self.syntax_error("unsupported match pattern", token.span)),
         }
     }

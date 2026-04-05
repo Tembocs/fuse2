@@ -29,6 +29,7 @@ pub(crate) fn collect_match_coverage(match_expr: &MatchExpr) -> MatchCoverage {
                 coverage.covered.insert(value);
             }
             Pattern::Name(_) => {}
+            Pattern::Tuple(_) => { coverage.wildcard = true; }
         }
     }
     coverage

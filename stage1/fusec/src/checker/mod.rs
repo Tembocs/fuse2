@@ -986,6 +986,7 @@ impl Checker {
                     covered.insert(self.literal_repr(&pattern.value));
                 }
                 hir::Pattern::Name(_) => {}
+                hir::Pattern::Tuple(_) => { wildcard = true; }
             }
         }
         if wildcard {
@@ -1108,7 +1109,10 @@ impl Checker {
                         return Some("Bool".to_string());
                     }
                     self.resolve_extension(&receiver_type, &member.name)
-                        .and_then(|function| function.return_type.clone())
+                        .and_then(|function| {
+                            let ret = function.return_type.clone()?;
+                            Some(self.substitute_type_vars(&ret, &receiver_type, &function, call, module, scope, owner_name))
+                        })
                 }
                 _ => None,
             },
@@ -1133,6 +1137,53 @@ impl Checker {
                 Some(format!("fn({}) -> {}", param_types.join(", "), ret))
             }
         }
+    }
+
+    fn substitute_type_vars(
+        &self,
+        return_type: &str,
+        receiver_type: &str,
+        function: &hir::FunctionDecl,
+        call: &hir::Call,
+        module: &ModuleInfo,
+        scope: &HashMap<String, BindingInfo>,
+        owner_name: Option<&str>,
+    ) -> String {
+        let mut result = return_type.to_string();
+
+        // Step 1: Substitute type vars from receiver generics.
+        // If receiver is Option<Int> and function is on Option<T>, then T=Int.
+        if let (Some(receiver_start), Some(decl_receiver)) = (receiver_type.find('<'), function.receiver_type.as_ref().and_then(|r| r.find('<'))) {
+            let receiver_args_str = &receiver_type[receiver_start + 1..receiver_type.len().saturating_sub(1)];
+            let decl_receiver_type = function.receiver_type.as_ref().unwrap();
+            let decl_args_str = &decl_receiver_type[decl_receiver + 1..decl_receiver_type.len().saturating_sub(1)];
+            let receiver_args: Vec<&str> = receiver_args_str.split(',').map(|s| s.trim()).collect();
+            let decl_args: Vec<&str> = decl_args_str.split(',').map(|s| s.trim()).collect();
+            for (decl_arg, actual_arg) in decl_args.iter().zip(receiver_args.iter()) {
+                if decl_arg.len() <= 2 && decl_arg.chars().all(|c| c.is_uppercase()) {
+                    result = result.replace(decl_arg, actual_arg);
+                }
+            }
+        }
+
+        // Step 2: Substitute type vars from callback return types.
+        // If a param has type fn(X) -> U and the arg is a lambda with -> String, then U=String.
+        for (param, arg) in function.params.iter().skip(1).zip(call.args.iter()) {
+            if let Some(ref param_ty) = param.type_name {
+                if param_ty.starts_with("fn(") {
+                    if let Some(arrow_pos) = param_ty.rfind("->") {
+                        let param_ret = param_ty[arrow_pos + 2..].trim();
+                        if param_ret.len() <= 2 && param_ret.chars().all(|c| c.is_uppercase()) {
+                            if let Some(actual_ret) = self.infer_expr_type(module, arg, scope, owner_name) {
+                                result = result.replace(param_ret, &actual_ret);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        result
     }
 
     fn literal_repr(&self, value: &hir::LiteralValue) -> String {

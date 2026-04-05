@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// 15
+// 8
+fn apply(x: Int, f: fn(Int) -> Int) -> Int {
+  return f(x)
+}
+
+@entrypoint
+fn main() {
+  val multiplier = 3
+  val result = apply(5, fn(n: Int) -> Int => n * multiplier)
+  println(result)
+
+  val offset = 3
+  val result2 = apply(5, fn(n: Int) -> Int => n + offset)
+  println(result2)
+}
