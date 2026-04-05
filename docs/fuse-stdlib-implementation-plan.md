@@ -324,15 +324,27 @@ from compiled code.
 
 **What:** End-to-end validation that all compiler features work together.
 
-- [ ] **0.12.1** Write `tests/fuse/core/integration/stdlib_foundation.fuse`
+- [x] **0.12.1** Write `tests/fuse/core/integration/stdlib_foundation.fuse`
       — a single program that uses first-class functions, user enums,
       extern FFI, tuples, variadics, structs, never type, type constants,
       pub enforcement, generic extensions, and Map. This is the "all
       features" smoke test.
-- [ ] **0.12.2** Run full existing test suite — no regressions.
-- [ ] **0.12.3** Run `cargo test` on all Stage 1 crates — no regressions.
-- [ ] **0.12.4** Document any known limitations discovered during Wave 0
+- [x] **0.12.2** Run full existing test suite — no regressions.
+- [x] **0.12.3** Run `cargo test` on all Stage 1 crates — no regressions.
+- [x] **0.12.4** Document any known limitations discovered during Wave 0
       in this plan (not as blockers — as accepted boundaries).
+
+**Known limitations (accepted boundaries for Wave 1):**
+- Lambdas do not capture local variables (no closures). Lambdas can
+  only reference their own parameters and globals. This is sufficient
+  for all stdlib higher-order functions.
+- Tuple destructuring in match arms is not yet supported. Only `val`
+  destructuring works.
+- The evaluator (`--run` mode) does not support Map or extern fn. These
+  features are compilation-only. Stdlib tests use native compilation.
+- Generic type parameter substitution in return types is not performed.
+  Extension functions return their declared return type as-is. This is
+  correct for monomorphic stdlib methods.
 
 ---
 

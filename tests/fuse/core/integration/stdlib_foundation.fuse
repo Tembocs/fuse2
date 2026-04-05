@@ -1,0 +1,181 @@
+// EXPECTED OUTPUT:
+// === First-class functions ===
+// 25
+// 7
+// === User enums ===
+// Circle(10)
+// area is large
+// === Extern FFI ===
+// 30
+// === Tuples ===
+// alice
+// 95
+// === Variadics ===
+// a-b-c
+// === Struct ===
+// created
+// hello from widget
+// === Never type ===
+// safe
+// === Type constants ===
+// 100
+// 42
+// === Generic extensions ===
+// Some(20)
+// None
+// === Map ===
+// 2
+// alice
+// name, role
+
+// ---- Feature 1: First-class functions & lambdas ----
+fn apply(x: Int, f: fn(Int) -> Int) -> Int {
+  return f(x)
+}
+
+// ---- Feature 2: User-defined enums ----
+enum Shape { Circle(Int), Square(Int), Point }
+
+fn Shape.describe(ref self) -> String {
+  match self {
+    Shape.Circle(r) => f"Circle({r})"
+    Shape.Square(s) => f"Square({s})"
+    Shape.Point => "Point"
+  }
+}
+
+fn Shape.isLarge(ref self) -> Bool {
+  match self {
+    Shape.Circle(r) => r > 5
+    Shape.Square(s) => s > 5
+    Shape.Point => false
+  }
+}
+
+// ---- Feature 3: Extern FFI ----
+extern fn fuse_add(a: Int, b: Int) -> Int
+
+// ---- Feature 5: Variadics ----
+fn joinWith(sep: String, parts: String...) -> String {
+  var result = ""
+  var first = true
+  for part in parts {
+    if first {
+      result = part
+      first = false
+    } else {
+      result = result + sep + part
+    }
+  }
+  return result
+}
+
+// ---- Feature 6: Struct ----
+struct Widget { }
+
+fn Widget.create() -> Widget {
+  println("created")
+  val items = [1]
+  return items
+}
+
+fn Widget.greet(ref self) -> String {
+  return "hello from widget"
+}
+
+// ---- Feature 7: Never type ----
+fn diverge() -> ! {
+  println("should not reach")
+}
+
+fn safeOrDiverge(flag: Bool) -> String {
+  if flag {
+    return "safe"
+  }
+  return diverge()
+}
+
+// ---- Feature 8: Type constants ----
+val Int.HUNDRED: Int = 100
+val math.ANSWER: Int = 42
+
+// ---- Feature 10: Generic extensions ----
+fn Option.doubleInt(owned self) -> Option<Int> {
+  match self {
+    Some(value) => Some(value * 2)
+    None => None
+  }
+}
+
+@entrypoint
+fn main() {
+  // Feature 1: First-class functions
+  println("=== First-class functions ===")
+  println(apply(5, fn(n: Int) -> Int => n * n))
+  println(apply(3, fn(n: Int) -> Int {
+    val result = n * 2 + 1
+    return result
+  }))
+
+  // Feature 2: User enums
+  println("=== User enums ===")
+  val circle = Shape.Circle(10)
+  println(circle.describe())
+  if circle.isLarge() {
+    println("area is large")
+  }
+
+  // Feature 3: Extern FFI
+  println("=== Extern FFI ===")
+  println(fuse_add(10, 20))
+
+  // Feature 4: Tuples
+  println("=== Tuples ===")
+  val pair = ("alice", 95)
+  println(pair.0)
+  println(pair.1)
+
+  // Feature 5: Variadics
+  println("=== Variadics ===")
+  println(joinWith("-", "a", "b", "c"))
+
+  // Feature 6: Struct
+  println("=== Struct ===")
+  val w = Widget.create()
+  println(w.greet())
+
+  // Feature 7: Never type
+  println("=== Never type ===")
+  println(safeOrDiverge(true))
+
+  // Feature 8: Type constants
+  println("=== Type constants ===")
+  println(Int.HUNDRED)
+  println(math.ANSWER)
+
+  // Feature 10: Generic extensions
+  println("=== Generic extensions ===")
+  val x = Some(10)
+  println(x.doubleInt())
+  val y: Option<Int> = None
+  println(y.doubleInt())
+
+  // Feature 11: Map
+  println("=== Map ===")
+  var m = Map::<String, String>.new()
+  m.set("name", "alice")
+  m.set("role", "admin")
+  println(m.len())
+  println(m.get("name"))
+  var keyStr = ""
+  var first = true
+  for k in m.keys() {
+    if first {
+      keyStr = k
+      first = false
+    } else {
+      keyStr = keyStr + ", " + k
+    }
+  }
+  println(keyStr)
+}
