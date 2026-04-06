@@ -423,4 +423,46 @@ When you fix a compiler bug during stdlib implementation:
 
 ---
 
+## Wave 5 — Ext Modules
+
+### Phase 5.1 — `test.fuse`
+
+**Compiler enhancement (no bug):** Replaced Cranelift `trap` instruction
+with `call fuse_rt_panic; trap` for functions returning `-> !`. This
+enables `assertPanics` to catch panics via `setjmp`/`longjmp`.
+`fuse_rt_panic()` checks a thread-local recovery point: if set (inside
+`assertPanics`), it performs `longjmp`; otherwise it calls
+`std::process::exit(101)`. The trailing `trap` is never reached and
+serves only as a Cranelift block terminator. All 89 existing tests pass
+with this change.
+
+**Design decision — assertEq/assertNe as FFI:** The spec calls for
+`assertEq(a: T, b: T, message: String)` with generic type parameters.
+Since the Fuse checker does not support generic free functions (only
+extension methods on generic types), `assertEq` and `assertNe` are
+implemented as runtime FFI functions (`fuse_rt_test_assert_eq`,
+`fuse_rt_test_assert_ne`) that compare opaque `FuseHandle` values via
+their string representation. This works because: (1) the checker does
+not validate argument types at extern fn call sites (it only checks
+`mutref`/`ref` conventions), and (2) all values are `FuseHandle`
+(pointer_type) at the Cranelift ABI level. The Fuse `extern fn`
+declarations use `Int` as the nominal parameter type; callers can pass
+any type and it works at both the checker and codegen level.
+
+**Design decision — assertApprox as FFI:** Implemented as
+`fuse_rt_test_assert_approx` to avoid float literal limitations in the
+Cranelift backend (float literals are not yet supported in codegen).
+The FFI function extracts `f64` values from `FuseHandle` arguments and
+performs the comparison in Rust.
+
+**Design decision — assertPanics via setjmp/longjmp:** Initial attempts
+using `std::panic::catch_unwind` failed because Cranelift-generated C
+ABI functions cannot propagate Rust panics across their frames on
+Windows MSVC ("panic in a function that cannot unwind"). The
+`setjmp`/`longjmp` approach works at the C level, bypassing Rust's
+unwind enforcement. Platform-specific `jmp_buf` sizes: MSVC x64 uses
+`[i64; 16]`, other platforms use `[i64; 32]`.
+
+---
+
 *End of Fuse Standard Library — Compiler Bug & Learning Reference*

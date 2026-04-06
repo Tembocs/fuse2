@@ -1,0 +1,121 @@
+// Fuse Ext stdlib — test assertion library.
+//
+// Provides assertion utilities for use in *_test.fuse files.
+// On failure, prints a diagnostic to stderr and exits with code 1.
+//
+// import stdlib.ext.test
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_sys_exit(code: Int) -> Int
+extern fn fuse_rt_test_assert_eq(a: Int, b: Int, message: String) -> Unit
+extern fn fuse_rt_test_assert_ne(a: Int, b: Int, message: String) -> Unit
+extern fn fuse_rt_test_assert_approx(a: Float, b: Float, epsilon: Float, message: String) -> Unit
+extern fn fuse_rt_test_assert_panics(f: fn()) -> Unit
+
+// --- Internal helpers ---
+
+fn testPanic(message: String) -> ! {
+  println(message)
+}
+
+// --- Core assertions ---
+
+// Assert that a boolean condition is true.
+pub fn assert(cond: Bool, message: String) {
+  if not cond {
+    println(f"[FAIL] assert: {message}")
+    fuse_rt_sys_exit(1)
+  }
+}
+
+// Assert that two values are equal (compared via string representation).
+pub fn assertEq(actual: Int, expected: Int, message: String) {
+  fuse_rt_test_assert_eq(actual, expected, message)
+}
+
+// Assert that two values are not equal.
+pub fn assertNe(actual: Int, expected: Int, message: String) {
+  fuse_rt_test_assert_ne(actual, expected, message)
+}
+
+// --- Result/Option assertions ---
+
+// Assert that a Result is Ok.
+pub fn assertOk(r: Result<Int, String>) {
+  match r {
+    Ok(_) => {}
+    Err(e) => {
+      println(f"[FAIL] assertOk: expected Ok, got Err({e})")
+      fuse_rt_sys_exit(1)
+    }
+  }
+}
+
+// Assert that a Result is Err.
+pub fn assertErr(r: Result<Int, String>) {
+  match r {
+    Ok(v) => {
+      println(f"[FAIL] assertErr: expected Err, got Ok({v})")
+      fuse_rt_sys_exit(1)
+    }
+    Err(_) => {}
+  }
+}
+
+// Assert that an Option is Some.
+pub fn assertSome(o: Option<Int>) {
+  match o {
+    Some(_) => {}
+    None => {
+      println("[FAIL] assertSome: expected Some, got None")
+      fuse_rt_sys_exit(1)
+    }
+  }
+}
+
+// Assert that an Option is None.
+pub fn assertNone(o: Option<Int>) {
+  match o {
+    Some(v) => {
+      println(f"[FAIL] assertNone: expected None, got Some({v})")
+      fuse_rt_sys_exit(1)
+    }
+    None => {}
+  }
+}
+
+// --- Float assertion ---
+
+// Assert approximate equality of two floats within epsilon.
+pub fn assertApprox(a: Float, b: Float, epsilon: Float, message: String) {
+  fuse_rt_test_assert_approx(a, b, epsilon, message)
+}
+
+// --- Panic assertion ---
+
+// Assert that a function panics.
+pub fn assertPanics(f: fn()) {
+  fuse_rt_test_assert_panics(f)
+}
+
+// --- Unconditional ---
+
+// Unconditional test failure.
+pub fn fail(message: String) -> ! {
+  println(f"[FAIL] {message}")
+  fuse_rt_sys_exit(1)
+}
+
+// Mark a test as skipped.
+pub fn skip(message: String) -> ! {
+  println(f"[SKIP] {message}")
+}
+
+// --- Grouping ---
+
+// Group tests under a descriptive name.
+pub fn describe(name: String, f: fn()) {
+  println(f"describe: {name}")
+  f()
+}

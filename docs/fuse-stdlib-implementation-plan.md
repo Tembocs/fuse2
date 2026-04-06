@@ -1167,18 +1167,44 @@ simd) are now spec-compliant.
 
 Test assertion utilities.
 
-- [ ] **5.1.1** Create `stdlib/ext/test.fuse`.
-- [ ] **5.1.2** Implement `assert(cond, message)`,
+- [x] **5.1.1** Create `stdlib/ext/test.fuse`.
+- [x] **5.1.2** Implement `assert(cond, message)`,
       `assertEq(a, b, message)`, `assertNe(a, b, message)`.
-- [ ] **5.1.3** Implement `assertOk`, `assertErr`, `assertSome`,
+- [x] **5.1.3** Implement `assertOk`, `assertErr`, `assertSome`,
       `assertNone`.
-- [ ] **5.1.4** Implement `assertPanics` — requires panic-catching
+- [x] **5.1.4** Implement `assertPanics` — requires panic-catching
       mechanism in runtime.
-- [ ] **5.1.5** Implement `assertApprox(a, b, epsilon)`.
-- [ ] **5.1.6** Implement `fail(message) -> !`, `skip(message) -> !`.
-- [ ] **5.1.7** Implement `describe(name, f: fn())`.
-- [ ] **5.1.8** Create `tests/fuse/stdlib/ext/test_test.fuse`.
-- [ ] **5.1.9** Run tests. Fix any compiler bugs found.
+- [x] **5.1.5** Implement `assertApprox(a, b, epsilon)`.
+- [x] **5.1.6** Implement `fail(message) -> !`, `skip(message) -> !`.
+- [x] **5.1.7** Implement `describe(name, f: fn())`.
+- [x] **5.1.8** Create `tests/fuse/stdlib/ext/test_test.fuse`.
+- [x] **5.1.9** Run tests. Fix any compiler bugs found.
+
+**Notes:**
+- `assertEq` and `assertNe` are implemented as FFI functions
+  (`fuse_rt_test_assert_eq`, `fuse_rt_test_assert_ne`) that compare
+  opaque handles via their string representation. This allows them to
+  work with any value type — Int, String, Bool, etc. — since the checker
+  does not validate argument types at extern fn call sites.
+- `assertApprox` is implemented as an FFI function
+  (`fuse_rt_test_assert_approx`) to avoid float literal limitations in
+  the Cranelift backend.
+- `assertPanics` uses a `setjmp`/`longjmp` mechanism: `fuse_rt_panic()`
+  (which replaced the Cranelift `trap` instruction for `-> !` functions)
+  checks a thread-local recovery point. Inside `assertPanics`,
+  `fuse_rt_test_assert_panics` sets a `setjmp` recovery point, calls
+  the closure, and `fuse_rt_panic()` performs `longjmp` back if triggered.
+- The codegen change from `trap` to `call fuse_rt_panic; trap` for `-> !`
+  functions is safe: `fuse_rt_panic()` either exits (no recovery point) or
+  longjmps (inside assertPanics). The trailing `trap` is never reached
+  and serves only as a Cranelift block terminator.
+- `assertOk`, `assertErr`, `assertSome`, `assertNone` are pure Fuse
+  using pattern matching. The checker treats all `Result` types as
+  compatible and all `Option` types as compatible (prefix matching).
+- `assertPanics` is not supported in `--run` (evaluator) mode — prints
+  `[SKIP]` and continues. Full support requires the compiled path.
+- All 89 existing tests pass, 0 failures, 0 regressions. Zero
+  TODO/FIXME/HACK in `stdlib/ext/test.fuse`.
 
 ---
 

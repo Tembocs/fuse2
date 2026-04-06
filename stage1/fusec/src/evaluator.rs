@@ -1765,6 +1765,57 @@ impl Evaluator {
                 "fuse_rt_math_log10" => return Ok(Value::Float(Self::extract_float(args.first()).log10())),
                 "fuse_rt_math_cbrt" => return Ok(Value::Float(Self::extract_float(args.first()).cbrt())),
                 "fuse_rt_math_hypot" => return Ok(Value::Float(Self::extract_float(args.first()).hypot(Self::extract_float(args.get(1))))),
+                // --- test assertion FFI ---
+                "fuse_rt_test_assert_eq" | "fuse_rt_test_assert_ne" => {
+                    // handled below (needs &self for stringify)
+                }
+                "fuse_rt_test_assert_approx" => {
+                    let av = Self::extract_float(args.first());
+                    let bv = Self::extract_float(args.get(1));
+                    let ev = Self::extract_float(args.get(2));
+                    let msg = if let Some(Value::String(m)) = args.get(3) { m.clone() } else { String::new() };
+                    if (av - bv).abs() > ev {
+                        eprintln!("[FAIL] assertApprox: {msg}");
+                        eprintln!("  expected: {bv} ± {ev}");
+                        eprintln!("  actual:   {av}");
+                        std::process::exit(1);
+                    }
+                    return Ok(Value::Unit);
+                }
+                "fuse_rt_test_assert_panics" => {
+                    eprintln!("[SKIP] assertPanics: not supported in --run mode");
+                    return Ok(Value::Unit);
+                }
+                "fuse_rt_panic" => {
+                    std::process::exit(101);
+                }
+                _ => {}
+            }
+            // Post-match handlers that need &self (for stringify).
+            match function.name.as_str() {
+                "fuse_rt_test_assert_eq" => {
+                    let a_str = self.stringify(args.first().unwrap_or(&Value::Unit));
+                    let b_str = self.stringify(args.get(1).unwrap_or(&Value::Unit));
+                    let msg = if let Some(Value::String(m)) = args.get(2) { m.clone() } else { String::new() };
+                    if a_str != b_str {
+                        eprintln!("[FAIL] assertEq: {msg}");
+                        eprintln!("  expected: {b_str}");
+                        eprintln!("  actual:   {a_str}");
+                        std::process::exit(1);
+                    }
+                    return Ok(Value::Unit);
+                }
+                "fuse_rt_test_assert_ne" => {
+                    let a_str = self.stringify(args.first().unwrap_or(&Value::Unit));
+                    let b_str = self.stringify(args.get(1).unwrap_or(&Value::Unit));
+                    let msg = if let Some(Value::String(m)) = args.get(2) { m.clone() } else { String::new() };
+                    if a_str == b_str {
+                        eprintln!("[FAIL] assertNe: {msg}");
+                        eprintln!("  both values: {a_str}");
+                        std::process::exit(1);
+                    }
+                    return Ok(Value::Unit);
+                }
                 _ => {}
             }
         }

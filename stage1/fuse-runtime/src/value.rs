@@ -3093,3 +3093,170 @@ pub unsafe extern "C" fn fuse_release(handle: FuseHandle) {
         _ => {}
     }
 }
+
+// ---------------------------------------------------------------------------
+// Test assertion runtime support
+// ---------------------------------------------------------------------------
+
+// --- Panic infrastructure (setjmp/longjmp) ---
+
+/// Platform jmp_buf: MSVC x64 uses [i64; 16].
+#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+type JmpBuf = [i64; 16];
+/// Fallback for other platforms.
+#[cfg(not(all(target_os = "windows", target_arch = "x86_64")))]
+type JmpBuf = [i64; 32];
+
+unsafe extern "C" {
+    #[cfg(target_os = "windows")]
+    #[link_name = "_setjmp"]
+    fn c_setjmp(env: *mut JmpBuf, frame: *const u8) -> i32;
+    #[cfg(not(target_os = "windows"))]
+    #[link_name = "setjmp"]
+    fn c_setjmp(env: *mut JmpBuf) -> i32;
+    fn longjmp(env: *mut JmpBuf, val: i32) -> !;
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn platform_setjmp(buf: *mut JmpBuf) -> i32 {
+    unsafe { c_setjmp(buf, ptr::null()) }
+}
+#[cfg(not(target_os = "windows"))]
+unsafe fn platform_setjmp(buf: *mut JmpBuf) -> i32 {
+    unsafe { c_setjmp(buf) }
+}
+
+use std::cell::Cell;
+
+thread_local! {
+    static PANIC_JMP: Cell<*mut JmpBuf> = const { Cell::new(ptr::null_mut()) };
+}
+
+/// Trigger a Fuse panic.  When called inside an `assertPanics` context this
+/// performs a longjmp back to the recovery point.  Otherwise exits with 101.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_panic() {
+    PANIC_JMP.with(|cell| {
+        let buf = cell.get();
+        if !buf.is_null() {
+            unsafe { longjmp(buf, 1) };
+        }
+    });
+    std::process::exit(101);
+}
+
+/// assertEq — compare two opaque handles for equality (via string repr).
+/// On mismatch prints a diagnostic and exits with code 1.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_test_assert_eq(
+    a: FuseHandle,
+    b: FuseHandle,
+    msg: FuseHandle,
+) -> FuseHandle {
+    let a_str = unsafe { clone_to_string(a) };
+    let b_str = unsafe { clone_to_string(b) };
+    if a_str != b_str {
+        let m = unsafe { clone_to_string(msg) };
+        eprintln!("[FAIL] assertEq: {m}");
+        eprintln!("  expected: {b_str}");
+        eprintln!("  actual:   {a_str}");
+        std::process::exit(1);
+    }
+    FuseValue::new(ValueKind::Unit)
+}
+
+/// assertNe — compare two opaque handles for inequality (via string repr).
+/// On match prints a diagnostic and exits with code 1.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_test_assert_ne(
+    a: FuseHandle,
+    b: FuseHandle,
+    msg: FuseHandle,
+) -> FuseHandle {
+    let a_str = unsafe { clone_to_string(a) };
+    let b_str = unsafe { clone_to_string(b) };
+    if a_str == b_str {
+        let m = unsafe { clone_to_string(msg) };
+        eprintln!("[FAIL] assertNe: {m}");
+        eprintln!("  both values: {a_str}");
+        std::process::exit(1);
+    }
+    FuseValue::new(ValueKind::Unit)
+}
+
+/// assertApprox — compare two Floats within an epsilon tolerance.
+/// On failure prints a diagnostic and exits with code 1.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_test_assert_approx(
+    a: FuseHandle,
+    b: FuseHandle,
+    epsilon: FuseHandle,
+    msg: FuseHandle,
+) -> FuseHandle {
+    let av = match &unsafe { value_ref(a) }.kind {
+        ValueKind::Float(f) => *f,
+        ValueKind::Int(n) => *n as f64,
+        _ => 0.0,
+    };
+    let bv = match &unsafe { value_ref(b) }.kind {
+        ValueKind::Float(f) => *f,
+        ValueKind::Int(n) => *n as f64,
+        _ => 0.0,
+    };
+    let ev = match &unsafe { value_ref(epsilon) }.kind {
+        ValueKind::Float(f) => *f,
+        ValueKind::Int(n) => *n as f64,
+        _ => 0.0,
+    };
+    if (av - bv).abs() > ev {
+        let m = unsafe { clone_to_string(msg) };
+        eprintln!("[FAIL] assertApprox: {m}");
+        eprintln!("  expected: {bv} ± {ev}");
+        eprintln!("  actual:   {av}");
+        std::process::exit(1);
+    }
+    FuseValue::new(ValueKind::Unit)
+}
+
+/// assertPanics — call a Fuse closure and verify it panics.
+/// The closure is a Fuse List whose element 0 is a raw function pointer
+/// and the remaining elements are captured variables.
+/// Uses setjmp/longjmp: fuse_rt_panic() performs longjmp back here when
+/// the closure panics.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_test_assert_panics(closure: FuseHandle) -> FuseHandle {
+    let fn_ptr_raw: FuseHandle = {
+        let list_val = unsafe { value_ref(closure) };
+        match &list_val.kind {
+            ValueKind::List(items) if !items.is_empty() => items[0],
+            _ => {
+                eprintln!("[FAIL] assertPanics: argument is not a valid closure");
+                std::process::exit(1);
+            }
+        }
+    };
+
+    // The function pointer has the Fuse closure ABI:
+    //   extern "C" fn(env: FuseHandle) -> FuseHandle
+    let fn_ptr: unsafe extern "C" fn(FuseHandle) -> FuseHandle =
+        unsafe { std::mem::transmute(fn_ptr_raw) };
+
+    // Save previous recovery point and install ours.
+    let prev = PANIC_JMP.with(|cell| cell.get());
+    let mut jmp_buf: JmpBuf = unsafe { std::mem::zeroed() };
+
+    let caught = unsafe { platform_setjmp(&mut jmp_buf as *mut _) };
+    if caught == 0 {
+        // First call — set recovery point and call the closure.
+        PANIC_JMP.with(|cell| cell.set(&mut jmp_buf as *mut _));
+        unsafe { fn_ptr(closure) };
+        // Function returned normally — assertion fails.
+        PANIC_JMP.with(|cell| cell.set(prev));
+        eprintln!("[FAIL] assertPanics: expected panic but function returned normally");
+        std::process::exit(1);
+    } else {
+        // longjmp fired — panic was caught, assertion passes.
+        PANIC_JMP.with(|cell| cell.set(prev));
+        FuseValue::new(ValueKind::Unit)
+    }
+}

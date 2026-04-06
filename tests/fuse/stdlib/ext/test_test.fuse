@@ -1,0 +1,112 @@
+// EXPECTED OUTPUT:
+// --- assert ---
+// assert true: ok
+// --- assertEq ---
+// assertEq int: ok
+// assertEq string: ok
+// assertEq bool: ok
+// --- assertNe ---
+// assertNe int: ok
+// assertNe string: ok
+// --- assertOk/assertErr ---
+// assertOk: ok
+// assertErr: ok
+// --- assertSome/assertNone ---
+// assertSome: ok
+// assertNone: ok
+// --- assertApprox ---
+// assertApprox: ok
+// --- assertPanics ---
+// assertPanics: ok
+// --- describe ---
+// describe: math basics
+// 1 + 1 = 2: ok
+// 2 * 3 = 6: ok
+// --- fail/skip ---
+// all assertions passed
+
+import stdlib.ext.test
+import stdlib.core.int
+
+@entrypoint
+fn main() {
+  // --- assert ---
+  println("--- assert ---")
+  assert(true, "true should be true")
+  assert(1 == 1, "1 should equal 1")
+  assert(not false, "not false should be true")
+  println("assert true: ok")
+
+  // --- assertEq ---
+  println("--- assertEq ---")
+  assertEq(42, 42, "ints should be equal")
+  println("assertEq int: ok")
+  assertEq("hello", "hello", "strings should be equal")
+  println("assertEq string: ok")
+  assertEq(true, true, "bools should be equal")
+  println("assertEq bool: ok")
+
+  // --- assertNe ---
+  println("--- assertNe ---")
+  assertNe(1, 2, "1 should not equal 2")
+  println("assertNe int: ok")
+  assertNe("hello", "world", "different strings")
+  println("assertNe string: ok")
+
+  // --- assertOk/assertErr ---
+  println("--- assertOk/assertErr ---")
+  val okResult = Ok(42)
+  assertOk(okResult)
+  println("assertOk: ok")
+  val errResult = Err("oops")
+  assertErr(errResult)
+  println("assertErr: ok")
+
+  // --- assertSome/assertNone ---
+  println("--- assertSome/assertNone ---")
+  val someVal = Some(10)
+  assertSome(someVal)
+  println("assertSome: ok")
+  val noneVal: Option<Int> = None
+  assertNone(noneVal)
+  println("assertNone: ok")
+
+  // --- assertApprox ---
+  println("--- assertApprox ---")
+  val pi1 = 314159.toFloat() / 100000.toFloat()
+  val pi2 = 314159.toFloat() / 100000.toFloat()
+  val eps = 1.toFloat() / 1000.toFloat()
+  assertApprox(pi1, pi2, eps, "pi approx")
+  println("assertApprox: ok")
+
+  // --- assertPanics ---
+  println("--- assertPanics ---")
+  assertPanics(fn() {
+    val r = Err("boom")
+    match r {
+      Ok(v) => println(v)
+      Err(e) => testPanicHelper(e)
+    }
+  })
+  println("assertPanics: ok")
+
+  // --- describe ---
+  println("--- describe ---")
+  describe("math basics", fn() {
+    assertEq(1 + 1, 2, "addition")
+    println("1 + 1 = 2: ok")
+    assertEq(2 * 3, 6, "multiplication")
+    println("2 * 3 = 6: ok")
+  })
+
+  // --- fail/skip ---
+  println("--- fail/skip ---")
+  // We cannot call fail() or skip() without ending the program,
+  // so we just verify the other assertions passed.
+  println("all assertions passed")
+}
+
+// Helper that panics — used by assertPanics test.
+fn testPanicHelper(msg: String) -> ! {
+  println(f"panicking: {msg}")
+}

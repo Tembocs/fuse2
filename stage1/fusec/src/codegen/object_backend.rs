@@ -274,6 +274,11 @@ struct RuntimeFns {
     map_keys: FuncId,
     map_values: FuncId,
     map_entries: FuncId,
+    panic: FuncId,
+    test_assert_eq: FuncId,
+    test_assert_ne: FuncId,
+    test_assert_approx: FuncId,
+    test_assert_panics: FuncId,
 }
 
 struct PendingLambda {
@@ -604,6 +609,8 @@ impl<'a> BackendCompiler<'a> {
                 if let Some(expr) = final_expr.as_ref() {
                     lowering.compile_expr(&mut builder, expr)?;
                 }
+                let panic_fn = lowering.compiler.module.declare_func_in_func(lowering.compiler.runtime.panic, builder.func);
+                builder.ins().call(panic_fn, &[]);
                 builder.ins().trap(cranelift_codegen::ir::TrapCode::user(1).unwrap());
             } else {
                 let result = if let Some(expr) = final_expr.as_ref() {
@@ -712,6 +719,8 @@ impl<'a> BackendCompiler<'a> {
                 if let Some(expr) = final_expr.as_ref() {
                     lowering.compile_expr(&mut builder, expr)?;
                 }
+                let panic_fn = lowering.compiler.module.declare_func_in_func(lowering.compiler.runtime.panic, builder.func);
+                builder.ins().call(panic_fn, &[]);
                 builder.ins().trap(cranelift_codegen::ir::TrapCode::user(1).unwrap());
             } else {
                 let result = if let Some(expr) = final_expr.as_ref() {
@@ -926,6 +935,11 @@ fn declare_runtime_functions(
         map_keys: declare(module, "fuse_map_keys", &[pointer_type], &[pointer_type])?,
         map_values: declare(module, "fuse_map_values", &[pointer_type], &[pointer_type])?,
         map_entries: declare(module, "fuse_map_entries", &[pointer_type], &[pointer_type])?,
+        panic: declare(module, "fuse_rt_panic", &[], &[])?,
+        test_assert_eq: declare(module, "fuse_rt_test_assert_eq", &[pointer_type, pointer_type, pointer_type], &[pointer_type])?,
+        test_assert_ne: declare(module, "fuse_rt_test_assert_ne", &[pointer_type, pointer_type, pointer_type], &[pointer_type])?,
+        test_assert_approx: declare(module, "fuse_rt_test_assert_approx", &[pointer_type, pointer_type, pointer_type, pointer_type], &[pointer_type])?,
+        test_assert_panics: declare(module, "fuse_rt_test_assert_panics", &[pointer_type], &[pointer_type])?,
     })
 }
 
