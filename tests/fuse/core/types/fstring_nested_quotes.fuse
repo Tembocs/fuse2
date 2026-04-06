@@ -1,0 +1,20 @@
+// EXPECTED OUTPUT:
+// hello world
+// x=42
+// a + b = done
+
+@entrypoint
+fn main() {
+  val greeting = "hello"
+  val target = "world"
+  println(f"{greeting} {target}")
+
+  val name = "x"
+  val value = 42
+  println(f"{name}={value}")
+
+  val left = "a"
+  val right = "b"
+  val result = "done"
+  println(f"{left} + {right} = {result}")
+}

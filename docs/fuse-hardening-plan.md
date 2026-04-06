@@ -290,22 +290,22 @@ Add a `brace_depth: usize` counter. When `formatted` is true, increment
 on `{`, decrement on `}`. Only treat `"` as a terminator when
 `brace_depth == 0`.
 
-- [ ] **H0.3.1** Add `brace_depth: usize = 0` variable before the scan
+- [x] **H0.3.1** Add `brace_depth: usize = 0` variable before the scan
       loop in `read_string`.
-- [ ] **H0.3.2** When `formatted == true` and char is `{`: increment
+- [x] **H0.3.2** When `formatted == true` and char is `{`: increment
       `brace_depth`.
-- [ ] **H0.3.3** When `formatted == true` and char is `}`: decrement
+- [x] **H0.3.3** When `formatted == true` and char is `}`: decrement
       `brace_depth` (guard against underflow).
-- [ ] **H0.3.4** Only treat `"` as terminator when `brace_depth == 0`.
-- [ ] **H0.3.5** Handle escaped braces `\{` and `\}` — these must not
+- [x] **H0.3.4** Only treat `"` as terminator when `brace_depth == 0`.
+- [x] **H0.3.5** Handle escaped braces `\{` and `\}` — these must not
       affect depth tracking.
-- [ ] **H0.3.6** Add test: `fstring_nested_quotes.fuse` —
+- [x] **H0.3.6** Add test: `fstring_nested_quotes.fuse` —
       `val s = f"{list.join(",")}"; println(s)` — quotes inside braces
       do not terminate the f-string.
-- [ ] **H0.3.7** Add test: `fstring_method_in_braces.fuse` —
+- [x] **H0.3.7** Add test: `fstring_method_in_braces.fuse` —
       `f"result: {map.get("key")}"` — method call with string arg inside braces.
-- [ ] **H0.3.8** Verify all existing f-string tests still pass.
-- [ ] **H0.3.9** Run full test suite.
+- [x] **H0.3.8** Verify all existing f-string tests still pass.
+- [x] **H0.3.9** Run full test suite.
 
 ---
 

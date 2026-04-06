@@ -177,12 +177,23 @@ impl<'a> Lexer<'a> {
         }
         self.advance();
         let mut value = String::new();
+        let mut brace_depth: usize = 0;
         loop {
             match self.peek(0) {
                 '\0' => return Err(self.error("unterminated string literal", line, column)),
-                '"' => {
+                '"' if brace_depth == 0 => {
                     self.advance();
                     break;
+                }
+                '{' if formatted => {
+                    brace_depth += 1;
+                    value.push('{');
+                    self.advance();
+                }
+                '}' if formatted && brace_depth > 0 => {
+                    brace_depth -= 1;
+                    value.push('}');
+                    self.advance();
                 }
                 '\\' => {
                     self.advance();

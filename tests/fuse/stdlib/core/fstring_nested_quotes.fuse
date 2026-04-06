@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// a,b,c
+
+import stdlib.core.list
+import stdlib.core.string
+
+@entrypoint
+fn main() {
+  val items: List<String> = ["a", "b", "c"]
+  val s = f"{items.join(",")}"
+  println(s)
+}

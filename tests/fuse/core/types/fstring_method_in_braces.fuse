@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// hello world
+// key=value
+
+@entrypoint
+fn main() {
+  val greeting = "hello"
+  val target = "world"
+  println(f"{greeting} {target}")
+
+  val k = "key"
+  val v = "value"
+  println(f"{k}={v}")
+}
