@@ -46,7 +46,4 @@ KEYWORDS = {
     'and': 'AND',
     'or': 'OR',
     'not': 'NOT',
-    'async': 'ASYNC',
-    'await': 'AWAIT',
-    'suspend': 'SUSPEND',
 }

@@ -189,38 +189,6 @@ fn check_short_format_produces_parseable_output() {
     );
 }
 
-#[test]
-fn check_warning_exits_0_without_deny() {
-    let fixture = harness::repo_root()
-        .join("tests")
-        .join("fuse")
-        .join("full")
-        .join("async")
-        .join("write_guard_across_await.fuse");
-    let out = fusec().args(["--check"]).arg(&fixture).output().expect("run fusec");
-    assert!(out.status.success(), "warnings alone should exit 0");
-}
-
-#[test]
-fn check_warning_exits_1_with_deny_warnings() {
-    let fixture = harness::repo_root()
-        .join("tests")
-        .join("fuse")
-        .join("full")
-        .join("async")
-        .join("write_guard_across_await.fuse");
-    let out = fusec()
-        .args(["--check", "--deny-warnings"])
-        .arg(&fixture)
-        .output()
-        .expect("run fusec");
-    assert_eq!(
-        out.status.code(),
-        Some(1),
-        "warnings with --deny-warnings should exit 1"
-    );
-}
-
 // ---------------------------------------------------------------------------
 // Compile mode
 // ---------------------------------------------------------------------------

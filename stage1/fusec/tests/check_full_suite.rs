@@ -28,9 +28,9 @@ fn full_suite_fixtures_are_classified_for_output_error_and_warning() {
         }
     }
 
-    assert_eq!(output, 25, "unexpected number of full output fixtures");
+    assert_eq!(output, 22, "unexpected number of full output fixtures");
     assert_eq!(error, 5, "unexpected number of full error fixtures");
-    assert_eq!(warning, 3, "unexpected number of full warning fixtures");
+    assert_eq!(warning, 0, "unexpected number of full warning fixtures");
 }
 
 #[test]
@@ -142,7 +142,6 @@ fn hardening_wave2_output_fixtures_are_checker_clean() {
     let fixtures = [
         root.join("concurrency").join("shared_try_write_success.fuse"),
         root.join("concurrency").join("shared_try_write_timeout.fuse"),
-        root.join("async").join("read_guard_across_await.fuse"),
         root.join("simd").join("simd_sum_float.fuse"),
         root.join("simd").join("simd_sum_empty.fuse"),
         root.join("simd").join("simd_sum_large.fuse"),
@@ -155,45 +154,6 @@ fn hardening_wave2_output_fixtures_are_checker_clean() {
             path.display()
         );
     }
-}
-
-#[test]
-fn nested_await_write_guard_matches_warning_contract() {
-    let path = harness::repo_root()
-        .join("tests")
-        .join("fuse")
-        .join("full")
-        .join("async")
-        .join("nested_await_write_guard.fuse");
-    let (_, expected) = harness::extract_expected_block(&path);
-    let actual = check_path_output(&path);
-    assert_eq!(actual.trim(), expected.trim(), "{}", path.display());
-}
-
-#[test]
-fn multiple_shared_ranks_await_matches_warning_contract() {
-    let path = harness::repo_root()
-        .join("tests")
-        .join("fuse")
-        .join("full")
-        .join("async")
-        .join("multiple_shared_ranks_await.fuse");
-    let (_, expected) = harness::extract_expected_block(&path);
-    let actual = check_path_output(&path);
-    assert_eq!(actual.trim(), expected.trim(), "{}", path.display());
-}
-
-#[test]
-fn write_guard_across_await_matches_current_warning_contract() {
-    let path = harness::repo_root()
-        .join("tests")
-        .join("fuse")
-        .join("full")
-        .join("async")
-        .join("write_guard_across_await.fuse");
-    let (_, expected) = harness::extract_expected_block(&path);
-    let actual = check_path_output(&path);
-    assert_eq!(actual.trim(), expected.trim(), "{}", path.display());
 }
 
 // NOTE: full_channel_stdlib_surface_is_present_and_parseable was removed because

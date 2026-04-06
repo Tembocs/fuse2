@@ -149,8 +149,6 @@ impl Checker {
                 },
                 is_pub: extern_fn.is_pub,
                 decorators: Vec::new(),
-                is_async: false,
-                is_suspend: false,
                 receiver_type: None,
                 span: extern_fn.span,
             };
@@ -603,9 +601,6 @@ impl Checker {
             hir::Expr::Ref(reference) => {
                 self.check_spawn_expr(module, &reference.value, outer_names, local_names);
             }
-            hir::Expr::Await(await_expr) => {
-                self.check_spawn_expr(module, &await_expr.value, outer_names, local_names);
-            }
             hir::Expr::Question(question) => {
                 self.check_spawn_expr(module, &question.value, outer_names, local_names);
             }
@@ -748,17 +743,6 @@ impl Checker {
             }
             hir::Expr::Ref(expr) => self.check_expr(module, &expr.value, scope, owner_name, loop_depth),
             hir::Expr::MutRef(expr) => self.check_expr(module, &expr.value, scope, owner_name, loop_depth),
-            hir::Expr::Await(expr) => {
-                self.check_expr(module, &expr.value, scope, owner_name, loop_depth);
-                if scope.values().any(|binding| binding.held_rank.is_some() && binding.held_rank_is_write) {
-                    self.diagnostics.push(Diagnostic::warning(
-                        "write guard held across await",
-                        display_name(&module.path),
-                        expr.span,
-                        None,
-                    ));
-                }
-            }
             hir::Expr::Question(expr) => self.check_expr(module, &expr.value, scope, owner_name, loop_depth),
             hir::Expr::If(if_expr) => {
                 self.check_expr(module, &if_expr.condition, scope, owner_name, loop_depth);
@@ -1149,7 +1133,6 @@ impl Checker {
             hir::Expr::Move(move_expr) => self.infer_expr_type(module, &move_expr.value, scope, owner_name),
             hir::Expr::Ref(expr) => self.infer_expr_type(module, &expr.value, scope, owner_name),
             hir::Expr::MutRef(expr) => self.infer_expr_type(module, &expr.value, scope, owner_name),
-            hir::Expr::Await(expr) => self.infer_expr_type(module, &expr.value, scope, owner_name),
             hir::Expr::When(_) => None,
             hir::Expr::Tuple(tuple) => {
                 let types: Vec<String> = tuple.items.iter().filter_map(|item| self.infer_expr_type(module, item, scope, owner_name)).collect();

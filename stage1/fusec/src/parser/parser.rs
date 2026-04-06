@@ -78,7 +78,7 @@ impl Parser {
         let is_pub = self.match_kind(TokenKind::Pub).is_some();
         match self.peek(0).kind {
             TokenKind::Import => Ok(Declaration::Import(self.parse_import()?)),
-            TokenKind::Fn | TokenKind::Async | TokenKind::Suspend => {
+            TokenKind::Fn => {
                 let mut function = self.parse_function()?;
                 function.decorators = decorators;
                 function.is_pub = is_pub;
@@ -153,15 +153,6 @@ impl Parser {
     }
 
     fn parse_function(&mut self) -> Result<FunctionDecl, Diagnostic> {
-        let mut is_async = false;
-        let mut is_suspend = false;
-        while matches!(self.peek(0).kind, TokenKind::Async | TokenKind::Suspend) {
-            match self.take().kind {
-                TokenKind::Async => is_async = true,
-                TokenKind::Suspend => is_suspend = true,
-                _ => unreachable!(),
-            }
-        }
         let start = self.expect(TokenKind::Fn, "expected `fn`")?;
         let first =
             self.expect(TokenKind::Identifier, "expected function name or receiver type")?;
@@ -209,8 +200,6 @@ impl Parser {
             body,
             is_pub: false,
             decorators: Vec::new(),
-            is_async,
-            is_suspend,
             receiver_type,
             span: start.span,
         })
@@ -586,10 +575,8 @@ impl Parser {
 
     fn parse_spawn(&mut self) -> Result<SpawnStmt, Diagnostic> {
         let start = self.expect(TokenKind::Spawn, "expected `spawn`")?;
-        let is_async = self.match_kind(TokenKind::Async).is_some();
         Ok(SpawnStmt {
             body: self.parse_block()?,
-            is_async,
             span: start.span,
         })
     }
@@ -681,10 +668,6 @@ impl Parser {
             TokenKind::MutRef => {
                 self.take();
                 Ok(Expr::MutRef(MutRefExpr { value: Box::new(self.parse_unary()?), span: token.span }))
-            }
-            TokenKind::Await => {
-                self.take();
-                Ok(Expr::Await(AwaitExpr { value: Box::new(self.parse_unary()?), span: token.span }))
             }
             _ => self.parse_postfix(),
         }

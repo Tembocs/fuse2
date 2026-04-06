@@ -75,8 +75,6 @@ pub struct FunctionDecl {
     pub body: Block,
     pub is_pub: bool,
     pub decorators: Vec<String>,
-    pub is_async: bool,
-    pub is_suspend: bool,
     pub receiver_type: Option<String>,
     pub span: Span,
 }
@@ -161,7 +159,6 @@ pub struct ReturnStmt {
 #[derive(Clone, Debug)]
 pub struct SpawnStmt {
     pub body: Block,
-    pub is_async: bool,
     pub span: Span,
 }
 
@@ -212,7 +209,6 @@ pub enum Expr {
     Move(MoveExpr),
     Ref(RefExpr),
     MutRef(MutRefExpr),
-    Await(AwaitExpr),
     Question(QuestionExpr),
     If(IfExpr),
     Match(MatchExpr),
@@ -236,7 +232,6 @@ impl Expr {
             Self::Move(node) => node.span,
             Self::Ref(node) => node.span,
             Self::MutRef(node) => node.span,
-            Self::Await(node) => node.span,
             Self::Question(node) => node.span,
             Self::If(node) => node.span,
             Self::Match(node) => node.span,
@@ -328,12 +323,6 @@ pub struct RefExpr {
 
 #[derive(Clone, Debug)]
 pub struct MutRefExpr {
-    pub value: Box<Expr>,
-    pub span: Span,
-}
-
-#[derive(Clone, Debug)]
-pub struct AwaitExpr {
     pub value: Box<Expr>,
     pub span: Span,
 }

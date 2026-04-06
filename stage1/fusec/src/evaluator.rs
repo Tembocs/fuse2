@@ -484,8 +484,6 @@ impl Evaluator {
                             body: fa::Block { statements: Vec::new(), span: ext.span },
                             is_pub: ext.is_pub,
                             decorators: Vec::new(),
-                            is_async: false,
-                            is_suspend: false,
                             receiver_type: None,
                             span: ext.span,
                         });
@@ -2377,7 +2375,6 @@ impl Evaluator {
             }
             fa::Expr::Ref(reference) => self.eval_expr(module_path, &reference.value, env),
             fa::Expr::MutRef(reference) => self.eval_expr(module_path, &reference.value, env),
-            fa::Expr::Await(await_expr) => self.eval_expr(module_path, &await_expr.value, env),
             fa::Expr::Question(question) => {
                 let value = self.eval_expr(module_path, &question.value, env)?;
                 match value {
@@ -2514,8 +2511,6 @@ impl Evaluator {
                     body: lambda.body.clone(),
                     is_pub: false,
                     decorators: Vec::new(),
-                    is_async: false,
-                    is_suspend: false,
                     receiver_type: None,
                     span: lambda.span,
                 };
@@ -3413,7 +3408,6 @@ fn collect_expr_names(expr: &fa::Expr) -> HashSet<String> {
         fa::Expr::Move(move_expr) => collect_expr_names(&move_expr.value),
         fa::Expr::Ref(reference) => collect_expr_names(&reference.value),
         fa::Expr::MutRef(reference) => collect_expr_names(&reference.value),
-        fa::Expr::Await(await_expr) => collect_expr_names(&await_expr.value),
         fa::Expr::Question(question) => collect_expr_names(&question.value),
         fa::Expr::Unary(unary) => collect_expr_names(&unary.value),
         fa::Expr::Binary(binary) => {

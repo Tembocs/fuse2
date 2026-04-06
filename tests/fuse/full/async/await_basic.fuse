@@ -1,8 +1,0 @@
-// EXPECTED OUTPUT:
-// done
-
-@entrypoint
-async fn main() {
-  val value = await "done"
-  println(value)
-}

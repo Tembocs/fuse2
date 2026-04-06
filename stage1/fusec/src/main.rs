@@ -768,10 +768,6 @@ fn print_ast_expr(expr: &fusec::ast::nodes::Expr, depth: usize, label: &str) {
             println!("{indent}{prefix}MutRef");
             print_ast_expr(&r.value, depth + 1, "");
         }
-        fusec::ast::nodes::Expr::Await(a) => {
-            println!("{indent}{prefix}Await");
-            print_ast_expr(&a.value, depth + 1, "");
-        }
         fusec::ast::nodes::Expr::Question(q) => {
             println!("{indent}{prefix}Question");
             print_ast_expr(&q.value, depth + 1, "");

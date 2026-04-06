@@ -40,9 +40,6 @@ pub enum TokenKind {
     Or,
     Not,
     Spawn,
-    Async,
-    Await,
-    Suspend,
     FatArrow,
     Arrow,
     QDot,
@@ -126,9 +123,6 @@ pub fn keyword_kind(text: &str) -> TokenKind {
         "or" => TokenKind::Or,
         "not" => TokenKind::Not,
         "spawn" => TokenKind::Spawn,
-        "async" => TokenKind::Async,
-        "await" => TokenKind::Await,
-        "suspend" => TokenKind::Suspend,
         _ => TokenKind::Identifier,
     }
 }

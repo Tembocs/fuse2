@@ -1437,7 +1437,6 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             fa::Expr::Move(move_expr) => self.compile_move(builder, move_expr),
             fa::Expr::Ref(reference) => self.compile_expr(builder, &reference.value),
             fa::Expr::MutRef(reference) => self.compile_expr(builder, &reference.value),
-            fa::Expr::Await(await_expr) => self.compile_expr(builder, &await_expr.value),
             fa::Expr::Question(question) => self.compile_question(builder, question),
             fa::Expr::If(if_expr) => self.compile_if(builder, if_expr),
             fa::Expr::Match(match_expr) => self.compile_match(builder, match_expr),
@@ -3528,8 +3527,6 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             body: lambda.body.clone(),
             is_pub: false,
             decorators: Vec::new(),
-            is_async: false,
-            is_suspend: false,
             receiver_type: None,
             span: lambda.span,
         };
@@ -3992,7 +3989,6 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             fa::Expr::Move(move_expr) => self.infer_expr_type(&move_expr.value),
             fa::Expr::Ref(reference) => self.infer_expr_type(&reference.value),
             fa::Expr::MutRef(reference) => self.infer_expr_type(&reference.value),
-            fa::Expr::Await(await_expr) => self.infer_expr_type(&await_expr.value),
             fa::Expr::Question(question) => self
                 .infer_expr_type(&question.value)
                 .as_deref()
@@ -4133,7 +4129,6 @@ fn collect_expr_names(expr: &fa::Expr) -> HashSet<String> {
         fa::Expr::Move(value) => collect_expr_names(&value.value),
         fa::Expr::Ref(value) => collect_expr_names(&value.value),
         fa::Expr::MutRef(value) => collect_expr_names(&value.value),
-        fa::Expr::Await(value) => collect_expr_names(&value.value),
         fa::Expr::Question(value) => collect_expr_names(&value.value),
         fa::Expr::If(if_expr) => {
             let mut names = collect_expr_names(&if_expr.condition);

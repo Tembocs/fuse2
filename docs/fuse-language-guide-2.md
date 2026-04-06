@@ -27,8 +27,7 @@
 1.15 String Operations
 1.16 FFI
 1.17 Concurrency (Fuse Full)
-1.18 Async (Fuse Full)
-1.19 SIMD (Fuse Full)
+1.18 SIMD (Fuse Full)
 
 ### Part 2: Architecture
 2.1-2.7
@@ -54,7 +53,7 @@ Fuse is a general-purpose programming language designed around three non-negotia
 
 Fuse is not a research language. It is designed to be implemented, self-hosted, and used to build production systems.
 
-> Fuse is a statically typed, compiled language that combines the ownership model of Mojo, the error handling of Rust, the concurrency model of Go, the null safety of Kotlin, the async story of C#, the readability of Python, and the type expressiveness of TypeScript — with a developer experience that ties them together into a single coherent whole.
+> Fuse is a statically typed, compiled language that combines the ownership model of Mojo, the error handling of Rust, the concurrency model of Go, the null safety of Kotlin, the readability of Python, and the type expressiveness of TypeScript — with a developer experience that ties them together into a single coherent whole.
 
 ---
 
@@ -66,8 +65,8 @@ Every feature in Fuse has been proven in production at scale. Fuse does not expe
 |---|---|
 | **Mojo** | `owned`/`mutref`/`ref` argument conventions, ASAP destruction, `@value` auto-lifecycle, `SIMD<T,N>` primitives |
 | **Rust** | `Result<T,E>`, `Option<T>`, `?` error propagation, exhaustive `match` |
-| **Kotlin** | `val`/`var` type inference, Elvis operator `?:`, optional chaining `?.`, `data class`, `suspend`, scope functions (`let`, `also`, `takeIf`) |
-| **C#** | `async`/`await`, LINQ-style method chains (`.map`, `.filter`, `.sorted`) |
+| **Kotlin** | `val`/`var` type inference, Elvis operator `?:`, optional chaining `?.`, `data class`, scope functions (`let`, `also`, `takeIf`) |
+| **C#** | LINQ-style method chains (`.map`, `.filter`, `.sorted`) |
 | **Python** | `f"..."` string interpolation, list comprehensions, `@decorator` syntax |
 | **Go** | `spawn` (goroutines), `defer`, typed channels (`Chan<T>`) |
 | **TypeScript** | Union types (`A \| B \| C`), optional chaining `?.`, `interface` constraints |
@@ -76,7 +75,7 @@ Every feature in Fuse has been proven in production at scale. Fuse does not expe
 
 ## 1.3 Fuse Core and Fuse Full
 
-Fuse is divided into two tiers. **Fuse Core** is the minimal subset sufficient to write a compiler. **Fuse Full** adds concurrency, async, and SIMD on top of Core.
+Fuse is divided into two tiers. **Fuse Core** is the minimal subset sufficient to write a compiler. **Fuse Full** adds concurrency and SIMD on top of Core.
 
 ### Fuse Core — included
 
@@ -95,7 +94,6 @@ Fuse is divided into two tiers. **Fuse Core** is the minimal subset sufficient t
 ### Fuse Full — not in Core
 
 - `spawn`, `Chan<T>`, `Shared<T>`, `@rank`
-- `async`/`await`, `suspend`
 - `SIMD<T,N>`
 - `interface`/`trait` polymorphism
 
@@ -1150,11 +1148,11 @@ Channels are the default communication primitive. They require no locks and no s
 ```fuse
 val (tx, rx) = Chan::<Int>.bounded(10)
 
-spawn async {
+spawn {
   tx.send(42)
 }
 
-val value = await rx.recv()?
+val value = rx.recv()?
 println(f"got: {value}")
 ```
 
@@ -1217,7 +1215,7 @@ Is the lock order truly dynamic?
 - Locks must be acquired in ascending rank order — violations are a compile error.
 - Same rank means independent — safe to acquire in any order.
 - Guards are released by ASAP destruction — no forgotten unlocks.
-- Write guard held across `await` produces a compile warning.
+- Guards are released by ASAP destruction.
 
 ### Edge cases
 
@@ -1227,57 +1225,7 @@ Is the lock order truly dynamic?
 
 ---
 
-## 1.18 Async (Fuse Full)
-
-Async functions allow non-blocking I/O and concurrent task execution. The `async` keyword marks a function that can use `await`. The `suspend` keyword marks functions that may suspend the calling task.
-
-```fuse
-// async functions
-async fn fetchUser(id: Int) -> Result<User, NetworkError> {
-  val resp = await Http.get(f"/users/{id}")?
-  match resp.status {
-    200 => Ok(resp.json::<User>()?)
-    404 => Err(NetworkError.NotFound(id))
-    _   => Err(NetworkError.Http(resp.status))
-  }
-}
-
-// suspend marks functions that can suspend the calling task
-suspend async fn loadDashboard(userId: Int) -> Result<Dashboard, AppError> {
-  val user    = await fetchUser(userId)?
-  val prefs   = await loadPrefs(ref user)?
-  val metrics = await fetchMetrics(ref user)?
-  Ok(Dashboard(user, prefs, metrics))
-}
-
-// async entry point
-@entrypoint
-async fn main() {
-  match await loadDashboard(42) {
-    Ok(d)  => render(d)
-    Err(e) => eprintln(f"Failed: {e}")
-  }
-}
-```
-
-### Rules
-
-- `async` marks a function that can use `await`.
-- `await` suspends the current task until the result is ready.
-- `suspend` marks a function that may suspend the calling task (propagates suspension).
-- Async functions return a future that must be awaited.
-- The runtime executor is lightweight (no tokio dependency in the default runtime).
-
-### Edge cases
-
-- Calling an `async` function without `await` returns the future object, not the result. The future is not started until awaited.
-- `await` can only appear inside an `async` or `suspend async` function. Using `await` in a synchronous function is a compile error.
-- A `suspend async` function that never actually awaits anything is valid but wasteful. The compiler may emit a warning.
-- Ownership rules apply across `await` points: a `mutref` held before an `await` is still valid after the `await` returns, because the task is single-threaded. However, a write guard on `Shared<T>` held across `await` produces a warning (see 1.17).
-
----
-
-## 1.19 SIMD (Fuse Full)
+## 1.18 SIMD (Fuse Full)
 
 SIMD (Single Instruction, Multiple Data) operations allow data-parallel computation on fixed-size vectors. Fuse exposes SIMD through a typed, lane-count-aware API that maps to platform intrinsics via Cranelift.
 
@@ -1320,7 +1268,7 @@ fuse/
 ├── tests/fuse/              # Shared test suite
 │   ├── milestone/           # four_functions.fuse
 │   ├── core/                # Fuse Core tests (ownership, memory, errors, types)
-│   └── full/                # Fuse Full tests (concurrency, async, simd)
+│   └── full/                # Fuse Full tests (concurrency, simd)
 ├── stdlib/                  # Standard library written in Fuse
 │   ├── core/                # Available in all stages
 │   └── full/                # Stage 1+ only
@@ -1388,7 +1336,7 @@ Key files in fusec:
 | `parser/` | Recursive descent parser |
 | `ast/` | AST node definitions |
 | `hir/` | High-level IR nodes + AST→HIR lowering |
-| `checker/` | Types, ownership, exhaustiveness, rank, spawn, async lint |
+| `checker/` | Types, ownership, exhaustiveness, rank, spawn |
 | `codegen/` | HIR → Cranelift IR, value layout, ABI |
 | `eval.rs` | Tree-walking evaluator (for testing, fallback) |
 
@@ -1429,7 +1377,7 @@ Detail of each stage in the pipeline:
 
 3. **HIR Lowering**: AST → HIR. Attaches type information to every expression. Two-pass: collect signatures first, then lower bodies. This is where type inference results are resolved.
 
-4. **Checker**: Validates HIR. Ownership enforcement (ref/mutref/owned/move), match exhaustiveness, @rank ordering, spawn capture rules, async lint.
+4. **Checker**: Validates HIR. Ownership enforcement (ref/mutref/owned/move), match exhaustiveness, @rank ordering, spawn capture rules.
 
 5. **Codegen**: HIR → Cranelift IR → Object file. Maps Fuse types to machine types. Emits function prologues/epilogues, branch blocks for control flow, ASAP destruction calls, mutref writeback, defer cleanup.
 
@@ -1605,11 +1553,11 @@ Done when: Stage 0 and Stage 1 produce identical output for every Core test.
 
 ## 3.8 Phase 8 — Fuse Full
 
-One job: Add concurrency, async, SIMD.
+One job: Add concurrency and SIMD.
 
 Entry condition: Phase 7 complete.
 
-Deliverables: chan.rs, shared.rs, async_rt.rs, SIMD intrinsics, rank/spawn/async_lint checker passes wired to runtime.
+Deliverables: chan.rs, shared.rs, SIMD intrinsics, rank/spawn checker passes wired to runtime.
 
 Done when: All tests/fuse/full/ pass. @rank violations, spawn capture violations produce correct errors.
 
@@ -1626,7 +1574,7 @@ Sub-stages:
 - Stage D: Bootstrap and verify (compile self, reproducibility check)
 
 Stage 2 constraints:
-- Fuse Core only (no concurrency/async)
+- Fuse Core only (no concurrency)
 - Use `while`/`break`/`continue` for all iteration (no recursion for loops)
 - Use modules to split across files (no 2000-line monoliths)
 - Avoid `and`/`or` in functions with loops+mutref until SSA bug is fixed
@@ -1666,7 +1614,6 @@ tests/fuse/
 │   └── types/                 # val/var, data class, enum, for, while, etc.
 └── full/                      # Fuse Full tests
     ├── concurrency/           # channels, shared state, @rank
-    ├── async/                 # await, suspend
     └── simd/                  # SIMD operations
 ```
 

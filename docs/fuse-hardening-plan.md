@@ -417,96 +417,96 @@ After step 8, run `cargo test` to verify all tests pass.
 
 #### H0.6 Step 1 — AST (`stage1/fusec/src/ast/nodes.rs`)
 
-- [ ] **H0.6.1** Remove `is_async: bool` field from `FunctionDecl`.
-- [ ] **H0.6.2** Remove `is_suspend: bool` field from `FunctionDecl`.
-- [ ] **H0.6.3** Remove `is_async: bool` field from `SpawnStmt`
+- [x] **H0.6.1** Remove `is_async: bool` field from `FunctionDecl`.
+- [x] **H0.6.2** Remove `is_suspend: bool` field from `FunctionDecl`.
+- [x] **H0.6.3** Remove `is_async: bool` field from `SpawnStmt`
       (keep `SpawnStmt` struct — only remove the field).
-- [ ] **H0.6.4** Remove `Await(AwaitExpr)` variant from `Expr` enum.
-- [ ] **H0.6.5** Remove `Self::Await(node) => node.span` arm from
+- [x] **H0.6.4** Remove `Await(AwaitExpr)` variant from `Expr` enum.
+- [x] **H0.6.5** Remove `Self::Await(node) => node.span` arm from
       `Expr::span()` match.
-- [ ] **H0.6.6** Remove entire `AwaitExpr` struct.
+- [x] **H0.6.6** Remove entire `AwaitExpr` struct.
 
 #### H0.6 Step 2 — Parser (`stage1/fusec/src/parser/parser.rs`)
 
-- [ ] **H0.6.7** In declaration dispatch (line ~81): remove
+- [x] **H0.6.7** In declaration dispatch (line ~81): remove
       `TokenKind::Async | TokenKind::Suspend` from the `Fn` match arm.
-- [ ] **H0.6.8** In `parse_function()`: remove the `is_async`/`is_suspend`
+- [x] **H0.6.8** In `parse_function()`: remove the `is_async`/`is_suspend`
       flag parsing block (the `while matches!(...Async | ...Suspend)` loop).
-- [ ] **H0.6.9** In `parse_function()`: remove `is_async` and `is_suspend`
+- [x] **H0.6.9** In `parse_function()`: remove `is_async` and `is_suspend`
       fields from the `FunctionDecl` construction.
-- [ ] **H0.6.10** In `parse_spawn()`: remove the
+- [x] **H0.6.10** In `parse_spawn()`: remove the
       `let is_async = self.match_kind(TokenKind::Async).is_some()` line
       and the `is_async` field from `SpawnStmt` construction.
-- [ ] **H0.6.11** In `parse_unary()`: remove the `TokenKind::Await` arm
+- [x] **H0.6.11** In `parse_unary()`: remove the `TokenKind::Await` arm
       that constructs `Expr::Await(AwaitExpr { ... })`.
 
 #### H0.6 Step 3 — Checker (`stage1/fusec/src/checker/mod.rs`)
 
-- [ ] **H0.6.12** Remove `is_async: false` and `is_suspend: false` from
+- [x] **H0.6.12** Remove `is_async: false` and `is_suspend: false` from
       synthetic `FunctionDecl` construction(s).
-- [ ] **H0.6.13** Remove the `hir::Expr::Await(await_expr)` arm from
+- [x] **H0.6.13** Remove the `hir::Expr::Await(await_expr)` arm from
       `check_spawn_expr`.
-- [ ] **H0.6.14** Remove the write-guard-across-await warning in `check_expr`
+- [x] **H0.6.14** Remove the write-guard-across-await warning in `check_expr`
       (the `hir::Expr::Await(expr)` arm, ~11 lines).
-- [ ] **H0.6.15** Remove `hir::Expr::Await(expr)` arm from `infer_expr_type`.
+- [x] **H0.6.15** Remove `hir::Expr::Await(expr)` arm from `infer_expr_type`.
 
 #### H0.6 Step 4 — Codegen (`stage1/fusec/src/codegen/object_backend.rs`)
 
-- [ ] **H0.6.16** Remove `fa::Expr::Await(await_expr)` passthrough from
+- [x] **H0.6.16** Remove `fa::Expr::Await(await_expr)` passthrough from
       `compile_expr`.
-- [ ] **H0.6.17** Remove `is_async: false` and `is_suspend: false` from
+- [x] **H0.6.17** Remove `is_async: false` and `is_suspend: false` from
       lambda `FunctionDecl` construction.
-- [ ] **H0.6.18** Remove `fa::Expr::Await(await_expr)` arm from
+- [x] **H0.6.18** Remove `fa::Expr::Await(await_expr)` arm from
       `infer_expr_type`.
-- [ ] **H0.6.19** Remove `fa::Expr::Await(value)` arm from
+- [x] **H0.6.19** Remove `fa::Expr::Await(value)` arm from
       `collect_expr_names`.
 
 #### H0.6 Step 5 — Evaluator (`stage1/fusec/src/evaluator.rs`)
 
-- [ ] **H0.6.20** Remove `is_async: false` and `is_suspend: false` from
+- [x] **H0.6.20** Remove `is_async: false` and `is_suspend: false` from
       synthetic `FunctionDecl` construction(s) (two locations).
-- [ ] **H0.6.21** Remove `fa::Expr::Await(await_expr)` passthrough from
+- [x] **H0.6.21** Remove `fa::Expr::Await(await_expr)` passthrough from
       `eval_expr`.
-- [ ] **H0.6.22** Remove `fa::Expr::Await(await_expr)` arm from
+- [x] **H0.6.22** Remove `fa::Expr::Await(await_expr)` arm from
       `collect_expr_names`.
 
 #### H0.6 Step 6 — AST Dump (`stage1/fusec/src/main.rs`)
 
-- [ ] **H0.6.23** Remove `fusec::ast::nodes::Expr::Await(a)` printer arm
+- [x] **H0.6.23** Remove `fusec::ast::nodes::Expr::Await(a)` printer arm
       (~4 lines).
 
 #### H0.6 Step 7 — Lexer (`stage1/fusec/src/lexer/token.rs`)
 
-- [ ] **H0.6.24** Remove `Async`, `Await`, `Suspend` variants from
+- [x] **H0.6.24** Remove `Async`, `Await`, `Suspend` variants from
       `TokenKind` enum. Keep `Spawn`.
-- [ ] **H0.6.25** Remove `"async" => TokenKind::Async`,
+- [x] **H0.6.25** Remove `"async" => TokenKind::Async`,
       `"await" => TokenKind::Await`, `"suspend" => TokenKind::Suspend`
       from `keyword_kind()`. Keep `"spawn"`.
-- [ ] **H0.6.26** Run `cargo build` — verify clean compilation.
+- [x] **H0.6.26** Run `cargo build` — verify clean compilation.
 
 #### H0.6 Step 8 — Tests
 
-- [ ] **H0.6.27** Delete entire `tests/fuse/full/async/` directory
+- [x] **H0.6.27** Delete entire `tests/fuse/full/async/` directory
       (6 files: `await_basic.fuse`, `suspend_fn.fuse`,
       `write_guard_across_await.fuse`, `nested_await_write_guard.fuse`,
       `multiple_shared_ranks_await.fuse`, `read_guard_across_await.fuse`).
-- [ ] **H0.6.28** Run `cargo test` — verify all remaining tests pass.
+- [x] **H0.6.28** Run `cargo test` — verify all remaining tests pass.
 
 #### H0.6 Step 9 — Stage 0 (`stage0/src/fuse_token.py`)
 
-- [ ] **H0.6.29** Remove `'async': 'ASYNC'`, `'await': 'AWAIT'`,
+- [x] **H0.6.29** Remove `'async': 'ASYNC'`, `'await': 'AWAIT'`,
       `'suspend': 'SUSPEND'` from keyword reservations. Keep `'spawn'`.
 
 #### H0.6 Step 10 — Language Spec (`docs/fuse-language-guide-2.md`)
 
-- [ ] **H0.6.30** Rewrite section 1.18 ("Async"): replace with a short
+- [x] **H0.6.30** Rewrite section 1.18 ("Async"): replace with a short
       note: "Fuse does not have `async`/`await`. Concurrency is expressed
       through `spawn` blocks and channels. See §1.17 Concurrency."
-- [ ] **H0.6.31** Remove `async`/`await`, `suspend` from the Fuse Full
+- [x] **H0.6.31** Remove `async`/`await`, `suspend` from the Fuse Full
       feature listing in the guide header.
-- [ ] **H0.6.32** Update any `spawn async { }` examples to `spawn { }`
+- [x] **H0.6.32** Update any `spawn async { }` examples to `spawn { }`
       throughout the language guide.
-- [ ] **H0.6.33** Remove references to `async_rt.rs` and `async_lint`
+- [x] **H0.6.33** Remove references to `async_rt.rs` and `async_lint`
       passes from Phase 7 mentions in the guide.
 
 ---
