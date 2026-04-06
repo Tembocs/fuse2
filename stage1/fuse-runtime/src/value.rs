@@ -83,7 +83,7 @@ unsafe fn value_mut<'a>(handle: FuseHandle) -> &'a mut FuseValue {
 unsafe fn clone_to_string(handle: FuseHandle) -> String {
     match &unsafe { value_ref(handle) }.kind {
         ValueKind::Int(value) => value.to_string(),
-        ValueKind::Float(value) => value.to_string(),
+        ValueKind::Float(value) => { let s = value.to_string(); if s.contains('.') { s } else { format!("{s}.0") } },
         ValueKind::Bool(value) => {
             if *value {
                 "true".to_string()
@@ -155,19 +155,25 @@ unsafe fn clone_to_string(handle: FuseHandle) -> String {
     }
 }
 
-fn numeric_binary(lhs: FuseHandle, rhs: FuseHandle, op: fn(i64, i64) -> i64) -> FuseHandle {
+fn numeric_binary(lhs: FuseHandle, rhs: FuseHandle, int_op: fn(i64, i64) -> i64, float_op: fn(f64, f64) -> f64) -> FuseHandle {
     unsafe {
         match (&value_ref(lhs).kind, &value_ref(rhs).kind) {
-            (ValueKind::Int(left), ValueKind::Int(right)) => fuse_int(op(*left, *right)),
+            (ValueKind::Int(left), ValueKind::Int(right)) => fuse_int(int_op(*left, *right)),
+            (ValueKind::Float(left), ValueKind::Float(right)) => fuse_float(float_op(*left, *right)),
+            (ValueKind::Int(left), ValueKind::Float(right)) => fuse_float(float_op(*left as f64, *right)),
+            (ValueKind::Float(left), ValueKind::Int(right)) => fuse_float(float_op(*left, *right as f64)),
             _ => fuse_unit(),
         }
     }
 }
 
-fn numeric_compare(lhs: FuseHandle, rhs: FuseHandle, op: fn(i64, i64) -> bool) -> FuseHandle {
+fn numeric_compare(lhs: FuseHandle, rhs: FuseHandle, int_op: fn(i64, i64) -> bool, float_op: fn(f64, f64) -> bool) -> FuseHandle {
     unsafe {
         match (&value_ref(lhs).kind, &value_ref(rhs).kind) {
-            (ValueKind::Int(left), ValueKind::Int(right)) => fuse_bool(op(*left, *right)),
+            (ValueKind::Int(left), ValueKind::Int(right)) => fuse_bool(int_op(*left, *right)),
+            (ValueKind::Float(left), ValueKind::Float(right)) => fuse_bool(float_op(*left, *right)),
+            (ValueKind::Int(left), ValueKind::Float(right)) => fuse_bool(float_op(*left as f64, *right)),
+            (ValueKind::Float(left), ValueKind::Int(right)) => fuse_bool(float_op(*left, *right as f64)),
             _ => fuse_bool(false),
         }
     }
@@ -227,6 +233,9 @@ pub unsafe extern "C" fn fuse_add(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandl
     unsafe {
         match (&value_ref(lhs).kind, &value_ref(rhs).kind) {
             (ValueKind::Int(left), ValueKind::Int(right)) => fuse_int(left + right),
+            (ValueKind::Float(left), ValueKind::Float(right)) => fuse_float(left + right),
+            (ValueKind::Int(left), ValueKind::Float(right)) => fuse_float(*left as f64 + right),
+            (ValueKind::Float(left), ValueKind::Int(right)) => fuse_float(left + *right as f64),
             _ => fuse_concat(lhs, rhs),
         }
     }
@@ -234,12 +243,12 @@ pub unsafe extern "C" fn fuse_add(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandl
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_sub(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
-    numeric_binary(lhs, rhs, |left, right| left - right)
+    numeric_binary(lhs, rhs, |left, right| left - right, |left, right| left - right)
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_mul(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
-    numeric_binary(lhs, rhs, |left, right| left * right)
+    numeric_binary(lhs, rhs, |left, right| left * right, |left, right| left * right)
 }
 
 #[unsafe(no_mangle)]
@@ -255,7 +264,7 @@ pub unsafe extern "C" fn fuse_div(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandl
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_mod(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
-    numeric_binary(lhs, rhs, |left, right| left % right)
+    numeric_binary(lhs, rhs, |left, right| left % right, |left, right| left % right)
 }
 
 #[unsafe(no_mangle)]
@@ -271,22 +280,22 @@ pub unsafe extern "C" fn fuse_data_eq(lhs: FuseHandle, rhs: FuseHandle) -> FuseH
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_lt(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
-    numeric_compare(lhs, rhs, |left, right| left < right)
+    numeric_compare(lhs, rhs, |left, right| left < right, |left, right| left < right)
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_le(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
-    numeric_compare(lhs, rhs, |left, right| left <= right)
+    numeric_compare(lhs, rhs, |left, right| left <= right, |left, right| left <= right)
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_gt(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
-    numeric_compare(lhs, rhs, |left, right| left > right)
+    numeric_compare(lhs, rhs, |left, right| left > right, |left, right| left > right)
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_ge(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
-    numeric_compare(lhs, rhs, |left, right| left >= right)
+    numeric_compare(lhs, rhs, |left, right| left >= right, |left, right| left >= right)
 }
 
 #[unsafe(no_mangle)]

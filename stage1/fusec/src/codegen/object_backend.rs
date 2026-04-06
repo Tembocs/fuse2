@@ -222,6 +222,7 @@ fn load_module_recursive(
 struct RuntimeFns {
     unit: FuncId,
     int: FuncId,
+    float: FuncId,
     bool_: FuncId,
     string_new_utf8: FuncId,
     to_string: FuncId,
@@ -914,6 +915,7 @@ fn declare_runtime_functions(
     Ok(RuntimeFns {
         unit: declare(module, "fuse_unit", &[], &[pointer_type])?,
         int: declare(module, "fuse_int", &[types::I64], &[pointer_type])?,
+        float: declare(module, "fuse_float", &[types::F64], &[pointer_type])?,
         bool_: declare(module, "fuse_bool", &[types::I8], &[pointer_type])?,
         string_new_utf8: declare(module, "fuse_string_new_utf8", &[pointer_type, pointer_type], &[pointer_type])?,
         to_string: declare(module, "fuse_to_string", &[pointer_type], &[pointer_type])?,
@@ -1418,9 +1420,18 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 Some("Bool".to_string()),
             ),
             fa::LiteralValue::String(value) => (self.string_value(builder, value)?, Some("String".to_string())),
-            fa::LiteralValue::Float(_) => {
-                return Err("float literals are not implemented in the real backend yet".to_string())
-            }
+            fa::LiteralValue::Float(value) => (
+                {
+                    let raw = builder.ins().f64const(*value);
+                    self.runtime(
+                        builder,
+                        self.compiler.runtime.float,
+                        &[raw],
+                        self.compiler.pointer_type,
+                    )
+                },
+                Some("Float".to_string()),
+            )
         };
         Ok(TypedValue { value, ty })
     }

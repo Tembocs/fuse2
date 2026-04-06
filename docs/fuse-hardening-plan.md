@@ -258,23 +258,23 @@ Use `builder.ins().f64const(value)` to create a Cranelift f64 constant,
 then box it via a runtime allocation function. If `fuse_rt_float_from_f64`
 does not exist in `fuse-runtime/src/value.rs`, add it.
 
-- [ ] **H0.2.1** Check `fuse-runtime/src/value.rs` for existing float
+- [x] **H0.2.1** Check `fuse-runtime/src/value.rs` for existing float
       allocation from raw f64. If not present, add
       `fuse_rt_float_from_f64(val: f64) -> *mut FuseValue` following the
       same pattern as `fuse_rt_int_new`.
-- [ ] **H0.2.2** Register `fuse_rt_float_from_f64` in codegen's runtime
+- [x] **H0.2.2** Register `fuse_rt_float_from_f64` in codegen's runtime
       function table (same as other runtime functions in the import block).
-- [ ] **H0.2.3** Implement `LiteralValue::Float(f)` case in `compile_literal`:
+- [x] **H0.2.3** Implement `LiteralValue::Float(f)` case in `compile_literal`:
       emit `f64const`, call `fuse_rt_float_from_f64`, return
       `TypedValue { value, ty: Some("Float".to_string()) }`.
-- [ ] **H0.2.4** Add test: `float_literal_basic.fuse` —
+- [x] **H0.2.4** Add test: `float_literal_basic.fuse` —
       `val x = 3.14; println(x)` → `3.14`
-- [ ] **H0.2.5** Add test: `float_literal_arithmetic.fuse` —
+- [x] **H0.2.5** Add test: `float_literal_arithmetic.fuse` —
       `println(1.5 + 2.5)` → `4.0`
-- [ ] **H0.2.6** Add test: `float_literal_negative.fuse` —
+- [x] **H0.2.6** Add test: `float_literal_negative.fuse` —
       `val x = -0.5; println(x)` → `-0.5`
-- [ ] **H0.2.7** Verify existing `float_test.fuse` stdlib test still passes.
-- [ ] **H0.2.8** Run full test suite — all tests green.
+- [x] **H0.2.7** Verify existing `float_test.fuse` stdlib test still passes.
+- [x] **H0.2.8** Run full test suite — all tests green.
 
 ---
 

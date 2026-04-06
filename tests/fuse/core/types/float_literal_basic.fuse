@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// 3.14
+// 0.0
+// 100.5
+
+@entrypoint
+fn main() {
+  val x = 3.14
+  println(x)
+
+  val y = 0.0
+  println(y)
+
+  val z = 100.5
+  println(z)
+}
