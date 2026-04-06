@@ -245,6 +245,81 @@ string doesn't contain `.`, `NaN`, or `inf`, append `.0`.
 
 ---
 
+### Bug #11 — Evaluator stack overflow on cross-module nested calls (Wave 2, Phase 2.2)
+
+**Status: WORKAROUND — not fixed. If this recurs in Phase 2.3+, extract
+the FFI dispatch into a separate function as the proper fix.**
+
+**Symptom:** Calling a function in an imported module that internally
+calls another function in the same module causes a stack overflow after
+only 5 levels of nesting (e.g., `path.join` → `joinTwo` → `isAbsolute`
+→ `strLen` → `fuse_rt_string_len`).
+
+**Minimal reproduction:**
+```fuse
+// mymod.fuse
+extern fn fuse_rt_string_len(s: String) -> Int
+extern fn fuse_rt_string_char_at(s: String, index: Int) -> String
+// ... (5+ extern declarations total)
+
+fn strLen(s: String) -> Int { fuse_rt_string_len(s) }
+fn charAt(s: String, i: Int) -> String { fuse_rt_string_char_at(s, i) }
+
+pub fn isAbsolute(p: String) -> Bool {
+  val len = strLen(p)
+  if len == 0 { return false }
+  charAt(p, 0) == "/"
+}
+
+fn joinTwo(base: String, part: String) -> String {
+  if isAbsolute(part) { return part }
+  f"{base}/{part}"
+}
+
+pub fn join(base: String, parts: String...) -> String {
+  var result = base
+  for part in parts { result = joinTwo(result, part) }
+  result
+}
+```
+```fuse
+// test.fuse — overflows at runtime
+import mymod
+@entrypoint
+fn main() { println(mymod.join("foo", "bar")) }
+```
+
+**Root cause:** `call_user_function` is a ~400-line function containing a
+giant `match` block with every FFI handler. The Rust compiler allocates
+stack space for the entire function's locals on entry — estimated several
+KB per frame. With only 5 nested cross-module calls the default 1 MB
+Windows stack is exhausted before any FFI arm is even reached.
+
+**Proper fix (not yet applied):** Extract the FFI `match` block
+(lines ~711–1104 of `evaluator.rs`) into a separate `#[inline(never)]`
+function `dispatch_ffi(&str, &[Value]) -> Option<Result<Value, RuntimeError>>`.
+This isolates the large stack frame so it is only allocated when a
+function with an empty body (i.e., an FFI stub) is called, not on every
+user function call.
+
+**Workaround applied:** Increased main thread stack size to 8 MB via
+`std::thread::Builder::new().stack_size(8 * 1024 * 1024)` in `main.rs`.
+Added module environment caching to avoid redundant `module_env`
+reconstruction. Both are band-aids: the stack increase masks the problem,
+and the cache is a performance optimization unrelated to the root cause.
+
+**Category:** Evaluator — stack frame size
+
+**Decision:** Documented rather than fixed because:
+1. The fix (function extraction) is mechanical but touches 400 lines of
+   match arms that all need `return Ok(...)` → `return Some(Ok(...))`
+   conversion — high churn, easy to introduce typos.
+2. The workaround is sufficient for Phase 2.2.
+3. If the bug recurs in Phase 2.3+ (likely, as modules grow), the proper
+   fix must be applied immediately — no further stack size increases.
+
+---
+
 ## Pattern Analysis
 
 | Category | Count | Notes |
@@ -259,6 +334,7 @@ string doesn't contain `.`, `NaN`, or `inf`, append `.0`.
 | Evaluator — float arithmetic | 1 | Float+Float fell through to string concatenation |
 | Evaluator — float comparison | 1 | compare_binary only handled Int, not Float |
 | Evaluator — ASAP name extraction | 1 | F-string `collect_expr_names` missed variables inside call args |
+| Evaluator — stack frame size | 1 | Giant FFI match block inflates every call frame (**workaround only**) |
 
 ---
 

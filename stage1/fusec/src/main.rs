@@ -263,7 +263,10 @@ fn dispatch(args: Args) -> ExitCode {
 // ---------------------------------------------------------------------------
 
 fn main() -> ExitCode {
-    // Use a larger stack (8 MB) for the evaluator's deep call chains.
+    // Workaround for Bug #11: evaluator's call_user_function has oversized
+    // stack frames due to ~400-line FFI match block. 8 MB prevents overflow
+    // on nested cross-module calls. Proper fix: extract FFI dispatch into a
+    // separate function. See docs/stdlib_implementation_learning.md.
     let builder = std::thread::Builder::new().stack_size(8 * 1024 * 1024);
     let handler = builder.spawn(main_inner).expect("failed to spawn main thread");
     handler.join().unwrap_or(ExitCode::FAILURE)

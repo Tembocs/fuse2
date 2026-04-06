@@ -791,9 +791,10 @@ Path manipulation. Mostly pure Fuse string ops.
       `normalize`, `withExtension`, `withBasename`, `fromParts`, `join`.
 - [x] **2.2.5** Implement `toAbsolute` — uses `fuse_rt_path_cwd` FFI.
 - [x] **2.2.6** Create `tests/fuse/stdlib/full/path_test.fuse`.
-- [x] **2.2.7** Run tests. Fix compiler bug: evaluator stack overflow due to
-      large `call_user_function` frames — fixed by increasing thread stack
-      size to 8 MB and adding module environment caching.
+- [x] **2.2.7** Run tests. Compiler bug found: evaluator stack overflow
+      due to oversized `call_user_function` stack frames (Bug #11).
+      Workaround applied (8 MB stack, env cache). Proper fix (extract
+      FFI dispatch) deferred — must be applied if bug recurs in 2.3+.
 
 ---
 
