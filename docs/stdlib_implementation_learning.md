@@ -516,6 +516,28 @@ works correctly as a return expression.
 **Status:** Not fixed (parser/codegen change needed). Documented as a
 known limitation. Does not affect any existing stdlib code.
 
+### Phase 5.3 — `regex.fuse`
+
+**Compiler fix: extern fn signature collision with runtime functions.**
+When `list.fuse` declares `extern fn fuse_list_push(...)`, the codegen
+previously re-declared it with the `handle_signature` (which always
+includes a return value). The runtime's declaration has no return value,
+causing a Cranelift signature incompatibility. Fixed by: (1) pre-populating
+`function_ids` with known runtime function names and IDs at startup, and
+(2) skipping extern fn declarations that already exist in `function_ids`
+or that fail Cranelift's compatibility check.
+
+**Compiler fix: void-returning extern fn call panic.** When a named call
+resolved to an extern fn backed by a void-returning runtime function,
+`builder.inst_results(call)[0]` panicked because the result list was
+empty. Fixed by checking `results.is_empty()` and returning Unit.
+
+**Compiler fix: List built-in member calls.** `List<T>.len()`,
+`List<T>.get(index)`, and `List<T>.push(item)` were not handled in
+`compile_member_call`, only in for-loop iteration codegen. Added built-in
+dispatch for List types in both `compile_member_call` and
+`call_zero_arg_member` (used by f-string evaluation).
+
 ---
 
 *End of Fuse Standard Library — Compiler Bug & Learning Reference*

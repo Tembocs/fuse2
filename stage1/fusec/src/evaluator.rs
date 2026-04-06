@@ -1834,6 +1834,37 @@ impl Evaluator {
                     }
                     return Ok(Value::Unit);
                 }
+                // --- regex FFI ---
+                "fuse_rt_regex_compile" => {
+                    if let Some(Value::String(pat)) = args.first() {
+                        return match regex::Regex::new(pat) {
+                            Ok(re) => {
+                                thread_local! { static STORE: std::cell::RefCell<std::collections::HashMap<i64, regex::Regex>> = std::cell::RefCell::new(std::collections::HashMap::new()); static NXT: std::cell::Cell<i64> = const { std::cell::Cell::new(1) }; }
+                                let id = NXT.with(|c| { let id = c.get(); c.set(id + 1); id });
+                                STORE.with(|s| s.borrow_mut().insert(id, re));
+                                Ok(Value::Result { is_ok: true, value: Box::new(Value::Int(id)) })
+                            }
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("{e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("regex: expected pattern".into())) });
+                }
+                "fuse_rt_regex_is_match" | "fuse_rt_regex_find" | "fuse_rt_regex_find_all"
+                | "fuse_rt_regex_replace" | "fuse_rt_regex_replace_all"
+                | "fuse_rt_regex_split" | "fuse_rt_regex_captures" => {
+                    // Regex operations in evaluator: stub implementations.
+                    // Full support requires the compiled path.
+                    return match function.name.as_str() {
+                        "fuse_rt_regex_is_match" => Ok(Value::Bool(false)),
+                        "fuse_rt_regex_find" | "fuse_rt_regex_captures" => Ok(Value::Option(None)),
+                        "fuse_rt_regex_find_all" | "fuse_rt_regex_split" => Ok(Value::List(vec![])),
+                        "fuse_rt_regex_replace" | "fuse_rt_regex_replace_all" => {
+                            if let Some(Value::String(s)) = args.get(1) { Ok(Value::String(s.clone())) }
+                            else { Ok(Value::String(String::new())) }
+                        }
+                        _ => Ok(Value::Unit),
+                    };
+                }
                 _ => {}
             }
             // Post-match handlers that need &self (for stringify).

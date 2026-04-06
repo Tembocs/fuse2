@@ -351,6 +351,23 @@ impl<'a> BackendCompiler<'a> {
             lambda_counter: 0,
             pending_lambdas: Vec::new(),
         };
+        // Pre-populate function_ids with runtime functions so that extern fn
+        // declarations from stdlib modules find them and skip re-declaration.
+        let rt = &compiler.runtime;
+        for (name, id) in [
+            ("fuse_list_new", rt.list_new), ("fuse_list_push", rt.list_push),
+            ("fuse_list_len", rt.list_len), ("fuse_list_get", rt.list_get),
+            ("fuse_map_new", rt.map_new), ("fuse_map_set", rt.map_set),
+            ("fuse_map_get", rt.map_get), ("fuse_map_remove", rt.map_remove),
+            ("fuse_map_len", rt.map_len), ("fuse_map_contains", rt.map_contains),
+            ("fuse_map_keys", rt.map_keys), ("fuse_map_values", rt.map_values),
+            ("fuse_map_entries", rt.map_entries),
+            ("fuse_release", rt.release), ("fuse_asap_release", rt.asap_release),
+            ("fuse_to_upper", rt.to_upper), ("fuse_string_is_empty", rt.string_is_empty),
+            ("fuse_builtin_println", rt.println),
+        ] {
+            compiler.function_ids.insert(name.to_string(), id);
+        }
         compiler.declare_user_surface()?;
         Ok(compiler)
     }
@@ -392,10 +409,24 @@ impl<'a> BackendCompiler<'a> {
                 }
             }
             for extern_fn in loaded.extern_fns.values() {
-                let func_id = self
-                    .module
-                    .declare_function(&extern_fn.name, Linkage::Import, &self.handle_signature(extern_fn.params.len()))
-                    .map_err(|error| error.to_string())?;
+                // Skip if already declared (runtime functions or another module).
+                // Cranelift rejects duplicate declarations with incompatible
+                // signatures, so we use try-declare-or-reuse.
+                if self.function_ids.contains_key(&extern_fn.name) {
+                    continue;
+                }
+                let sig = self.handle_signature(extern_fn.params.len());
+                let func_id = match self.module.declare_function(&extern_fn.name, Linkage::Import, &sig) {
+                    Ok(id) => id,
+                    Err(_) => {
+                        // Already declared by the runtime with a different
+                        // signature (e.g. void-returning builtins).  Reuse the
+                        // existing declaration via a re-declare with the
+                        // runtime's own signature — Cranelift deduplicates when
+                        // the signature matches.
+                        continue;
+                    }
+                };
                 self.function_ids.insert(extern_fn.name.clone(), func_id);
             }
         }
@@ -1604,6 +1635,28 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 other => Err(format!("unsupported Map zero-arg member `{other}()`")),
             };
         }
+        if receiver_type.starts_with("List") {
+            return match name {
+                "len" => {
+                    let raw_len = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.list_len,
+                        &[receiver.value],
+                        types::I64,
+                    );
+                    Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.int,
+                            &[raw_len],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Int".to_string()),
+                    })
+                }
+                other => Err(format!("unsupported List zero-arg member `{other}()`")),
+            };
+        }
         if layout::canonical_type_name(&receiver_type) == "String" {
             return match name {
                 "toUpper" => Ok(TypedValue {
@@ -2078,8 +2131,13 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 lowered_args.push(self.compile_expr(builder, arg)?.value);
             }
             let call = builder.ins().call(local, &lowered_args);
+            let results = builder.inst_results(call);
             return Ok(TypedValue {
-                value: builder.inst_results(call)[0],
+                value: if results.is_empty() {
+                    self.runtime_nullary(builder, self.compiler.runtime.unit)
+                } else {
+                    results[0]
+                },
                 ty: extern_fn.return_type.clone(),
             });
         }
@@ -2408,6 +2466,62 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 value: builder.inst_results(call)[0],
                 ty: function.return_type.clone(),
             });
+        }
+        if receiver_type.starts_with("List") {
+            return match member.name.as_str() {
+                "len" => {
+                    let raw_len = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.list_len,
+                        &[receiver.value],
+                        types::I64,
+                    );
+                    Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.int,
+                            &[raw_len],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Int".to_string()),
+                    })
+                }
+                "get" => {
+                    let index = self.compile_expr(builder, &args[0])?;
+                    Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.list_get,
+                            &[receiver.value, index.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: {
+                            // Derive inner type from List<X> → X
+                            let inner = receiver_type.strip_prefix("List<")
+                                .and_then(|s| s.strip_suffix('>'))
+                                .unwrap_or("Unknown")
+                                .to_string();
+                            Some(inner)
+                        },
+                    })
+                }
+                "push" => {
+                    let item = self.compile_expr(builder, &args[0])?;
+                    self.runtime_void(
+                        builder,
+                        self.compiler.runtime.list_push,
+                        &[receiver.value, item.value],
+                    );
+                    Ok(TypedValue {
+                        value: self.runtime_nullary(builder, self.compiler.runtime.unit),
+                        ty: Some("Unit".to_string()),
+                    })
+                }
+                _ => {
+                    // Fall through to extension resolution below.
+                    Err(format!("unsupported List member call `{}`", member.name))
+                }
+            };
         }
         if layout::canonical_type_name(&receiver_type) == "Chan" {
             return match member.name.as_str() {

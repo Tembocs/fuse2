@@ -2,6 +2,9 @@ use std::fmt::Write;
 use std::ptr;
 use std::slice;
 use std::collections::VecDeque;
+use std::cell::Cell;
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 pub type FuseHandle = *mut FuseValue;
 
@@ -3126,8 +3129,6 @@ unsafe fn platform_setjmp(buf: *mut JmpBuf) -> i32 {
     unsafe { c_setjmp(buf) }
 }
 
-use std::cell::Cell;
-
 thread_local! {
     static PANIC_JMP: Cell<*mut JmpBuf> = const { Cell::new(ptr::null_mut()) };
 }
@@ -3337,4 +3338,174 @@ pub unsafe extern "C" fn fuse_rt_log_append_file(
         let _ = writeln!(f, "{m}");
     }
     FuseValue::new(ValueKind::Unit)
+}
+
+// ---------------------------------------------------------------------------
+// Regex runtime support
+// ---------------------------------------------------------------------------
+
+thread_local! {
+    static REGEX_STORE: RefCell<HashMap<i64, regex::Regex>> = RefCell::new(HashMap::new());
+    static REGEX_NEXT_ID: Cell<i64> = const { Cell::new(1) };
+}
+
+/// Helper: build a Match data class (text: String, start: Int, end: Int).
+unsafe fn make_match(text: &str, start: usize, end: usize) -> FuseHandle {
+    let tn = b"Match";
+    let data = fuse_data_new(tn.as_ptr(), tn.len(), 3, None);
+    fuse_data_set_field(data, 0, fuse_string_new_utf8(text.as_ptr(), text.len()));
+    fuse_data_set_field(data, 1, fuse_int(start as i64));
+    fuse_data_set_field(data, 2, fuse_int(end as i64));
+    data
+}
+
+/// Compile a regex pattern. Returns Result<Int, String> where Int is
+/// the handle for subsequent operations.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_regex_compile(pattern: FuseHandle) -> FuseHandle {
+    let pat = unsafe { clone_to_string(pattern) };
+    match regex::Regex::new(&pat) {
+        Ok(re) => {
+            let id = REGEX_NEXT_ID.with(|c| { let id = c.get(); c.set(id + 1); id });
+            REGEX_STORE.with(|store| store.borrow_mut().insert(id, re));
+            unsafe { fuse_ok(fuse_int(id)) }
+        }
+        Err(e) => {
+            let msg = format!("{e}");
+            unsafe { fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len())) }
+        }
+    }
+}
+
+/// Test whether the regex matches anywhere in the text.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_regex_is_match(
+    handle: FuseHandle,
+    text: FuseHandle,
+) -> FuseHandle {
+    let id = extract_int(handle);
+    let txt = unsafe { clone_to_string(text) };
+    let matched = REGEX_STORE.with(|store| {
+        store.borrow().get(&id).map(|re| re.is_match(&txt)).unwrap_or(false)
+    });
+    unsafe { fuse_bool(matched) }
+}
+
+/// Find the first match. Returns Option<Match>.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_regex_find(
+    handle: FuseHandle,
+    text: FuseHandle,
+) -> FuseHandle {
+    let id = extract_int(handle);
+    let txt = unsafe { clone_to_string(text) };
+    let result = REGEX_STORE.with(|store| {
+        store.borrow().get(&id).and_then(|re| {
+            re.find(&txt).map(|m| (m.as_str().to_string(), m.start(), m.end()))
+        })
+    });
+    match result {
+        Some((matched, start, end)) => unsafe { fuse_some(make_match(&matched, start, end)) },
+        None => unsafe { fuse_none() },
+    }
+}
+
+/// Find all matches. Returns List<Match>.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_regex_find_all(
+    handle: FuseHandle,
+    text: FuseHandle,
+) -> FuseHandle {
+    let id = extract_int(handle);
+    let txt = unsafe { clone_to_string(text) };
+    let list = unsafe { fuse_list_new() };
+    REGEX_STORE.with(|store| {
+        if let Some(re) = store.borrow().get(&id) {
+            for m in re.find_iter(&txt) {
+                let item = unsafe { make_match(m.as_str(), m.start(), m.end()) };
+                unsafe { fuse_list_push(list, item) };
+            }
+        }
+    });
+    list
+}
+
+/// Replace the first match. Returns String.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_regex_replace(
+    handle: FuseHandle,
+    text: FuseHandle,
+    replacement: FuseHandle,
+) -> FuseHandle {
+    let id = extract_int(handle);
+    let txt = unsafe { clone_to_string(text) };
+    let rep = unsafe { clone_to_string(replacement) };
+    let result = REGEX_STORE.with(|store| {
+        store.borrow().get(&id).map(|re| re.replace(&txt, rep.as_str()).to_string())
+            .unwrap_or(txt.clone())
+    });
+    unsafe { fuse_string_new_utf8(result.as_ptr(), result.len()) }
+}
+
+/// Replace all matches. Returns String.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_regex_replace_all(
+    handle: FuseHandle,
+    text: FuseHandle,
+    replacement: FuseHandle,
+) -> FuseHandle {
+    let id = extract_int(handle);
+    let txt = unsafe { clone_to_string(text) };
+    let rep = unsafe { clone_to_string(replacement) };
+    let result = REGEX_STORE.with(|store| {
+        store.borrow().get(&id).map(|re| re.replace_all(&txt, rep.as_str()).to_string())
+            .unwrap_or(txt.clone())
+    });
+    unsafe { fuse_string_new_utf8(result.as_ptr(), result.len()) }
+}
+
+/// Split text by regex. Returns List<String>.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_regex_split(
+    handle: FuseHandle,
+    text: FuseHandle,
+) -> FuseHandle {
+    let id = extract_int(handle);
+    let txt = unsafe { clone_to_string(text) };
+    let list = unsafe { fuse_list_new() };
+    REGEX_STORE.with(|store| {
+        if let Some(re) = store.borrow().get(&id) {
+            for part in re.split(&txt) {
+                let s = unsafe { fuse_string_new_utf8(part.as_ptr(), part.len()) };
+                unsafe { fuse_list_push(list, s) };
+            }
+        }
+    });
+    list
+}
+
+/// Capture groups from the first match. Returns Option<List<String>>.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_regex_captures(
+    handle: FuseHandle,
+    text: FuseHandle,
+) -> FuseHandle {
+    let id = extract_int(handle);
+    let txt = unsafe { clone_to_string(text) };
+    let result = REGEX_STORE.with(|store| {
+        store.borrow().get(&id).and_then(|re| {
+            re.captures(&txt).map(|caps| {
+                let list = unsafe { fuse_list_new() };
+                for i in 0..caps.len() {
+                    let s = caps.get(i).map(|m| m.as_str()).unwrap_or("");
+                    unsafe { fuse_list_push(list, fuse_string_new_utf8(s.as_ptr(), s.len())) };
+                }
+                list
+            })
+        })
+    });
+    match result {
+        Some(list) => unsafe { fuse_some(list) },
+        None => unsafe { fuse_none() },
+    }
 }

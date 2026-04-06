@@ -8,3 +8,4 @@ crate-type = ["rlib", "staticlib"]
 
 [dependencies]
 ureq = { version = "2", features = ["tls"] }
+regex = "1"

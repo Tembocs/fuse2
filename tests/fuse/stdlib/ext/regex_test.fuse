@@ -1,0 +1,123 @@
+// EXPECTED OUTPUT:
+// --- compile ---
+// compiled: true
+// invalid: true
+// --- isMatch ---
+// matches digits: true
+// no match letters: true
+// --- find ---
+// found: true
+// match text: 42
+// match start: 4
+// match end: 6
+// --- findAll ---
+// findAll count: 3
+// --- replace ---
+// replaced: hello universe and world
+// --- replaceAll ---
+// replaced all: hello *** and ***
+// --- split ---
+// split count: 3
+// --- captures ---
+// captured: true
+// group count: 4
+// --- done ---
+// done
+
+import stdlib.ext.regex
+
+@entrypoint
+fn main() {
+  // --- compile ---
+  println("--- compile ---")
+  val result = compile("[0-9]+")
+  val compiled = match result {
+    Ok(re) => true
+    Err(e) => false
+  }
+  println(f"compiled: {compiled}")
+  val bad = compile("[invalid")
+  val invalid = match bad {
+    Ok(re) => false
+    Err(e) => true
+  }
+  println(f"invalid: {invalid}")
+
+  // --- isMatch ---
+  println("--- isMatch ---")
+  val re = match compile("[0-9]+") {
+    Ok(r) => r
+    Err(e) => Regex(0)
+  }
+  val matchDigits = re.isMatch("abc 42 def")
+  println(f"matches digits: {matchDigits}")
+  val noMatch = re.isMatch("no digits here")
+  val noMatchResult = noMatch == false
+  println(f"no match letters: {noMatchResult}")
+
+  // --- find ---
+  println("--- find ---")
+  val found = re.find("abc 42 def")
+  match found {
+    Some(m) => {
+      println("found: true")
+      println(f"match text: {m.text}")
+      println(f"match start: {m.start}")
+      println(f"match end: {m.end}")
+    }
+    None => println("found: false")
+  }
+
+  // --- findAll ---
+  println("--- findAll ---")
+  val numRe = match compile("[0-9]+") {
+    Ok(r) => r
+    Err(e) => Regex(0)
+  }
+  val allMatches = numRe.findAll("10 apples, 20 oranges, 30 pears")
+  val matchCount = allMatches.len()
+  println(f"findAll count: {matchCount}")
+
+  // --- replace ---
+  println("--- replace ---")
+  val worldRe = match compile("world") {
+    Ok(r) => r
+    Err(e) => Regex(0)
+  }
+  val replaced = worldRe.replace("hello world and world", "universe")
+  println(f"replaced: {replaced}")
+
+  // --- replaceAll ---
+  println("--- replaceAll ---")
+  val replacedAll = worldRe.replaceAll("hello world and world", "***")
+  println(f"replaced all: {replacedAll}")
+
+  // --- split ---
+  println("--- split ---")
+  val sepRe = match compile("[,;]+\\s*") {
+    Ok(r) => r
+    Err(e) => Regex(0)
+  }
+  val parts = sepRe.split("one, two; three")
+  val partCount = parts.len()
+  println(f"split count: {partCount}")
+
+  // --- captures ---
+  println("--- captures ---")
+  val dateRe = match compile("(\\d{4})-(\\d{2})-(\\d{2})") {
+    Ok(r) => r
+    Err(e) => Regex(0)
+  }
+  val caps = dateRe.captures("today is 2026-04-06!")
+  match caps {
+    Some(groups) => {
+      println("captured: true")
+      val groupCount = groups.len()
+      println(f"group count: {groupCount}")
+    }
+    None => println("captured: false")
+  }
+
+  println("--- done ---")
+  println("done")
+}

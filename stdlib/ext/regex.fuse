@@ -1,0 +1,71 @@
+// Fuse Ext stdlib — regular expressions.
+//
+// Backed by Rust's regex crate. The Regex data class wraps a
+// compiled pattern handle managed by the runtime.
+//
+// import stdlib.ext.regex
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_regex_compile(pattern: String) -> Result<Int, String>
+extern fn fuse_rt_regex_is_match(handle: Int, text: String) -> Bool
+extern fn fuse_rt_regex_find(handle: Int, text: String) -> Option<Match>
+extern fn fuse_rt_regex_find_all(handle: Int, text: String) -> List<Match>
+extern fn fuse_rt_regex_replace(handle: Int, text: String, replacement: String) -> String
+extern fn fuse_rt_regex_replace_all(handle: Int, text: String, replacement: String) -> String
+extern fn fuse_rt_regex_split(handle: Int, text: String) -> List<String>
+extern fn fuse_rt_regex_captures(handle: Int, text: String) -> Option<List<String>>
+
+// --- Data classes ---
+
+pub data class RegexError(val message: String)
+
+pub data class Match(val text: String, val start: Int, val end: Int)
+
+pub data class Regex(val handle: Int)
+
+// --- Regex methods ---
+
+// Compile a regex pattern. Returns Err on invalid syntax.
+pub fn compile(pattern: String) -> Result<Regex, RegexError> {
+  val result = fuse_rt_regex_compile(pattern)
+  match result {
+    Ok(handle) => Ok(Regex(handle))
+    Err(msg) => Err(RegexError(msg))
+  }
+}
+
+// Test whether the pattern matches anywhere in the text.
+pub fn Regex.isMatch(ref self, text: String) -> Bool {
+  fuse_rt_regex_is_match(self.handle, text)
+}
+
+// Find the first match.
+pub fn Regex.find(ref self, text: String) -> Option<Match> {
+  fuse_rt_regex_find(self.handle, text)
+}
+
+// Find all non-overlapping matches.
+pub fn Regex.findAll(ref self, text: String) -> List<Match> {
+  fuse_rt_regex_find_all(self.handle, text)
+}
+
+// Replace the first match with the replacement string.
+pub fn Regex.replace(ref self, text: String, replacement: String) -> String {
+  fuse_rt_regex_replace(self.handle, text, replacement)
+}
+
+// Replace all matches with the replacement string.
+pub fn Regex.replaceAll(ref self, text: String, replacement: String) -> String {
+  fuse_rt_regex_replace_all(self.handle, text, replacement)
+}
+
+// Split text by the regex pattern.
+pub fn Regex.split(ref self, text: String) -> List<String> {
+  fuse_rt_regex_split(self.handle, text)
+}
+
+// Capture groups from the first match.
+pub fn Regex.captures(ref self, text: String) -> Option<List<String>> {
+  fuse_rt_regex_captures(self.handle, text)
+}

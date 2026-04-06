@@ -1255,17 +1255,40 @@ Structured logging.
 
 Regular expressions backed by Rust's `regex` crate.
 
-- [ ] **5.3.1** Add `regex` dependency to `fuse-runtime/Cargo.toml`.
-- [ ] **5.3.2** Add FFI: `fuse_rt_regex_compile`, `fuse_rt_regex_is_match`,
+- [x] **5.3.1** Add `regex` dependency to `fuse-runtime/Cargo.toml`.
+- [x] **5.3.2** Add FFI: `fuse_rt_regex_compile`, `fuse_rt_regex_is_match`,
       `fuse_rt_regex_find`, `fuse_rt_regex_find_all`,
       `fuse_rt_regex_replace`, `fuse_rt_regex_replace_all`,
       `fuse_rt_regex_split`, `fuse_rt_regex_captures`.
-- [ ] **5.3.3** Create `stdlib/ext/regex.fuse`.
-- [ ] **5.3.4** Define `RegexError`, `Match` data classes and `Regex`
+- [x] **5.3.3** Create `stdlib/ext/regex.fuse`.
+- [x] **5.3.4** Define `RegexError`, `Match` data classes and `Regex`
       struct.
-- [ ] **5.3.5** Implement all `Regex` methods.
-- [ ] **5.3.6** Create `tests/fuse/stdlib/ext/regex_test.fuse`.
-- [ ] **5.3.7** Run tests. Fix any compiler bugs found.
+- [x] **5.3.5** Implement all `Regex` methods.
+- [x] **5.3.6** Create `tests/fuse/stdlib/ext/regex_test.fuse`.
+- [x] **5.3.7** Run tests. Fix any compiler bugs found.
+
+**Notes:**
+- Compiled regex objects are stored in a thread-local `HashMap<i64, regex::Regex>`
+  in the runtime. `compile()` returns a `Result<Int, String>` where the
+  Int is the regex handle ID. The Fuse `Regex` data class wraps this ID.
+- `Match` data class instances are constructed by the runtime using
+  `fuse_data_new`/`fuse_data_set_field`, matching the field order
+  `(text: String, start: Int, end: Int)`.
+- The spec's `pub struct Regex` was changed to `pub data class Regex(val handle: Int)`
+  because structs are not compiled in Stage 1.
+- **Compiler fix: extern fn re-declaration skip.** When a stdlib module
+  declares an `extern fn` that is already registered as a runtime function
+  (e.g., `fuse_list_push` from list.fuse), the codegen now skips the
+  re-declaration to avoid signature conflicts. Runtime function names are
+  pre-populated in `function_ids` at startup.
+- **Compiler fix: void-returning extern fn calls.** When an extern fn
+  resolves to a runtime function with no return value, `inst_results(call)`
+  is empty. The codegen now returns Unit instead of panicking on index 0.
+- **Compiler fix: List built-in member calls.** Added `len`, `get`, `push`
+  handlers for `List<T>` in both `compile_member_call` and
+  `call_zero_arg_member` (f-string path). Previously only `for`-loop
+  iteration used `list_len`/`list_get` directly.
+- All 89 existing tests pass, 0 regressions. Zero TODO/FIXME/HACK.
 
 ---
 
