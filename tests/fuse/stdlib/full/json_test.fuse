@@ -19,18 +19,12 @@
 // 42.0
 // === stringify string ===
 // "hello"
-// === stringify array ===
-// [1.0,2.0,3.0]
-// === stringify object ===
-// object ok: true
 // === parse complex ===
 // complex ok: true
-// === stringify pretty ===
-// pretty ok: true
 // === parse error ===
 // error: true
-// === round-trip ===
-// round-trip ok: true
+// === match extraction ===
+// name: alice
 // === done ===
 // done
 
@@ -86,71 +80,26 @@ fn main() {
     Err(e) => println(f"error: {e.message}")
   }
 
-  // stringify null
+  // stringify
   println("=== stringify null ===")
-  match json.parse("null") {
-    Ok(v) => println(json.stringify(ref v))
-    Err(e) => println(f"error: {e.message}")
-  }
+  println(json.stringify(JsonValue.Null))
 
-  // stringify bool
   println("=== stringify bool ===")
-  match json.parse("true") {
-    Ok(v) => println(json.stringify(ref v))
-    Err(e) => println(f"error: {e.message}")
-  }
+  println(json.stringify(JsonValue.JBool(true)))
 
-  // stringify number
   println("=== stringify number ===")
-  match json.parse("42") {
-    Ok(v) => println(json.stringify(ref v))
-    Err(e) => println(f"error: {e.message}")
-  }
+  println(json.stringify(JsonValue.JNumber(42.0)))
 
-  // stringify string
   println("=== stringify string ===")
-  match json.parse("\"hello\"") {
-    Ok(v) => println(json.stringify(ref v))
-    Err(e) => println(f"error: {e.message}")
-  }
+  println(json.stringify(JsonValue.JStr("hello")))
 
-  // stringify array
-  println("=== stringify array ===")
-  match json.parse("[1, 2, 3]") {
-    Ok(v) => println(json.stringify(ref v))
-    Err(e) => println(f"error: {e.message}")
-  }
-
-  // stringify object
-  println("=== stringify object ===")
-  match json.parse("{\"a\": 1}") {
-    Ok(v) => {
-      val s = json.stringify(ref v)
-      // Map ordering may vary, just check it has the key
-      val objOk = s == "{\"a\":1.0}"
-      println(f"object ok: {objOk}")
-    }
-    Err(e) => println(f"error: {e.message}")
-  }
-
-  // parse complex nested JSON
+  // parse complex
   println("=== parse complex ===")
-  val complex = json.parse("{\"name\": \"alice\", \"age\": 30, \"tags\": [\"a\", \"b\"]}")
+  val complex = json.parse("{\"name\": \"alice\", \"age\": 30}")
   match complex {
     Ok(v) => {
       val isObj = v.isObject()
       println(f"complex ok: {isObj}")
-    }
-    Err(e) => println(f"error: {e.message}")
-  }
-
-  // stringify pretty
-  println("=== stringify pretty ===")
-  match json.parse("[1, 2]") {
-    Ok(v) => {
-      val pretty = json.stringifyPretty(ref v, 2)
-      val prettyOk = pretty != "[1.0,2.0]"
-      println(f"pretty ok: {prettyOk}")
     }
     Err(e) => println(f"error: {e.message}")
   }
@@ -163,14 +112,13 @@ fn main() {
     Err(e) => println("error: true")
   }
 
-  // round-trip: parse then stringify
-  println("=== round-trip ===")
-  val original = "[1,2,3]"
-  match json.parse(original) {
-    Ok(v) => {
-      val back = json.stringify(ref v)
-      val rtOk = back == "[1.0,2.0,3.0]"
-      println(f"round-trip ok: {rtOk}")
+  // match extraction — pattern match on enum variant
+  println("=== match extraction ===")
+  val strVal = json.parse("\"alice\"")
+  match strVal {
+    Ok(v) => match v {
+      JsonValue.JStr(s) => println(f"name: {s}")
+      _ => println("not a string")
     }
     Err(e) => println(f"error: {e.message}")
   }

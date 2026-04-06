@@ -117,6 +117,7 @@ enum Value {
     UserFunction(UserFunction),
     BoundMethod(Rc<BoundMethod>),
     ModuleValue(Rc<ModuleValue>),
+    Enum { type_name: String, variant: String, payloads: Vec<Value> },
     Moved(Box<Value>),
     Unit,
 }
@@ -179,6 +180,7 @@ struct ModuleRuntime {
     functions: HashMap<String, fa::FunctionDecl>,
     extensions: HashMap<(String, String), fa::FunctionDecl>,
     data_defs: HashMap<String, DataDef>,
+    enums: HashMap<String, fa::EnumDecl>,
     exports: HashMap<String, ExportSymbol>,
     imports: Vec<fa::ImportDecl>,
 }
@@ -430,6 +432,7 @@ impl Evaluator {
             functions: HashMap::new(),
             extensions: HashMap::new(),
             data_defs: HashMap::new(),
+            enums: HashMap::new(),
             exports: HashMap::new(),
             imports: Vec::new(),
         };
@@ -469,7 +472,9 @@ impl Evaluator {
                         },
                     );
                 }
-                fa::Declaration::Enum(_) => {}
+                fa::Declaration::Enum(enum_decl) => {
+                    module.enums.insert(enum_decl.name.clone(), enum_decl);
+                }
                 fa::Declaration::ExternFn(ext) => {
                     if ext.is_pub || true {
                         module.functions.insert(ext.name.clone(), fa::FunctionDecl {
@@ -648,6 +653,13 @@ impl Evaluator {
                     .collect();
                 format!("{{{}}}", pairs.join(", "))
             }
+            Value::Enum { type_name, variant, payloads } => {
+                if payloads.is_empty() {
+                    variant.clone()
+                } else {
+                    format!("{}({})", variant, payloads.iter().map(|p| self.stringify(p)).collect::<Vec<_>>().join(", "))
+                }
+            }
             Value::Moved(value) => self.stringify(value),
             Value::Unit => "Unit".to_string(),
             Value::NativeFunction(_) | Value::UserFunction(_) | Value::BoundMethod(_) | Value::ModuleValue(_) => {
@@ -695,6 +707,11 @@ impl Evaluator {
             Value::UserFunction(function) => Value::UserFunction(function.clone()),
             Value::BoundMethod(method) => Value::BoundMethod(method.clone()),
             Value::ModuleValue(module) => Value::ModuleValue(module.clone()),
+            Value::Enum { type_name, variant, payloads } => Value::Enum {
+                type_name: type_name.clone(),
+                variant: variant.clone(),
+                payloads: payloads.iter().map(Self::deep_clone).collect(),
+            },
             Value::Moved(value) => Value::Moved(Box::new(Self::deep_clone(value))),
             Value::Unit => Value::Unit,
         }
@@ -1981,6 +1998,16 @@ impl Evaluator {
                 eval_binary(binary, left, right).map_err(ControlFlow::Abort)
             }
             fa::Expr::Member(member) => {
+                // Check for zero-arity enum variant: Type.Variant
+                if let fa::Expr::Name(name) = member.object.as_ref() {
+                    if env.resolve(&name.value).is_none() {
+                        if let Some(enum_decl) = self.find_enum(&name.value) {
+                            if let Some(variant) = enum_decl.variants.iter().find(|v| v.name == member.name && v.arity == 0) {
+                                return Ok(Value::Enum { type_name: name.value.clone(), variant: variant.name.clone(), payloads: Vec::new() });
+                            }
+                        }
+                    }
+                }
                 let object = self.eval_expr(module_path, &member.object, env)?;
                 if member.optional {
                     return Ok(match object {
@@ -2025,6 +2052,22 @@ impl Evaluator {
                             let base = name.value.split("::").next().unwrap_or(&name.value);
                             if base == "Map" && member.name == "new" {
                                 return Ok(Value::Map(Vec::new()));
+                            }
+                            // Check for user enum variant construction: Type.Variant(args...)
+                            if let Some(enum_decl) = self.find_enum(&name.value) {
+                                if let Some(variant) = enum_decl.variants.iter().find(|v| v.name == member.name) {
+                                    let mut payloads = Vec::new();
+                                    for arg in &call.args {
+                                        payloads.push(self.eval_expr(module_path, arg, env)?);
+                                    }
+                                    if payloads.len() != variant.arity {
+                                        return Err(ControlFlow::Abort(runtime_error(
+                                            format!("enum variant `{}.{}` expects {} argument(s), got {}", name.value, member.name, variant.arity, payloads.len()),
+                                            &display_name(module_path), call.span.line, call.span.column,
+                                        )));
+                                    }
+                                    return Ok(Value::Enum { type_name: name.value.clone(), variant: member.name.clone(), payloads });
+                                }
                             }
                             if let Some(ext) = self.find_extension(&name.value, &member.name) {
                                 let mut args = Vec::new();
@@ -2234,6 +2277,15 @@ impl Evaluator {
                     module_path: module.path.clone(),
                     decl: function.clone(),
                 });
+            }
+        }
+        None
+    }
+
+    fn find_enum(&self, type_name: &str) -> Option<fa::EnumDecl> {
+        for module in self.modules.values() {
+            if let Some(decl) = module.enums.get(type_name) {
+                return Some(decl.clone());
             }
         }
         None
@@ -2710,6 +2762,7 @@ fn runtime_type(value: &Value) -> String {
         Value::Data(instance) => instance.borrow().type_name.clone(),
         Value::Option(_) => "Option".to_string(),
         Value::Result { .. } => "Result".to_string(),
+        Value::Enum { type_name, .. } => type_name.clone(),
         Value::Moved(value) => runtime_type(value),
         _ => "Unit".to_string(),
     }
@@ -2860,6 +2913,10 @@ fn value_eq(left: &Value, right: &Value) -> bool {
                     (None, None) => true,
                     _ => false,
                 })
+        }
+        (Value::Enum { type_name: lt, variant: lv, payloads: lp },
+         Value::Enum { type_name: rt, variant: rv, payloads: rp }) => {
+            lt == rt && lv == rv && lp.len() == rp.len() && lp.iter().zip(rp.iter()).all(|(l, r)| value_eq(l, r))
         }
         _ => false,
     }
@@ -3095,6 +3152,19 @@ fn match_pattern(pattern: &fa::Pattern, value: &Value) -> Option<HashMap<String,
                     .map(|pattern| match_pattern(pattern, value))
                     .unwrap_or_else(|| Some(HashMap::new())),
                 (variant, Value::Data(instance)) if instance.borrow().type_name == variant => Some(HashMap::new()),
+                (variant, Value::Enum { variant: v, payloads, .. }) if v == variant => {
+                    let mut bindings = HashMap::new();
+                    for (i, arg_pat) in pattern.args.iter().enumerate() {
+                        if let Some(payload) = payloads.get(i) {
+                            if let Some(inner) = match_pattern(arg_pat, payload) {
+                                bindings.extend(inner);
+                            } else {
+                                return None;
+                            }
+                        }
+                    }
+                    Some(bindings)
+                }
                 _ => None,
             }
         }

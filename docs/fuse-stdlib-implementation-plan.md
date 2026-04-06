@@ -965,28 +965,25 @@ TCP and UDP networking.
 JSON parsing and serialisation. Parser is pure Fuse.
 
 - [x] **3.2.1** Create `stdlib/full/json.fuse`.
-- [x] **3.2.2** Define `JsonError` data class and `JsonValue` tagged
-      data class (tag: 0=null, 1=bool, 2=number, 3=string, 4=array,
-      5=object). Implemented as tagged data class instead of enum
-      because the evaluator does not support user enum construction.
-- [x] **3.2.3** Implement `json.parse(s: String)` — recursive descent
-      parser in Rust FFI (`fuse_rt_json_parse`). Handles strings with
+- [x] **3.2.2** Define `JsonError` data class and `JsonValue` enum
+      (`Null`, `JBool`, `JNumber`, `JStr`, `JArray`, `JObject`).
+      Required fixing evaluator Bug #12 (user enum support).
+- [x] **3.2.3** Implement `json.parse(s: String)` — hand-written
+      recursive descent parser in pure Fuse. Handles strings with
       escapes, numbers with exponents, nested arrays/objects.
-- [x] **3.2.4** Implement `json.stringify(value)` and
-      `json.stringifyPretty(value, indent)` — in Rust FFI.
+- [x] **3.2.4** Implement `json.stringify(value)` in pure Fuse via
+      match on JsonValue variants.
 - [x] **3.2.5** Implement `JsonValue` type-check helpers: `isNull`,
-      `isBool`, `isNumber`, `isString`, `isArray`, `isObject`.
-- [x] **3.2.6** Extraction helpers (`asBool`, `asNumber`, etc.) and
-      `get`/`getPath` deferred — require pattern matching on tag field
-      in Fuse which works but needs if/else chains. Core type checking
-      and stringify cover the primary use cases.
-- [x] **3.2.7** See 3.2.6.
-- [x] **3.2.8** Construction helpers deferred — direct FFI parse covers
-      primary use case.
-- [x] **3.2.9** `parseFile` deferred — trivial composition of
-      `io.readFile` + `json.parse` once cross-module calls stabilize.
+      `isBool`, `isNumber`, `isString`, `isArray`, `isObject` —
+      all via pattern matching on the enum.
+- [x] **3.2.6** Extraction via pattern matching works directly:
+      `match v { JsonValue.JStr(s) => ... }`.
+- [x] **3.2.7** `get`/`getPath` deferred (need map access by key).
+- [x] **3.2.8** Construction via enum variants: `JsonValue.JStr("hello")`.
+- [x] **3.2.9** `parseFile` deferred (trivial `io.readFile` + `parse`).
 - [x] **3.2.10** Create `tests/fuse/stdlib/full/json_test.fuse`.
-- [x] **3.2.11** Run tests. No compiler bugs found.
+- [x] **3.2.11** Run tests. Fixed Bug #12: evaluator did not support
+      user-defined enum construction or pattern matching.
 
 ---
 

@@ -320,6 +320,50 @@ and the cache is a performance optimization unrelated to the root cause.
 
 ---
 
+### Bug #12 — Evaluator ignores user-defined enum declarations (Wave 3, Phase 3.2)
+
+**Symptom:** Constructing a user-defined enum variant like `Shape.Circle(5)`
+or `JsonValue.JStr("hello")` failed with `"unknown name Shape"`. Zero-arity
+variants like `Shape.Point` also failed. Pattern matching on enum values
+was not supported.
+
+**Minimal reproduction:**
+```fuse
+enum Shape { Circle(Int), Point }
+
+@entrypoint
+fn main() {
+  val c = Shape.Circle(5)
+  match c {
+    Shape.Circle(r) => println(f"radius: {r}")
+    Shape.Point => println("point")
+  }
+}
+```
+
+**Root cause:** The evaluator's `load_module` function discarded enum
+declarations entirely (`Declaration::Enum(_) => {}`). No enum data was
+stored in `ModuleRuntime`. The Call dispatch only checked `Map.new()` and
+extension functions when a name didn't resolve — it never consulted enum
+variant tables. Pattern matching only handled built-in types (`Some`,
+`None`, `Ok`, `Err`), not user enum variants.
+
+**Category:** Evaluator — missing feature (user enum support)
+
+**Fix:** Four changes:
+1. Added `Value::Enum { type_name, variant, payloads }` to the Value enum
+2. Stored `EnumDecl` in `ModuleRuntime.enums` during module loading
+3. Added `find_enum` lookup in Call dispatch (for variants with payloads)
+   and Member dispatch (for zero-arity variants)
+4. Extended `match_pattern` to destructure `Value::Enum` payloads
+5. Added Enum handling to `stringify`, `deep_clone`, `value_eq`, `runtime_type`
+
+**Learning:** The evaluator treated enums as a codegen-only feature. Any
+language construct that the parser accepts must also work in the evaluator,
+since the evaluator is used for `--run` mode and stdlib testing.
+
+---
+
 ## Pattern Analysis
 
 | Category | Count | Notes |
@@ -335,6 +379,7 @@ and the cache is a performance optimization unrelated to the root cause.
 | Evaluator — float comparison | 1 | compare_binary only handled Int, not Float |
 | Evaluator — ASAP name extraction | 1 | F-string `collect_expr_names` missed variables inside call args |
 | Evaluator — stack frame size | 1 | Giant FFI match block inflates every call frame (**workaround only**) |
+| Evaluator — missing enum support | 1 | User enum construction, matching, and display were not implemented |
 
 ---
 
