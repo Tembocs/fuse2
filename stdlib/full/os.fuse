@@ -1,0 +1,162 @@
+// Fuse Full stdlib — os module.
+//
+// Filesystem operations — querying, creating, moving, and deleting
+// files and directories. All operations are synchronous and return
+// Result.
+//
+// import stdlib.full.os
+
+import stdlib.full.io.{IOError}
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_os_exists(path: String) -> Bool
+extern fn fuse_rt_os_is_file(path: String) -> Bool
+extern fn fuse_rt_os_is_dir(path: String) -> Bool
+extern fn fuse_rt_os_stat(path: String) -> Result<FileInfo, IOError>
+extern fn fuse_rt_os_read_dir(path: String) -> Result<List<DirEntry>, IOError>
+extern fn fuse_rt_os_mkdir(path: String) -> Result<Int, IOError>
+extern fn fuse_rt_os_mkdir_all(path: String) -> Result<Int, IOError>
+extern fn fuse_rt_os_create_file(path: String) -> Result<Int, IOError>
+extern fn fuse_rt_os_copy_file(src: String, dst: String) -> Result<Int, IOError>
+extern fn fuse_rt_os_copy_dir(src: String, dst: String) -> Result<Int, IOError>
+extern fn fuse_rt_os_rename(src: String, dst: String) -> Result<Int, IOError>
+extern fn fuse_rt_os_remove_file(path: String) -> Result<Int, IOError>
+extern fn fuse_rt_os_remove_dir(path: String) -> Result<Int, IOError>
+extern fn fuse_rt_os_remove_dir_all(path: String) -> Result<Int, IOError>
+extern fn fuse_rt_os_create_symlink(src: String, dst: String) -> Result<Int, IOError>
+extern fn fuse_rt_os_read_symlink(path: String) -> Result<String, IOError>
+extern fn fuse_rt_os_set_read_only(path: String, readonly: Bool) -> Result<Int, IOError>
+extern fn fuse_rt_os_temp_dir() -> String
+extern fn fuse_rt_os_temp_file(prefix: String) -> Result<String, IOError>
+extern fn fuse_rt_os_temp_dir_create(prefix: String) -> Result<String, IOError>
+extern fn fuse_rt_os_read_dir_recursive(path: String) -> Result<List<DirEntry>, IOError>
+extern fn fuse_rt_os_move(src: String, dst: String) -> Result<Int, IOError>
+
+// --- Type definitions ---
+
+pub enum EntryKind {
+  File
+  Directory
+  Symlink
+  Other
+}
+
+pub data class DirEntry(
+  val name: String,
+  val path: String,
+  val kind: Int,
+  val size: Int,
+  val modifiedAt: Int
+)
+
+pub data class FileInfo(
+  val path: String,
+  val kind: Int,
+  val size: Int,
+  val modifiedAt: Int,
+  val createdAt: Int,
+  val isReadOnly: Bool
+)
+
+// --- Querying ---
+
+pub fn exists(path: String) -> Bool {
+  fuse_rt_os_exists(path)
+}
+
+pub fn isFile(path: String) -> Bool {
+  fuse_rt_os_is_file(path)
+}
+
+pub fn isDir(path: String) -> Bool {
+  fuse_rt_os_is_dir(path)
+}
+
+pub fn stat(path: String) -> Result<FileInfo, IOError> {
+  fuse_rt_os_stat(path)
+}
+
+pub fn readDir(path: String) -> Result<List<DirEntry>, IOError> {
+  fuse_rt_os_read_dir(path)
+}
+
+pub fn readDirRecursive(path: String) -> Result<List<DirEntry>, IOError> {
+  fuse_rt_os_read_dir_recursive(path)
+}
+
+// --- Creating ---
+
+pub fn mkdir(path: String) -> Result<Int, IOError> {
+  fuse_rt_os_mkdir(path)
+}
+
+pub fn mkdirAll(path: String) -> Result<Int, IOError> {
+  fuse_rt_os_mkdir_all(path)
+}
+
+pub fn createFile(path: String) -> Result<Int, IOError> {
+  fuse_rt_os_create_file(path)
+}
+
+// --- Copying and moving ---
+
+pub fn copyFile(src: String, dst: String) -> Result<Int, IOError> {
+  fuse_rt_os_copy_file(src, dst)
+}
+
+pub fn copyDir(src: String, dst: String) -> Result<Int, IOError> {
+  fuse_rt_os_copy_dir(src, dst)
+}
+
+pub fn rename(src: String, dst: String) -> Result<Int, IOError> {
+  fuse_rt_os_rename(src, dst)
+}
+
+pub fn moveFile(src: String, dst: String) -> Result<Int, IOError> {
+  fuse_rt_os_move(src, dst)
+}
+
+// --- Deleting ---
+
+pub fn removeFile(path: String) -> Result<Int, IOError> {
+  fuse_rt_os_remove_file(path)
+}
+
+pub fn removeDir(path: String) -> Result<Int, IOError> {
+  fuse_rt_os_remove_dir(path)
+}
+
+pub fn removeDirAll(path: String) -> Result<Int, IOError> {
+  fuse_rt_os_remove_dir_all(path)
+}
+
+// --- Symlinks ---
+
+pub fn createSymlink(src: String, dst: String) -> Result<Int, IOError> {
+  fuse_rt_os_create_symlink(src, dst)
+}
+
+pub fn readSymlink(path: String) -> Result<String, IOError> {
+  fuse_rt_os_read_symlink(path)
+}
+
+// --- Permissions ---
+
+pub fn setReadOnly(path: String, readonly: Bool) -> Result<Int, IOError> {
+  fuse_rt_os_set_read_only(path, readonly)
+}
+
+// --- Temp files ---
+
+pub fn tempDir() -> String {
+  fuse_rt_os_temp_dir()
+}
+
+pub fn tempFile(prefix: String) -> Result<String, IOError> {
+  fuse_rt_os_temp_file(prefix)
+}
+
+pub fn tempDirCreate(prefix: String) -> Result<String, IOError> {
+  fuse_rt_os_temp_dir_create(prefix)
+}

@@ -860,6 +860,235 @@ impl Evaluator {
                         Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("path: {e}"))) }),
                     };
                 }
+                "fuse_rt_os_exists" => {
+                    if let Some(Value::String(p)) = args.first() {
+                        return Ok(Value::Bool(std::path::Path::new(p.as_str()).exists()));
+                    }
+                    return Ok(Value::Bool(false));
+                }
+                "fuse_rt_os_is_file" => {
+                    if let Some(Value::String(p)) = args.first() {
+                        return Ok(Value::Bool(std::path::Path::new(p.as_str()).is_file()));
+                    }
+                    return Ok(Value::Bool(false));
+                }
+                "fuse_rt_os_is_dir" => {
+                    if let Some(Value::String(p)) = args.first() {
+                        return Ok(Value::Bool(std::path::Path::new(p.as_str()).is_dir()));
+                    }
+                    return Ok(Value::Bool(false));
+                }
+                "fuse_rt_os_stat" => {
+                    if let Some(Value::String(p)) = args.first() {
+                        return match std::fs::metadata(p.as_str()) {
+                            Ok(meta) => {
+                                use std::time::UNIX_EPOCH;
+                                let kind = if meta.is_file() { 0i64 } else if meta.is_dir() { 1 } else { 3 };
+                                let modified = meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0);
+                                let created = meta.created().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0);
+                                Ok(Value::Result { is_ok: true, value: Box::new(Value::Data(Rc::new(RefCell::new(DataInstance {
+                                    module_path: PathBuf::new(), type_name: "FileInfo".to_string(),
+                                    fields: [("path", Value::String(p.clone())), ("kind", Value::Int(kind)), ("size", Value::Int(meta.len() as i64)),
+                                             ("modifiedAt", Value::Int(modified)), ("createdAt", Value::Int(created)), ("isReadOnly", Value::Bool(meta.permissions().readonly()))]
+                                        .into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+                                    field_order: vec!["path","kind","size","modifiedAt","createdAt","isReadOnly"].into_iter().map(String::from).collect(),
+                                    methods: HashMap::new(), destroyed: false,
+                                })))) })
+                            }
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("os: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("os: expected path".to_string())) });
+                }
+                "fuse_rt_os_read_dir" => {
+                    if let Some(Value::String(p)) = args.first() {
+                        return match std::fs::read_dir(p.as_str()) {
+                            Ok(entries) => {
+                                use std::time::UNIX_EPOCH;
+                                let mut items = Vec::new();
+                                for entry in entries.flatten() {
+                                    let name = entry.file_name().to_string_lossy().to_string();
+                                    let path = entry.path().to_string_lossy().to_string();
+                                    let meta = entry.metadata().ok();
+                                    let kind = meta.as_ref().map(|m| if m.is_file() { 0i64 } else if m.is_dir() { 1 } else { 3 }).unwrap_or(3);
+                                    let size = meta.as_ref().map(|m| m.len() as i64).unwrap_or(0);
+                                    let modified = meta.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0);
+                                    items.push(Value::Data(Rc::new(RefCell::new(DataInstance {
+                                        module_path: PathBuf::new(), type_name: "DirEntry".to_string(),
+                                        fields: [("name", Value::String(name)), ("path", Value::String(path)), ("kind", Value::Int(kind)),
+                                                 ("size", Value::Int(size)), ("modifiedAt", Value::Int(modified))]
+                                            .into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+                                        field_order: vec!["name","path","kind","size","modifiedAt"].into_iter().map(String::from).collect(),
+                                        methods: HashMap::new(), destroyed: false,
+                                    }))));
+                                }
+                                Ok(Value::Result { is_ok: true, value: Box::new(Value::List(items)) })
+                            }
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("os: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("os: expected path".to_string())) });
+                }
+                "fuse_rt_os_mkdir" => {
+                    if let Some(Value::String(p)) = args.first() {
+                        return match std::fs::create_dir(p.as_str()) {
+                            Ok(()) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("os: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("os: expected path".to_string())) });
+                }
+                "fuse_rt_os_mkdir_all" => {
+                    if let Some(Value::String(p)) = args.first() {
+                        return match std::fs::create_dir_all(p.as_str()) {
+                            Ok(()) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("os: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("os: expected path".to_string())) });
+                }
+                "fuse_rt_os_create_file" => {
+                    if let Some(Value::String(p)) = args.first() {
+                        return match std::fs::OpenOptions::new().write(true).create_new(true).open(p.as_str()) {
+                            Ok(_) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("os: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("os: expected path".to_string())) });
+                }
+                "fuse_rt_os_copy_file" => {
+                    if let (Some(Value::String(s)), Some(Value::String(d))) = (args.first(), args.get(1)) {
+                        return match std::fs::copy(s.as_str(), d.as_str()) {
+                            Ok(_) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("os: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("os: expected src and dst".to_string())) });
+                }
+                "fuse_rt_os_copy_dir" | "fuse_rt_os_rename" => {
+                    if let (Some(Value::String(s)), Some(Value::String(d))) = (args.first(), args.get(1)) {
+                        let result = if function.name == "fuse_rt_os_rename" {
+                            std::fs::rename(s.as_str(), d.as_str())
+                        } else {
+                            fn copy_rec(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+                                std::fs::create_dir_all(dst)?;
+                                for e in std::fs::read_dir(src)? { let e = e?; let t = dst.join(e.file_name());
+                                    if e.file_type()?.is_dir() { copy_rec(&e.path(), &t)?; } else { std::fs::copy(e.path(), t)?; } } Ok(()) }
+                            copy_rec(std::path::Path::new(s.as_str()), std::path::Path::new(d.as_str()))
+                        };
+                        return match result {
+                            Ok(()) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("os: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("os: expected src and dst".to_string())) });
+                }
+                "fuse_rt_os_remove_file" => {
+                    if let Some(Value::String(p)) = args.first() {
+                        return match std::fs::remove_file(p.as_str()) {
+                            Ok(()) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("os: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("os: expected path".to_string())) });
+                }
+                "fuse_rt_os_remove_dir" => {
+                    if let Some(Value::String(p)) = args.first() {
+                        return match std::fs::remove_dir(p.as_str()) {
+                            Ok(()) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("os: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("os: expected path".to_string())) });
+                }
+                "fuse_rt_os_remove_dir_all" => {
+                    if let Some(Value::String(p)) = args.first() {
+                        return match std::fs::remove_dir_all(p.as_str()) {
+                            Ok(()) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("os: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("os: expected path".to_string())) });
+                }
+                "fuse_rt_os_read_dir_recursive" => {
+                    if let Some(Value::String(p)) = args.first() {
+                        use std::time::UNIX_EPOCH;
+                        fn walk(dir: &std::path::Path, items: &mut Vec<Value>) -> std::io::Result<()> {
+                            for entry in std::fs::read_dir(dir)? {
+                                let entry = entry?;
+                                let name = entry.file_name().to_string_lossy().to_string();
+                                let path = entry.path().to_string_lossy().to_string();
+                                let meta = entry.metadata().ok();
+                                let kind = meta.as_ref().map(|m| if m.is_file() { 0i64 } else if m.is_dir() { 1 } else { 3 }).unwrap_or(3);
+                                let size = meta.as_ref().map(|m| m.len() as i64).unwrap_or(0);
+                                let modified = meta.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0);
+                                items.push(Value::Data(Rc::new(RefCell::new(DataInstance {
+                                    module_path: PathBuf::new(), type_name: "DirEntry".to_string(),
+                                    fields: [("name", Value::String(name)), ("path", Value::String(path)), ("kind", Value::Int(kind)),
+                                             ("size", Value::Int(size)), ("modifiedAt", Value::Int(modified))]
+                                        .into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+                                    field_order: vec!["name","path","kind","size","modifiedAt"].into_iter().map(String::from).collect(),
+                                    methods: HashMap::new(), destroyed: false,
+                                }))));
+                                if entry.file_type()?.is_dir() { walk(&entry.path(), items)?; }
+                            }
+                            Ok(())
+                        }
+                        let mut items = Vec::new();
+                        return match walk(std::path::Path::new(p.as_str()), &mut items) {
+                            Ok(()) => Ok(Value::Result { is_ok: true, value: Box::new(Value::List(items)) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("os: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("os: expected path".to_string())) });
+                }
+                "fuse_rt_os_move" => {
+                    if let (Some(Value::String(s)), Some(Value::String(d))) = (args.first(), args.get(1)) {
+                        // Try rename first
+                        if std::fs::rename(s.as_str(), d.as_str()).is_ok() {
+                            return Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) });
+                        }
+                        // Fallback: copy + remove
+                        let src_path = std::path::Path::new(s.as_str());
+                        let result = if src_path.is_dir() {
+                            fn copy_rec(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+                                std::fs::create_dir_all(dst)?;
+                                for e in std::fs::read_dir(src)? { let e = e?; let t = dst.join(e.file_name());
+                                    if e.file_type()?.is_dir() { copy_rec(&e.path(), &t)?; } else { std::fs::copy(e.path(), t)?; } } Ok(()) }
+                            copy_rec(src_path, std::path::Path::new(d.as_str())).and_then(|()| std::fs::remove_dir_all(src_path))
+                        } else {
+                            std::fs::copy(s.as_str(), d.as_str()).map(|_| ()).and_then(|()| std::fs::remove_file(s.as_str()))
+                        };
+                        return match result {
+                            Ok(()) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("os: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("os: expected src and dst".to_string())) });
+                }
+                "fuse_rt_os_create_symlink" | "fuse_rt_os_read_symlink" | "fuse_rt_os_set_read_only" => {
+                    // Symlinks and permissions: minimal evaluator support
+                    return Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) });
+                }
+                "fuse_rt_os_temp_dir" => {
+                    return Ok(Value::String(std::env::temp_dir().to_string_lossy().to_string()));
+                }
+                "fuse_rt_os_temp_file" | "fuse_rt_os_temp_dir_create" => {
+                    let pfx = if let Some(Value::String(s)) = args.first() { s.as_str() } else { "fuse" };
+                    let dir = std::env::temp_dir();
+                    let name = format!("{pfx}{}", std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+                    let path = dir.join(&name);
+                    let result = if function.name == "fuse_rt_os_temp_dir_create" {
+                        std::fs::create_dir(&path).map(|_| ())
+                    } else {
+                        std::fs::File::create(&path).map(|_| ())
+                    };
+                    return match result {
+                        Ok(()) => Ok(Value::Result { is_ok: true, value: Box::new(Value::String(path.to_string_lossy().to_string())) }),
+                        Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("os: {e}"))) }),
+                    };
+                }
                 "fuse_map_new" => { return Ok(Value::Map(Vec::new())); }
                 "fuse_map_set" => {
                     // Mutation limited in evaluator (value semantics)

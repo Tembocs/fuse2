@@ -1,0 +1,178 @@
+// EXPECTED OUTPUT:
+// === exists ===
+// before: false
+// === mkdirAll ===
+// mkdirAll: ok
+// exists now: true
+// isDir: true
+// === createFile ===
+// createFile: ok
+// isFile: true
+// === stat ===
+// stat ok: true
+// stat isReadOnly: false
+// === copyFile ===
+// copyFile: ok
+// copy exists: true
+// === readDir ===
+// readDir ok: true
+// has entries: true
+// === rename ===
+// rename: ok
+// renamed exists: true
+// original gone: true
+// === removeFile ===
+// removeFile: ok
+// removed: true
+// === removeDir non-empty ===
+// removeDir non-empty: error
+// === removeDirAll ===
+// removeDirAll: ok
+// all gone: true
+// === tempDir ===
+// tempDir ok: true
+// === tempFile ===
+// tempFile ok: true
+// === tempDirCreate ===
+// tempDirCreate ok: true
+// === cleanup ===
+// done
+
+import stdlib.full.os
+
+@entrypoint
+fn main() {
+  val testDir = "__fuse_os_test__"
+  val subDir = "__fuse_os_test__/sub"
+  val testFile = "__fuse_os_test__/test.txt"
+  val copyDst = "__fuse_os_test__/copy.txt"
+  val renameDst = "__fuse_os_test__/renamed.txt"
+
+  // exists — directory should not exist yet
+  println("=== exists ===")
+  println(f"before: {os.exists(testDir)}")
+
+  // mkdirAll
+  println("=== mkdirAll ===")
+  val mkResult = os.mkdirAll(subDir)
+  match mkResult {
+    Ok(_) => println("mkdirAll: ok")
+    Err(e) => println(f"mkdirAll error: {e}")
+  }
+  println(f"exists now: {os.exists(testDir)}")
+  println(f"isDir: {os.isDir(testDir)}")
+
+  // createFile
+  println("=== createFile ===")
+  val cfResult = os.createFile(testFile)
+  match cfResult {
+    Ok(_) => println("createFile: ok")
+    Err(e) => println(f"createFile error: {e}")
+  }
+  println(f"isFile: {os.isFile(testFile)}")
+
+  // stat
+  println("=== stat ===")
+  val statResult = os.stat(testFile)
+  match statResult {
+    Ok(info) => {
+      println("stat ok: true")
+      println(f"stat isReadOnly: {info.isReadOnly}")
+    }
+    Err(e) => println(f"stat error: {e}")
+  }
+
+  // copyFile
+  println("=== copyFile ===")
+  val cpResult = os.copyFile(testFile, copyDst)
+  match cpResult {
+    Ok(_) => println("copyFile: ok")
+    Err(e) => println(f"copyFile error: {e}")
+  }
+  println(f"copy exists: {os.exists(copyDst)}")
+
+  // readDir
+  println("=== readDir ===")
+  val rdResult = os.readDir(testDir)
+  match rdResult {
+    Ok(entries) => {
+      println("readDir ok: true")
+      var count = 0
+      for e in entries {
+        count = count + 1
+      }
+      val hasEntries = count > 0
+      println(f"has entries: {hasEntries}")
+    }
+    Err(e) => println(f"readDir error: {e}")
+  }
+
+  // rename
+  println("=== rename ===")
+  val renResult = os.rename(copyDst, renameDst)
+  match renResult {
+    Ok(_) => println("rename: ok")
+    Err(e) => println(f"rename error: {e}")
+  }
+  println(f"renamed exists: {os.exists(renameDst)}")
+  println(f"original gone: {os.exists(copyDst) == false}")
+
+  // removeFile
+  println("=== removeFile ===")
+  val rmResult = os.removeFile(renameDst)
+  match rmResult {
+    Ok(_) => println("removeFile: ok")
+    Err(e) => println(f"removeFile error: {e}")
+  }
+  println(f"removed: {os.exists(renameDst) == false}")
+
+  // removeDir on non-empty dir should fail
+  println("=== removeDir non-empty ===")
+  val rdirResult = os.removeDir(testDir)
+  match rdirResult {
+    Ok(_) => println("removeDir non-empty: ok")
+    Err(e) => println("removeDir non-empty: error")
+  }
+
+  // removeDirAll
+  println("=== removeDirAll ===")
+  // First remove the remaining file
+  os.removeFile(testFile)
+  val rallResult = os.removeDirAll(testDir)
+  match rallResult {
+    Ok(_) => println("removeDirAll: ok")
+    Err(e) => println(f"removeDirAll error: {e}")
+  }
+  println(f"all gone: {os.exists(testDir) == false}")
+
+  // tempDir
+  println("=== tempDir ===")
+  val td = os.tempDir()
+  val tdOk = td != ""
+  println(f"tempDir ok: {tdOk}")
+
+  // tempFile
+  println("=== tempFile ===")
+  val tfResult = os.tempFile("fuse_test_")
+  match tfResult {
+    Ok(path) => {
+      println("tempFile ok: true")
+      os.removeFile(path)
+    }
+    Err(e) => println(f"tempFile error: {e}")
+  }
+
+  // tempDirCreate
+  println("=== tempDirCreate ===")
+  val tdcResult = os.tempDirCreate("fuse_test_dir_")
+  match tdcResult {
+    Ok(path) => {
+      println("tempDirCreate ok: true")
+      os.removeDir(path)
+    }
+    Err(e) => println(f"tempDirCreate error: {e}")
+  }
+
+  println("=== cleanup ===")
+  println("done")
+}

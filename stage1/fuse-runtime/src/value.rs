@@ -1053,6 +1053,318 @@ pub unsafe extern "C" fn fuse_rt_path_cwd() -> FuseHandle {
     }
 }
 
+// --- OS FFI ---
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_exists(path: FuseHandle) -> FuseHandle {
+    fuse_bool(std::path::Path::new(extract_string(path)).exists())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_is_file(path: FuseHandle) -> FuseHandle {
+    fuse_bool(std::path::Path::new(extract_string(path)).is_file())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_is_dir(path: FuseHandle) -> FuseHandle {
+    fuse_bool(std::path::Path::new(extract_string(path)).is_dir())
+}
+
+unsafe fn metadata_to_file_info(p: &str, meta: &std::fs::Metadata) -> FuseHandle {
+    let type_name = b"FileInfo";
+    let data = fuse_data_new(type_name.as_ptr(), type_name.len(), 6, None);
+    fuse_data_set_field(data, 0, fuse_string_new_utf8(p.as_ptr(), p.len()));
+    // kind
+    let kind = if meta.is_file() { 0i64 } else if meta.is_dir() { 1 } else if meta.file_type().is_symlink() { 2 } else { 3 };
+    fuse_data_set_field(data, 1, fuse_int(kind));
+    fuse_data_set_field(data, 2, fuse_int(meta.len() as i64));
+    let modified = meta.modified().ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64).unwrap_or(0);
+    fuse_data_set_field(data, 3, fuse_int(modified));
+    let created = meta.created().ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64).unwrap_or(0);
+    fuse_data_set_field(data, 4, fuse_int(created));
+    fuse_data_set_field(data, 5, fuse_bool(meta.permissions().readonly()));
+    data
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_stat(path: FuseHandle) -> FuseHandle {
+    let p = extract_string(path);
+    match std::fs::metadata(p) {
+        Ok(meta) => fuse_ok(metadata_to_file_info(p, &meta)),
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+unsafe fn dir_entry_to_handle(entry: &std::fs::DirEntry) -> FuseHandle {
+    let type_name = b"DirEntry";
+    let data = fuse_data_new(type_name.as_ptr(), type_name.len(), 5, None);
+    let name = entry.file_name().to_string_lossy().to_string();
+    fuse_data_set_field(data, 0, fuse_string_new_utf8(name.as_ptr(), name.len()));
+    let path = entry.path().to_string_lossy().to_string();
+    fuse_data_set_field(data, 1, fuse_string_new_utf8(path.as_ptr(), path.len()));
+    let meta = entry.metadata().ok();
+    let kind = meta.as_ref().map(|m| {
+        if m.is_file() { 0i64 } else if m.is_dir() { 1 } else if m.file_type().is_symlink() { 2 } else { 3 }
+    }).unwrap_or(3);
+    fuse_data_set_field(data, 2, fuse_int(kind));
+    let size = meta.as_ref().map(|m| m.len() as i64).unwrap_or(0);
+    fuse_data_set_field(data, 3, fuse_int(size));
+    let modified = meta.as_ref().and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64).unwrap_or(0);
+    fuse_data_set_field(data, 4, fuse_int(modified));
+    data
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_read_dir(path: FuseHandle) -> FuseHandle {
+    let p = extract_string(path);
+    match std::fs::read_dir(p) {
+        Ok(entries) => {
+            let list = fuse_list_new();
+            for entry in entries.flatten() {
+                fuse_list_push(list, dir_entry_to_handle(&entry));
+            }
+            fuse_ok(list)
+        }
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_mkdir(path: FuseHandle) -> FuseHandle {
+    let p = extract_string(path);
+    match std::fs::create_dir(p) {
+        Ok(()) => fuse_ok(fuse_unit()),
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_mkdir_all(path: FuseHandle) -> FuseHandle {
+    let p = extract_string(path);
+    match std::fs::create_dir_all(p) {
+        Ok(()) => fuse_ok(fuse_unit()),
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_create_file(path: FuseHandle) -> FuseHandle {
+    let p = extract_string(path);
+    match std::fs::OpenOptions::new().write(true).create_new(true).open(p) {
+        Ok(_) => fuse_ok(fuse_unit()),
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_copy_file(src: FuseHandle, dst: FuseHandle) -> FuseHandle {
+    let s = extract_string(src);
+    let d = extract_string(dst);
+    match std::fs::copy(s, d) {
+        Ok(_) => fuse_ok(fuse_unit()),
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+unsafe fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let target = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_copy_dir(src: FuseHandle, dst: FuseHandle) -> FuseHandle {
+    let s = extract_string(src);
+    let d = extract_string(dst);
+    match copy_dir_recursive(std::path::Path::new(s), std::path::Path::new(d)) {
+        Ok(()) => fuse_ok(fuse_unit()),
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_rename(src: FuseHandle, dst: FuseHandle) -> FuseHandle {
+    let s = extract_string(src);
+    let d = extract_string(dst);
+    match std::fs::rename(s, d) {
+        Ok(()) => fuse_ok(fuse_unit()),
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_remove_file(path: FuseHandle) -> FuseHandle {
+    let p = extract_string(path);
+    match std::fs::remove_file(p) {
+        Ok(()) => fuse_ok(fuse_unit()),
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_remove_dir(path: FuseHandle) -> FuseHandle {
+    let p = extract_string(path);
+    match std::fs::remove_dir(p) {
+        Ok(()) => fuse_ok(fuse_unit()),
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_remove_dir_all(path: FuseHandle) -> FuseHandle {
+    let p = extract_string(path);
+    match std::fs::remove_dir_all(p) {
+        Ok(()) => fuse_ok(fuse_unit()),
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_create_symlink(src: FuseHandle, dst: FuseHandle) -> FuseHandle {
+    let s = extract_string(src);
+    let d = extract_string(dst);
+    #[cfg(unix)]
+    let result = std::os::unix::fs::symlink(s, d);
+    #[cfg(windows)]
+    let result = {
+        let src_path = std::path::Path::new(s);
+        if src_path.is_dir() {
+            std::os::windows::fs::symlink_dir(s, d)
+        } else {
+            std::os::windows::fs::symlink_file(s, d)
+        }
+    };
+    match result {
+        Ok(()) => fuse_ok(fuse_unit()),
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_read_symlink(path: FuseHandle) -> FuseHandle {
+    let p = extract_string(path);
+    match std::fs::read_link(p) {
+        Ok(target) => {
+            let s = target.to_string_lossy().to_string();
+            fuse_ok(fuse_string_new_utf8(s.as_ptr(), s.len()))
+        }
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_set_read_only(path: FuseHandle, readonly: FuseHandle) -> FuseHandle {
+    let p = extract_string(path);
+    let ro = match &(*readonly).kind { ValueKind::Bool(b) => *b, _ => false };
+    match std::fs::metadata(p) {
+        Ok(meta) => {
+            let mut perms = meta.permissions();
+            perms.set_readonly(ro);
+            match std::fs::set_permissions(p, perms) {
+                Ok(()) => fuse_ok(fuse_unit()),
+                Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+            }
+        }
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_temp_dir() -> FuseHandle {
+    let s = std::env::temp_dir().to_string_lossy().to_string();
+    fuse_string_new_utf8(s.as_ptr(), s.len())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_temp_file(prefix: FuseHandle) -> FuseHandle {
+    let pfx = extract_string(prefix);
+    let dir = std::env::temp_dir();
+    let name = format!("{pfx}{}", std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+    let path = dir.join(name);
+    match std::fs::File::create(&path) {
+        Ok(_) => {
+            let s = path.to_string_lossy().to_string();
+            fuse_ok(fuse_string_new_utf8(s.as_ptr(), s.len()))
+        }
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_temp_dir_create(prefix: FuseHandle) -> FuseHandle {
+    let pfx = extract_string(prefix);
+    let dir = std::env::temp_dir();
+    let name = format!("{pfx}{}", std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+    let path = dir.join(name);
+    match std::fs::create_dir(&path) {
+        Ok(()) => {
+            let s = path.to_string_lossy().to_string();
+            fuse_ok(fuse_string_new_utf8(s.as_ptr(), s.len()))
+        }
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+unsafe fn read_dir_recursive_impl(root: &std::path::Path, list: FuseHandle) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(root)? {
+        let entry = entry?;
+        fuse_list_push(list, dir_entry_to_handle(&entry));
+        if entry.file_type()?.is_dir() {
+            read_dir_recursive_impl(&entry.path(), list)?;
+        }
+    }
+    Ok(())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_read_dir_recursive(path: FuseHandle) -> FuseHandle {
+    let p = extract_string(path);
+    let list = fuse_list_new();
+    match read_dir_recursive_impl(std::path::Path::new(p), list) {
+        Ok(()) => fuse_ok(list),
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_os_move(src: FuseHandle, dst: FuseHandle) -> FuseHandle {
+    let s = extract_string(src);
+    let d = extract_string(dst);
+    // Try rename first (atomic on same filesystem)
+    match std::fs::rename(s, d) {
+        Ok(()) => return fuse_ok(fuse_unit()),
+        Err(_) => {}
+    }
+    // Fallback: copy + remove
+    let src_path = std::path::Path::new(s);
+    let dst_path = std::path::Path::new(d);
+    let result = if src_path.is_dir() {
+        copy_dir_recursive(src_path, dst_path).and_then(|()| std::fs::remove_dir_all(src_path))
+    } else {
+        std::fs::copy(s, d).map(|_| ()).and_then(|()| std::fs::remove_file(s))
+    };
+    match result {
+        Ok(()) => fuse_ok(fuse_unit()),
+        Err(e) => { let msg = format!("os: {e}"); fuse_err(make_io_error(&msg, io_error_code(&e))) }
+    }
+}
+
 // --- List FFI helpers ---
 
 #[unsafe(no_mangle)]

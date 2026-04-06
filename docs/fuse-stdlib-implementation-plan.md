@@ -802,7 +802,7 @@ Path manipulation. Mostly pure Fuse string ops.
 
 Filesystem operations.
 
-- [ ] **2.3.1** Add FFI functions to runtime: `fuse_rt_os_exists`,
+- [x] **2.3.1** Add FFI functions to runtime: `fuse_rt_os_exists`,
       `fuse_rt_os_is_file`, `fuse_rt_os_is_dir`, `fuse_rt_os_stat`,
       `fuse_rt_os_read_dir`, `fuse_rt_os_mkdir`, `fuse_rt_os_mkdir_all`,
       `fuse_rt_os_create_file`, `fuse_rt_os_copy_file`,
@@ -811,22 +811,25 @@ Filesystem operations.
       `fuse_rt_os_create_symlink`, `fuse_rt_os_read_symlink`,
       `fuse_rt_os_set_read_only`, `fuse_rt_os_temp_dir`,
       `fuse_rt_os_temp_file`, `fuse_rt_os_temp_dir_create`.
-- [ ] **2.3.2** Create `stdlib/full/os.fuse`.
-- [ ] **2.3.3** Define `EntryKind` enum, `DirEntry` and `FileInfo` data
+- [x] **2.3.2** Create `stdlib/full/os.fuse`.
+- [x] **2.3.3** Define `EntryKind` enum, `DirEntry` and `FileInfo` data
       classes.
-- [ ] **2.3.4** Implement all querying functions: `exists`, `isFile`,
+- [x] **2.3.4** Implement all querying functions: `exists`, `isFile`,
       `isDir`, `stat`, `readDir`.
-- [ ] **2.3.5** Implement creating functions: `mkdir`, `mkdirAll`,
+- [x] **2.3.5** Implement creating functions: `mkdir`, `mkdirAll`,
       `createFile`.
-- [ ] **2.3.6** Implement copy/move: `copyFile`, `copyDir`, `rename`,
-      `move`.
-- [ ] **2.3.7** Implement delete: `removeFile`, `removeDir`, `removeDirAll`.
-- [ ] **2.3.8** Implement symlinks: `createSymlink`, `readSymlink`.
-- [ ] **2.3.9** Implement `setReadOnly`, `tempDir`, `tempFile`,
+- [x] **2.3.6** Implement copy/move: `copyFile`, `copyDir`, `rename`,
+      `moveFile` (rename with copy+remove fallback). Named `moveFile`
+      instead of spec's `move` because `move` is a reserved keyword.
+- [x] **2.3.7** Implement delete: `removeFile`, `removeDir`, `removeDirAll`.
+- [x] **2.3.8** Implement symlinks: `createSymlink`, `readSymlink`.
+- [x] **2.3.9** Implement `setReadOnly`, `tempDir`, `tempFile`,
       `tempDirCreate`.
-- [ ] **2.3.10** Implement `readDirRecursive` in Fuse over `readDir`.
-- [ ] **2.3.11** Create `tests/fuse/stdlib/full/os_test.fuse`.
-- [ ] **2.3.12** Run tests. Fix any compiler bugs found.
+- [x] **2.3.10** Implement `readDirRecursive` as FFI function in Rust
+      (recursive walk in `fuse_rt_os_read_dir_recursive`).
+- [x] **2.3.11** Create `tests/fuse/stdlib/full/os_test.fuse`.
+- [x] **2.3.12** Run tests. No new compiler bugs — Bug #11 workaround
+      (8 MB stack) sufficient for this module.
 
 ---
 
