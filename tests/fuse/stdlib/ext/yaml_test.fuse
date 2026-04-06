@@ -1,0 +1,73 @@
+// EXPECTED OUTPUT:
+// --- parse ---
+// parsed: true
+// --- map check ---
+// is map: true
+// --- invalid ---
+// invalid: true
+// --- stringify ---
+// has content: true
+// --- type checks ---
+// is null: true
+// is bool: true
+// is int: true
+// is str: true
+// --- done ---
+// done
+
+import stdlib.ext.yaml
+
+@entrypoint
+fn main() {
+  // --- parse ---
+  println("--- parse ---")
+  val input = "name: hello\nversion: 1\ndebug: true\nitems:\n  - one\n  - two\n"
+  val result = parse(input)
+  val parsed = match result {
+    Ok(v) => true
+    Err(e) => false
+  }
+  println(f"parsed: {parsed}")
+
+  // --- map check ---
+  println("--- map check ---")
+  val v = match parse(input) {
+    Ok(v) => v
+    Err(e) => YamlValue.Null
+  }
+  val mapCheck = isMap(v)
+  println(f"is map: {mapCheck}")
+
+  // --- invalid ---
+  println("--- invalid ---")
+  val bad = parse("key: [unterminated")
+  val invalid = match bad {
+    Ok(v) => false
+    Err(e) => true
+  }
+  println(f"invalid: {invalid}")
+
+  // --- stringify ---
+  println("--- stringify ---")
+  val s = stringify(v)
+  val hasContent = s != ""
+  println(f"has content: {hasContent}")
+
+  // --- type checks ---
+  println("--- type checks ---")
+  val nullVal = YamlValue.Null
+  val nullCheck = isNull(nullVal)
+  println(f"is null: {nullCheck}")
+  val boolVal = YamlValue.Bool(true)
+  val boolCheck = isBool(boolVal)
+  println(f"is bool: {boolCheck}")
+  val intVal = YamlValue.Int(42)
+  val intCheck = isInt(intVal)
+  println(f"is int: {intCheck}")
+  val strVal = YamlValue.Str("hello")
+  val strCheck = isStr(strVal)
+  println(f"is str: {strCheck}")
+
+  println("--- done ---")
+  println("done")
+}

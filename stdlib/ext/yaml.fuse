@@ -1,0 +1,104 @@
+// Fuse Ext stdlib — YAML parsing and serialisation.
+//
+// Backed by Rust's serde_yaml crate. YamlValue is an enum mirroring
+// the YAML data model.
+//
+// import stdlib.ext.yaml
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_yaml_parse(input: String) -> Result<YamlValue, YamlError>
+extern fn fuse_rt_yaml_stringify(value: Int) -> String
+extern fn fuse_rt_yaml_stringify_pretty(value: Int) -> String
+extern fn fuse_rt_io_read_file(path: String) -> Result<String, String>
+
+// --- Type definitions ---
+
+pub data class YamlError(val message: String, val line: Int, val col: Int)
+
+pub enum YamlValue {
+  Null
+  Bool(Bool)
+  Int(Int)
+  Float(Float)
+  Str(String)
+  Seq(List<Int>)
+  Map(List<Int>)
+}
+
+// --- Public API ---
+
+// Parse a YAML string into a YamlValue.
+pub fn parse(input: String) -> Result<YamlValue, YamlError> {
+  fuse_rt_yaml_parse(input)
+}
+
+// Parse a YAML file into a YamlValue.
+pub fn parseFile(path: String) -> Result<YamlValue, YamlError> {
+  val content = fuse_rt_io_read_file(path)
+  match content {
+    Ok(text) => fuse_rt_yaml_parse(text)
+    Err(msg) => Err(YamlError(msg, 0, 0))
+  }
+}
+
+// Serialize a YamlValue to a YAML string.
+pub fn stringify(value: YamlValue) -> String {
+  fuse_rt_yaml_stringify(value)
+}
+
+// Serialize a YamlValue to a pretty YAML string.
+pub fn stringifyPretty(value: YamlValue) -> String {
+  fuse_rt_yaml_stringify_pretty(value)
+}
+
+// --- Type check helpers ---
+
+pub fn isNull(value: YamlValue) -> Bool {
+  match value {
+    YamlValue.Null => true
+    _ => false
+  }
+}
+
+pub fn isBool(value: YamlValue) -> Bool {
+  match value {
+    YamlValue.Bool(_) => true
+    _ => false
+  }
+}
+
+pub fn isInt(value: YamlValue) -> Bool {
+  match value {
+    YamlValue.Int(_) => true
+    _ => false
+  }
+}
+
+pub fn isFloat(value: YamlValue) -> Bool {
+  match value {
+    YamlValue.Float(_) => true
+    _ => false
+  }
+}
+
+pub fn isStr(value: YamlValue) -> Bool {
+  match value {
+    YamlValue.Str(_) => true
+    _ => false
+  }
+}
+
+pub fn isSeq(value: YamlValue) -> Bool {
+  match value {
+    YamlValue.Seq(_) => true
+    _ => false
+  }
+}
+
+pub fn isMap(value: YamlValue) -> Bool {
+  match value {
+    YamlValue.Map(_) => true
+    _ => false
+  }
+}

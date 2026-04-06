@@ -10,3 +10,4 @@ crate-type = ["rlib", "staticlib"]
 ureq = { version = "2", features = ["tls"] }
 regex = "1"
 toml = "0.8"
+serde_yaml = "0.9"

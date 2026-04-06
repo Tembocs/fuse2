@@ -1324,14 +1324,29 @@ TOML parsing backed by Rust's `toml` crate.
 
 YAML parsing backed by Rust's `serde_yaml` crate.
 
-- [ ] **5.5.1** Add `serde_yaml` dependency to `fuse-runtime/Cargo.toml`.
-- [ ] **5.5.2** Add FFI: `fuse_rt_yaml_parse`, `fuse_rt_yaml_stringify`.
-- [ ] **5.5.3** Create `stdlib/ext/yaml.fuse`.
-- [ ] **5.5.4** Define `YamlError` data class and `YamlValue` enum.
-- [ ] **5.5.5** Implement `yaml.parse`, `yaml.parseFile`,
+- [x] **5.5.1** Add `serde_yaml` dependency to `fuse-runtime/Cargo.toml`.
+- [x] **5.5.2** Add FFI: `fuse_rt_yaml_parse`, `fuse_rt_yaml_stringify`.
+- [x] **5.5.3** Create `stdlib/ext/yaml.fuse`.
+- [x] **5.5.4** Define `YamlError` data class and `YamlValue` enum.
+- [x] **5.5.5** Implement `yaml.parse`, `yaml.parseFile`,
       `yaml.stringify`, `yaml.stringifyPretty`.
-- [ ] **5.5.6** Create `tests/fuse/stdlib/ext/yaml_test.fuse`.
-- [ ] **5.5.7** Run tests. Fix any compiler bugs found.
+- [x] **5.5.6** Create `tests/fuse/stdlib/ext/yaml_test.fuse`.
+- [x] **5.5.7** Run tests. Fix any compiler bugs found.
+
+**Notes:**
+- `YamlValue` enum has 7 variants: `Null`, `Bool`, `Int`, `Float`,
+  `Str`, `Seq`, `Map`. YAML numbers are split into `Int` (i64) and
+  `Float` (f64) based on `serde_yaml::Number` methods. Tagged values
+  are unwrapped to their inner value.
+- `stringifyPretty` delegates to `stringify` since YAML is already
+  human-readable by default.
+- `parseFile` is pure Fuse: reads file via `fuse_rt_io_read_file`
+  then delegates to `fuse_rt_yaml_parse`.
+- Error locations (line/col) extracted from `serde_yaml::Error`
+  when available.
+- Same pattern as toml.fuse: enum variants constructed via
+  `fuse_enum_new`, maps via `fuse_map_new`/`fuse_map_set`.
+- No new compiler bugs found. All 89 tests pass, 0 regressions.
 
 ---
 

@@ -1880,6 +1880,40 @@ impl Evaluator {
                     }
                     return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("toml: expected string".into())) });
                 }
+                // --- yaml FFI ---
+                "fuse_rt_yaml_parse" => {
+                    if let Some(Value::String(s)) = args.first() {
+                        return match serde_yaml::from_str::<serde_yaml::Value>(s) {
+                            Ok(val) => Ok(Value::Result { is_ok: true, value: Box::new(Self::yaml_to_value(&val)) }),
+                            Err(e) => {
+                                let err = Value::Data(std::rc::Rc::new(std::cell::RefCell::new(
+                                    DataInstance {
+                                        module_path: std::path::PathBuf::new(),
+                                        type_name: "YamlError".to_string(),
+                                        fields: {
+                                            let mut f = std::collections::HashMap::new();
+                                            f.insert("message".to_string(), Value::String(format!("{e}")));
+                                            f.insert("line".to_string(), Value::Int(0));
+                                            f.insert("col".to_string(), Value::Int(0));
+                                            f
+                                        },
+                                        field_order: vec!["message".to_string(), "line".to_string(), "col".to_string()],
+                                        methods: std::collections::HashMap::new(),
+                                        destroyed: false,
+                                    },
+                                )));
+                                Ok(Value::Result { is_ok: false, value: Box::new(err) })
+                            }
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("yaml: expected string".into())) });
+                }
+                "fuse_rt_yaml_stringify" | "fuse_rt_yaml_stringify_pretty" => {
+                    if let Some(v) = args.first() {
+                        return Ok(Value::String(self.stringify(v)));
+                    }
+                    return Ok(Value::String(String::new()));
+                }
                 "fuse_rt_toml_stringify" => {
                     // Stub: convert enum to string representation.
                     if let Some(v) = args.first() {
@@ -2476,6 +2510,30 @@ impl Evaluator {
             Some(Value::Float(v)) => *v,
             Some(Value::Int(v)) => *v as f64,
             _ => 0.0,
+        }
+    }
+
+    fn yaml_to_value(yv: &serde_yaml::Value) -> Value {
+        match yv {
+            serde_yaml::Value::Null => Value::Enum { type_name: "YamlValue".into(), variant: "Null".into(), payloads: vec![] },
+            serde_yaml::Value::Bool(b) => Value::Enum { type_name: "YamlValue".into(), variant: "Bool".into(), payloads: vec![Value::Bool(*b)] },
+            serde_yaml::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Value::Enum { type_name: "YamlValue".into(), variant: "Int".into(), payloads: vec![Value::Int(i)] }
+                } else {
+                    Value::Enum { type_name: "YamlValue".into(), variant: "Float".into(), payloads: vec![Value::Float(n.as_f64().unwrap_or(0.0))] }
+                }
+            }
+            serde_yaml::Value::String(s) => Value::Enum { type_name: "YamlValue".into(), variant: "Str".into(), payloads: vec![Value::String(s.clone())] },
+            serde_yaml::Value::Sequence(seq) => Value::Enum { type_name: "YamlValue".into(), variant: "Seq".into(), payloads: vec![Value::List(seq.iter().map(Self::yaml_to_value).collect())] },
+            serde_yaml::Value::Mapping(map) => {
+                let entries: Vec<(Value, Value)> = map.iter().map(|(k, v)| {
+                    let key = match k { serde_yaml::Value::String(s) => s.clone(), other => format!("{other:?}") };
+                    (Value::String(key), Self::yaml_to_value(v))
+                }).collect();
+                Value::Enum { type_name: "YamlValue".into(), variant: "Map".into(), payloads: vec![Value::Map(entries)] }
+            }
+            serde_yaml::Value::Tagged(tagged) => Self::yaml_to_value(&tagged.value),
         }
     }
 

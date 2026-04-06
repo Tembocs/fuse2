@@ -3659,3 +3659,164 @@ pub unsafe extern "C" fn fuse_rt_toml_stringify(value: FuseHandle) -> FuseHandle
     };
     unsafe { fuse_string_new_utf8(s.as_ptr(), s.len()) }
 }
+
+// ---------------------------------------------------------------------------
+// YAML runtime support
+// ---------------------------------------------------------------------------
+
+/// Convert a serde_yaml::Value into a FuseHandle representing a YamlValue enum.
+unsafe fn yaml_value_to_fuse(val: &serde_yaml::Value) -> FuseHandle {
+    let tn = b"YamlValue";
+    match val {
+        serde_yaml::Value::Null => {
+            let vn = b"Null";
+            fuse_enum_new(tn.as_ptr(), tn.len(), 0, vn.as_ptr(), vn.len(), ptr::null_mut())
+        }
+        serde_yaml::Value::Bool(b) => {
+            let vn = b"Bool";
+            fuse_enum_new(tn.as_ptr(), tn.len(), 1, vn.as_ptr(), vn.len(), fuse_bool(*b))
+        }
+        serde_yaml::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                let vn = b"Int";
+                fuse_enum_new(tn.as_ptr(), tn.len(), 2, vn.as_ptr(), vn.len(), fuse_int(i))
+            } else if let Some(f) = n.as_f64() {
+                let vn = b"Float";
+                fuse_enum_new(tn.as_ptr(), tn.len(), 3, vn.as_ptr(), vn.len(), fuse_float(f))
+            } else {
+                let vn = b"Int";
+                fuse_enum_new(tn.as_ptr(), tn.len(), 2, vn.as_ptr(), vn.len(), fuse_int(0))
+            }
+        }
+        serde_yaml::Value::String(s) => {
+            let vn = b"Str";
+            fuse_enum_new(tn.as_ptr(), tn.len(), 4, vn.as_ptr(), vn.len(),
+                fuse_string_new_utf8(s.as_ptr(), s.len()))
+        }
+        serde_yaml::Value::Sequence(seq) => {
+            let vn = b"Seq";
+            let list = fuse_list_new();
+            for item in seq {
+                fuse_list_push(list, yaml_value_to_fuse(item));
+            }
+            fuse_enum_new(tn.as_ptr(), tn.len(), 5, vn.as_ptr(), vn.len(), list)
+        }
+        serde_yaml::Value::Mapping(map) => {
+            let vn = b"Map";
+            let fuse_map = fuse_map_new();
+            for (k, v) in map {
+                let key_str = match k {
+                    serde_yaml::Value::String(s) => s.clone(),
+                    other => serde_yaml::to_string(other).unwrap_or_default().trim().to_string(),
+                };
+                let key = fuse_string_new_utf8(key_str.as_ptr(), key_str.len());
+                fuse_map_set(fuse_map, key, yaml_value_to_fuse(v));
+            }
+            fuse_enum_new(tn.as_ptr(), tn.len(), 6, vn.as_ptr(), vn.len(), fuse_map)
+        }
+        serde_yaml::Value::Tagged(tagged) => {
+            // Treat tagged values as their inner value.
+            yaml_value_to_fuse(&tagged.value)
+        }
+    }
+}
+
+/// Convert a FuseHandle (YamlValue enum) back to a serde_yaml::Value.
+unsafe fn fuse_to_yaml_value(handle: FuseHandle) -> serde_yaml::Value {
+    let val = value_ref(handle);
+    match &val.kind {
+        ValueKind::Enum(e) => match e.variant_tag {
+            0 => serde_yaml::Value::Null, // Null
+            1 => { // Bool
+                let p = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                match &value_ref(p).kind {
+                    ValueKind::Bool(b) => serde_yaml::Value::Bool(*b),
+                    _ => serde_yaml::Value::Bool(false),
+                }
+            }
+            2 => { // Int
+                let p = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                serde_yaml::Value::Number(serde_yaml::Number::from(extract_int(p)))
+            }
+            3 => { // Float
+                let p = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                let f = match &value_ref(p).kind {
+                    ValueKind::Float(f) => *f,
+                    ValueKind::Int(n) => *n as f64,
+                    _ => 0.0,
+                };
+                serde_yaml::Value::Number(serde_yaml::Number::from(f))
+            }
+            4 => { // Str
+                let p = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                serde_yaml::Value::String(clone_to_string(p))
+            }
+            5 => { // Seq
+                let p = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                let mut seq = Vec::new();
+                if let ValueKind::List(items) = &value_ref(p).kind {
+                    for item in items {
+                        seq.push(fuse_to_yaml_value(*item));
+                    }
+                }
+                serde_yaml::Value::Sequence(seq)
+            }
+            6 => { // Map
+                let p = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                let mut mapping = serde_yaml::Mapping::new();
+                if let ValueKind::Map(map) = &value_ref(p).kind {
+                    for (k, v) in &map.entries {
+                        mapping.insert(
+                            serde_yaml::Value::String(clone_to_string(*k)),
+                            fuse_to_yaml_value(*v),
+                        );
+                    }
+                }
+                serde_yaml::Value::Mapping(mapping)
+            }
+            _ => serde_yaml::Value::String(clone_to_string(handle)),
+        }
+        _ => serde_yaml::Value::String(clone_to_string(handle)),
+    }
+}
+
+/// Helper: construct a YamlError data class.
+unsafe fn make_yaml_error(msg: &str, line: i64, col: i64) -> FuseHandle {
+    let tn = b"YamlError";
+    let data = fuse_data_new(tn.as_ptr(), tn.len(), 3, None);
+    fuse_data_set_field(data, 0, fuse_string_new_utf8(msg.as_ptr(), msg.len()));
+    fuse_data_set_field(data, 1, fuse_int(line));
+    fuse_data_set_field(data, 2, fuse_int(col));
+    data
+}
+
+/// Parse a YAML string. Returns Result<YamlValue, YamlError>.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_yaml_parse(input: FuseHandle) -> FuseHandle {
+    let s = unsafe { clone_to_string(input) };
+    match serde_yaml::from_str::<serde_yaml::Value>(&s) {
+        Ok(val) => unsafe { fuse_ok(yaml_value_to_fuse(&val)) },
+        Err(e) => {
+            let msg = format!("{e}");
+            let loc = e.location();
+            let line = loc.as_ref().map(|l| l.line() as i64).unwrap_or(0);
+            let col = loc.as_ref().map(|l| l.column() as i64).unwrap_or(0);
+            unsafe { fuse_err(make_yaml_error(&msg, line, col)) }
+        }
+    }
+}
+
+/// Serialize a YamlValue to a YAML string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_yaml_stringify(value: FuseHandle) -> FuseHandle {
+    let yv = unsafe { fuse_to_yaml_value(value) };
+    let s = serde_yaml::to_string(&yv).unwrap_or_default();
+    unsafe { fuse_string_new_utf8(s.as_ptr(), s.len()) }
+}
+
+/// Serialize a YamlValue to a pretty YAML string (same as stringify for YAML).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_yaml_stringify_pretty(value: FuseHandle) -> FuseHandle {
+    // YAML is already human-readable by default; same as stringify.
+    unsafe { fuse_rt_yaml_stringify(value) }
+}
