@@ -1,0 +1,88 @@
+// EXPECTED OUTPUT:
+// --- compile ---
+// compiled: true
+// --- valid object ---
+// valid: true
+// --- missing required ---
+// invalid: true
+// --- type mismatch ---
+// type invalid: true
+// --- string constraints ---
+// short string: true
+// --- isValidStr ---
+// isValid true: true
+// isValid false: true
+// --- done ---
+// done
+
+import stdlib.ext.json_schema
+
+@entrypoint
+fn main() {
+  // --- compile ---
+  println("--- compile ---")
+  val schemaJson = "{\"type\": \"object\", \"required\": [\"name\"], \"properties\": {\"name\": {\"type\": \"string\", \"minLength\": 1}, \"age\": {\"type\": \"integer\"}}}"
+  val compileResult = compileStr(schemaJson)
+  val compiled = match compileResult {
+    Ok(s) => true
+    Err(e) => false
+  }
+  println(f"compiled: {compiled}")
+
+  val s = match compileStr(schemaJson) {
+    Ok(s) => s
+    Err(e) => Schema(0)
+  }
+
+  // --- valid object ---
+  println("--- valid object ---")
+  val validResult = s.validateStr("{\"name\": \"Alice\", \"age\": 30}")
+  val valid = match validResult {
+    Ok(_) => true
+    Err(_) => false
+  }
+  println(f"valid: {valid}")
+
+  // --- missing required ---
+  println("--- missing required ---")
+  val missingResult = s.validateStr("{}")
+  val missingInvalid = match missingResult {
+    Ok(_) => false
+    Err(_) => true
+  }
+  println(f"invalid: {missingInvalid}")
+
+  // --- type mismatch ---
+  println("--- type mismatch ---")
+  val typeResult = s.validateStr("\"not an object\"")
+  val typeInvalid = match typeResult {
+    Ok(_) => false
+    Err(_) => true
+  }
+  println(f"type invalid: {typeInvalid}")
+
+  // --- string constraints ---
+  println("--- string constraints ---")
+  val strSchemaJson = "{\"type\": \"string\", \"minLength\": 1}"
+  val ss = match compileStr(strSchemaJson) {
+    Ok(s) => s
+    Err(e) => Schema(0)
+  }
+  val strResult = ss.validateStr("\"\"")
+  val shortStr = match strResult {
+    Ok(_) => false
+    Err(_) => true
+  }
+  println(f"short string: {shortStr}")
+
+  // --- isValidStr ---
+  println("--- isValidStr ---")
+  val isValidTrue = ss.isValidStr("\"hello\"")
+  println(f"isValid true: {isValidTrue}")
+  val isValidFalse = ss.isValidStr("42")
+  val notValidNum = isValidFalse == false
+  println(f"isValid false: {notValidNum}")
+
+  println("--- done ---")
+  println("done")
+}

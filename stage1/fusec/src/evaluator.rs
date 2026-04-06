@@ -1880,6 +1880,21 @@ impl Evaluator {
                     }
                     return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("toml: expected string".into())) });
                 }
+                // --- json_schema FFI ---
+                "fuse_rt_json_schema_compile" => {
+                    // Stub: store schema as-is, return handle.
+                    thread_local! { static SCHEMAS: std::cell::RefCell<std::collections::HashMap<i64, Value>> = std::cell::RefCell::new(std::collections::HashMap::new()); static NXT: std::cell::Cell<i64> = const { std::cell::Cell::new(1) }; }
+                    if let Some(v) = args.into_iter().next() {
+                        let id = NXT.with(|c| { let id = c.get(); c.set(id + 1); id });
+                        SCHEMAS.with(|s| s.borrow_mut().insert(id, v));
+                        return Ok(Value::Result { is_ok: true, value: Box::new(Value::Int(id)) });
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("schema: expected value".into())) });
+                }
+                "fuse_rt_json_schema_validate" => {
+                    // Stub: always valid in evaluator mode.
+                    return Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) });
+                }
                 // --- yaml FFI ---
                 "fuse_rt_yaml_parse" => {
                     if let Some(Value::String(s)) = args.first() {

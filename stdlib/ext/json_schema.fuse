@@ -1,0 +1,69 @@
+// Fuse Ext stdlib — JSON Schema validation.
+//
+// Validates JSON strings against JSON Schema (draft 7 subset).
+// Supports: type, required, properties, items, minLength, maxLength,
+// minimum, maximum, exclusiveMinimum, exclusiveMaximum, minItems,
+// maxItems, enum, const.
+//
+// import stdlib.ext.json_schema
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_json_schema_compile(schema: Int) -> Result<Int, String>
+extern fn fuse_rt_json_schema_compile_str(schemaJson: String) -> Result<Int, String>
+extern fn fuse_rt_json_schema_validate(schemaId: Int, value: Int) -> Result<Unit, List<ValidationError>>
+extern fn fuse_rt_json_schema_validate_str(schemaId: Int, valueJson: String) -> Result<Unit, List<ValidationError>>
+
+// --- Type definitions ---
+
+pub data class ValidationError(val path: String, val message: String)
+
+pub data class Schema(val handle: Int)
+
+// --- Public API ---
+
+// Compile a JSON Schema from a JsonValue.
+pub fn compile(schema: Int) -> Result<Schema, String> {
+  val result = fuse_rt_json_schema_compile(schema)
+  match result {
+    Ok(id) => Ok(Schema(id))
+    Err(msg) => Err(msg)
+  }
+}
+
+// Compile a JSON Schema from a JSON string.
+pub fn compileStr(schemaJson: String) -> Result<Schema, String> {
+  val result = fuse_rt_json_schema_compile_str(schemaJson)
+  match result {
+    Ok(id) => Ok(Schema(id))
+    Err(msg) => Err(msg)
+  }
+}
+
+// Validate a JsonValue against this schema.
+pub fn Schema.validate(ref self, value: Int) -> Result<Unit, List<ValidationError>> {
+  fuse_rt_json_schema_validate(self.handle, value)
+}
+
+// Validate a JSON string against this schema.
+pub fn Schema.validateStr(ref self, valueJson: String) -> Result<Unit, List<ValidationError>> {
+  fuse_rt_json_schema_validate_str(self.handle, valueJson)
+}
+
+// Check if a JsonValue is valid against this schema.
+pub fn Schema.isValid(ref self, value: Int) -> Bool {
+  val result = fuse_rt_json_schema_validate(self.handle, value)
+  match result {
+    Ok(_) => true
+    Err(_) => false
+  }
+}
+
+// Check if a JSON string is valid against this schema.
+pub fn Schema.isValidStr(ref self, valueJson: String) -> Bool {
+  val result = fuse_rt_json_schema_validate_str(self.handle, valueJson)
+  match result {
+    Ok(_) => true
+    Err(_) => false
+  }
+}

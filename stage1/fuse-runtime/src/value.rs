@@ -3820,3 +3820,388 @@ pub unsafe extern "C" fn fuse_rt_yaml_stringify_pretty(value: FuseHandle) -> Fus
     // YAML is already human-readable by default; same as stringify.
     unsafe { fuse_rt_yaml_stringify(value) }
 }
+
+// ---------------------------------------------------------------------------
+// JSON Schema runtime support
+// ---------------------------------------------------------------------------
+
+/// Internal JSON value for schema validation (avoids re-reading FuseHandles).
+#[derive(Clone, Debug)]
+enum JVal {
+    Null,
+    JBool(bool),
+    JNumber(f64),
+    JStr(String),
+    JArray(Vec<JVal>),
+    JObject(Vec<(String, JVal)>),
+}
+
+impl JVal {
+    fn type_name(&self) -> &'static str {
+        match self {
+            JVal::Null => "null",
+            JVal::JBool(_) => "boolean",
+            JVal::JNumber(n) => if n.fract() == 0.0 { "integer" } else { "number" },
+            JVal::JStr(_) => "string",
+            JVal::JArray(_) => "array",
+            JVal::JObject(_) => "object",
+        }
+    }
+    fn get(&self, key: &str) -> Option<&JVal> {
+        if let JVal::JObject(entries) = self {
+            entries.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+        } else {
+            None
+        }
+    }
+    fn as_str(&self) -> Option<&str> {
+        if let JVal::JStr(s) = self { Some(s) } else { None }
+    }
+    fn as_f64(&self) -> Option<f64> {
+        if let JVal::JNumber(n) = self { Some(*n) } else { None }
+    }
+    fn as_bool(&self) -> Option<bool> {
+        if let JVal::JBool(b) = self { Some(*b) } else { None }
+    }
+    fn as_array(&self) -> Option<&[JVal]> {
+        if let JVal::JArray(a) = self { Some(a) } else { None }
+    }
+    fn as_object(&self) -> Option<&[(String, JVal)]> {
+        if let JVal::JObject(o) = self { Some(o) } else { None }
+    }
+    fn eq_val(&self, other: &JVal) -> bool {
+        match (self, other) {
+            (JVal::Null, JVal::Null) => true,
+            (JVal::JBool(a), JVal::JBool(b)) => a == b,
+            (JVal::JNumber(a), JVal::JNumber(b)) => a == b,
+            (JVal::JStr(a), JVal::JStr(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+/// Convert a FuseHandle (JsonValue enum) to a JVal.
+unsafe fn fuse_json_to_jval(handle: FuseHandle) -> JVal {
+    if handle.is_null() { return JVal::Null; }
+    let val = value_ref(handle);
+    match &val.kind {
+        ValueKind::Enum(e) => match e.variant_name.as_str() {
+            "Null" => JVal::Null,
+            "JBool" => {
+                let p = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                match &value_ref(p).kind {
+                    ValueKind::Bool(b) => JVal::JBool(*b),
+                    _ => JVal::JBool(false),
+                }
+            }
+            "JNumber" => {
+                let p = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                match &value_ref(p).kind {
+                    ValueKind::Float(f) => JVal::JNumber(*f),
+                    ValueKind::Int(n) => JVal::JNumber(*n as f64),
+                    _ => JVal::JNumber(0.0),
+                }
+            }
+            "JStr" => {
+                let p = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                JVal::JStr(clone_to_string(p))
+            }
+            "JArray" => {
+                let p = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                let mut items = Vec::new();
+                if let ValueKind::List(list) = &value_ref(p).kind {
+                    for item in list { items.push(fuse_json_to_jval(*item)); }
+                }
+                JVal::JArray(items)
+            }
+            "JObject" => {
+                let p = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                let mut entries = Vec::new();
+                if let ValueKind::List(list) = &value_ref(p).kind {
+                    // JObject stores a list of [key, value] pairs (as list of lists).
+                    for pair_handle in list {
+                        if let ValueKind::List(pair) = &value_ref(*pair_handle).kind {
+                            if pair.len() >= 2 {
+                                // Key is a JsonValue.JStr — extract the inner string.
+                                let key_jval = fuse_json_to_jval(pair[0]);
+                                let key = match key_jval {
+                                    JVal::JStr(s) => s,
+                                    _ => clone_to_string(pair[0]),
+                                };
+                                entries.push((key, fuse_json_to_jval(pair[1])));
+                            }
+                        }
+                    }
+                }
+                // Also handle Map representation.
+                if entries.is_empty() {
+                    if let ValueKind::Map(map) = &value_ref(p).kind {
+                        for (k, v) in &map.entries {
+                            entries.push((clone_to_string(*k), fuse_json_to_jval(*v)));
+                        }
+                    }
+                }
+                JVal::JObject(entries)
+            }
+            _ => JVal::Null,
+        }
+        // Handle raw primitives (if passed directly instead of as enum).
+        ValueKind::Bool(b) => JVal::JBool(*b),
+        ValueKind::Int(n) => JVal::JNumber(*n as f64),
+        ValueKind::Float(f) => JVal::JNumber(*f),
+        ValueKind::String(s) => JVal::JStr(s.clone()),
+        ValueKind::List(_) => {
+            let mut items = Vec::new();
+            if let ValueKind::List(list) = &val.kind {
+                for item in list { items.push(fuse_json_to_jval(*item)); }
+            }
+            JVal::JArray(items)
+        }
+        _ => JVal::Null,
+    }
+}
+
+/// Validate a value against a JSON Schema (JVal).  Pushes errors to `errs`.
+fn json_schema_validate(schema: &JVal, value: &JVal, path: &str, errs: &mut Vec<(String, String)>) {
+    // "type" keyword
+    if let Some(ty) = schema.get("type") {
+        let actual = value.type_name();
+        match ty {
+            JVal::JStr(expected) => {
+                let ok = expected == actual
+                    || (expected == "number" && actual == "integer");
+                if !ok {
+                    errs.push((path.to_string(), format!("expected type {expected}, got {actual}")));
+                    return;
+                }
+            }
+            JVal::JArray(types) => {
+                let ok = types.iter().any(|t| {
+                    if let JVal::JStr(s) = t {
+                        s == actual || (s == "number" && actual == "integer")
+                    } else { false }
+                });
+                if !ok {
+                    errs.push((path.to_string(), format!("type {actual} not in allowed types")));
+                    return;
+                }
+            }
+            _ => {}
+        }
+    }
+    // "enum" keyword
+    if let Some(JVal::JArray(options)) = schema.get("enum") {
+        if !options.iter().any(|o| o.eq_val(value)) {
+            errs.push((path.to_string(), "value not in enum".to_string()));
+        }
+    }
+    // "const" keyword
+    if let Some(constant) = schema.get("const") {
+        if !constant.eq_val(value) {
+            errs.push((path.to_string(), "value does not match const".to_string()));
+        }
+    }
+    // String constraints
+    if let JVal::JStr(s) = value {
+        if let Some(JVal::JNumber(n)) = schema.get("minLength") {
+            if (s.len() as f64) < *n { errs.push((path.to_string(), format!("string shorter than minLength {n}"))); }
+        }
+        if let Some(JVal::JNumber(n)) = schema.get("maxLength") {
+            if (s.len() as f64) > *n { errs.push((path.to_string(), format!("string longer than maxLength {n}"))); }
+        }
+    }
+    // Number constraints
+    if let JVal::JNumber(n) = value {
+        if let Some(JVal::JNumber(min)) = schema.get("minimum") {
+            if n < min { errs.push((path.to_string(), format!("value {n} < minimum {min}"))); }
+        }
+        if let Some(JVal::JNumber(max)) = schema.get("maximum") {
+            if n > max { errs.push((path.to_string(), format!("value {n} > maximum {max}"))); }
+        }
+        if let Some(JVal::JNumber(emin)) = schema.get("exclusiveMinimum") {
+            if n <= emin { errs.push((path.to_string(), format!("value {n} <= exclusiveMinimum {emin}"))); }
+        }
+        if let Some(JVal::JNumber(emax)) = schema.get("exclusiveMaximum") {
+            if n >= emax { errs.push((path.to_string(), format!("value {n} >= exclusiveMaximum {emax}"))); }
+        }
+    }
+    // Array constraints
+    if let JVal::JArray(items) = value {
+        if let Some(JVal::JNumber(n)) = schema.get("minItems") {
+            if (items.len() as f64) < *n { errs.push((path.to_string(), format!("array has fewer than minItems {n}"))); }
+        }
+        if let Some(JVal::JNumber(n)) = schema.get("maxItems") {
+            if (items.len() as f64) > *n { errs.push((path.to_string(), format!("array has more than maxItems {n}"))); }
+        }
+        if let Some(item_schema) = schema.get("items") {
+            for (i, item) in items.iter().enumerate() {
+                let item_path = format!("{path}[{i}]");
+                json_schema_validate(item_schema, item, &item_path, errs);
+            }
+        }
+    }
+    // Object constraints
+    if let JVal::JObject(entries) = value {
+        if let Some(JVal::JArray(req)) = schema.get("required") {
+            for r in req {
+                if let JVal::JStr(name) = r {
+                    if !entries.iter().any(|(k, _)| k == name) {
+                        errs.push((path.to_string(), format!("missing required property \"{name}\"")));
+                    }
+                }
+            }
+        }
+        if let Some(JVal::JObject(props)) = schema.get("properties") {
+            for (key, prop_schema) in props {
+                if let Some((_, val)) = entries.iter().find(|(k, _)| k == key) {
+                    let prop_path = if path.is_empty() { key.clone() } else { format!("{path}.{key}") };
+                    json_schema_validate(prop_schema, val, &prop_path, errs);
+                }
+            }
+        }
+    }
+}
+
+thread_local! {
+    static SCHEMA_STORE: RefCell<HashMap<i64, JVal>> = RefCell::new(HashMap::new());
+    static SCHEMA_NEXT_ID: Cell<i64> = const { Cell::new(1) };
+}
+
+/// Compile a JSON Schema from a JsonValue.  Returns Result<Int, String>.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_json_schema_compile(schema: FuseHandle) -> FuseHandle {
+    let jval = unsafe { fuse_json_to_jval(schema) };
+    if !matches!(jval, JVal::JObject(_)) {
+        let msg = "schema must be a JSON object";
+        return unsafe { fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len())) };
+    }
+    let id = SCHEMA_NEXT_ID.with(|c| { let id = c.get(); c.set(id + 1); id });
+    SCHEMA_STORE.with(|store| store.borrow_mut().insert(id, jval));
+    unsafe { fuse_ok(fuse_int(id)) }
+}
+
+/// Helper: convert serde_json::Value to JVal.
+fn serde_json_to_jval(v: &serde_yaml::Value) -> JVal {
+    match v {
+        serde_yaml::Value::Null => JVal::Null,
+        serde_yaml::Value::Bool(b) => JVal::JBool(*b),
+        serde_yaml::Value::Number(n) => JVal::JNumber(n.as_f64().unwrap_or(0.0)),
+        serde_yaml::Value::String(s) => JVal::JStr(s.clone()),
+        serde_yaml::Value::Sequence(arr) => JVal::JArray(arr.iter().map(serde_json_to_jval).collect()),
+        serde_yaml::Value::Mapping(obj) => {
+            let entries = obj.iter().map(|(k, v)| {
+                let key = match k {
+                    serde_yaml::Value::String(s) => s.clone(),
+                    other => format!("{other:?}"),
+                };
+                (key, serde_json_to_jval(v))
+            }).collect();
+            JVal::JObject(entries)
+        }
+        serde_yaml::Value::Tagged(t) => serde_json_to_jval(&t.value),
+    }
+}
+
+/// Compile a JSON Schema from a JSON string.  Returns Result<Int, String>.
+/// This bypasses the Fuse JSON parser and uses serde_yaml (JSON-compatible).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_json_schema_compile_str(input: FuseHandle) -> FuseHandle {
+    let s = unsafe { clone_to_string(input) };
+    let parsed: Result<serde_yaml::Value, _> = serde_yaml::from_str(&s);
+    match parsed {
+        Ok(val) => {
+            let jval = serde_json_to_jval(&val);
+            if !matches!(jval, JVal::JObject(_)) {
+                let msg = "schema must be a JSON object";
+                return unsafe { fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len())) };
+            }
+            let id = SCHEMA_NEXT_ID.with(|c| { let id = c.get(); c.set(id + 1); id });
+            SCHEMA_STORE.with(|store| store.borrow_mut().insert(id, jval));
+            unsafe { fuse_ok(fuse_int(id)) }
+        }
+        Err(e) => {
+            let msg = format!("{e}");
+            unsafe { fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len())) }
+        }
+    }
+}
+
+/// Validate a JSON string against a compiled schema.
+/// Returns Result<Unit, List<ValidationError>>.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_json_schema_validate_str(
+    schema_id: FuseHandle,
+    input: FuseHandle,
+) -> FuseHandle {
+    let id = extract_int(schema_id);
+    let s = unsafe { clone_to_string(input) };
+    let parsed: Result<serde_yaml::Value, _> = serde_yaml::from_str(&s);
+    let jval = match parsed {
+        Ok(val) => serde_json_to_jval(&val),
+        Err(e) => {
+            let msg = format!("invalid JSON: {e}");
+            let list = unsafe { fuse_list_new() };
+            let tn = b"ValidationError";
+            let data = unsafe { fuse_data_new(tn.as_ptr(), tn.len(), 2, None) };
+            let empty = b"";
+            unsafe { fuse_data_set_field(data, 0, fuse_string_new_utf8(empty.as_ptr(), 0)) };
+            unsafe { fuse_data_set_field(data, 1, fuse_string_new_utf8(msg.as_ptr(), msg.len())) };
+            unsafe { fuse_list_push(list, data) };
+            return unsafe { fuse_err(list) };
+        }
+    };
+    let errors = SCHEMA_STORE.with(|store| {
+        let store = store.borrow();
+        let Some(schema) = store.get(&id) else {
+            return vec![("".to_string(), "invalid schema handle".to_string())];
+        };
+        let mut errs = Vec::new();
+        json_schema_validate(schema, &jval, "", &mut errs);
+        errs
+    });
+    if errors.is_empty() {
+        return unsafe { fuse_ok(fuse_unit()) };
+    }
+    let list = unsafe { fuse_list_new() };
+    for (path, msg) in &errors {
+        let tn = b"ValidationError";
+        let data = unsafe { fuse_data_new(tn.as_ptr(), tn.len(), 2, None) };
+        unsafe { fuse_data_set_field(data, 0, fuse_string_new_utf8(path.as_ptr(), path.len())) };
+        unsafe { fuse_data_set_field(data, 1, fuse_string_new_utf8(msg.as_ptr(), msg.len())) };
+        unsafe { fuse_list_push(list, data) };
+    }
+    unsafe { fuse_err(list) }
+}
+
+/// Validate a JsonValue against a compiled schema.
+/// Returns Result<Unit, List<ValidationError>>.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_json_schema_validate(
+    schema_id: FuseHandle,
+    value: FuseHandle,
+) -> FuseHandle {
+    let id = extract_int(schema_id);
+    let jval = unsafe { fuse_json_to_jval(value) };
+    let errors = SCHEMA_STORE.with(|store| {
+        let store = store.borrow();
+        let Some(schema) = store.get(&id) else {
+            return vec![("".to_string(), "invalid schema handle".to_string())];
+        };
+        let mut errs = Vec::new();
+        json_schema_validate(schema, &jval, "", &mut errs);
+        errs
+    });
+    if errors.is_empty() {
+        return unsafe { fuse_ok(fuse_unit()) };
+    }
+    // Build List<ValidationError>.
+    let list = unsafe { fuse_list_new() };
+    for (path, msg) in &errors {
+        let tn = b"ValidationError";
+        let data = unsafe { fuse_data_new(tn.as_ptr(), tn.len(), 2, None) };
+        unsafe { fuse_data_set_field(data, 0, fuse_string_new_utf8(path.as_ptr(), path.len())) };
+        unsafe { fuse_data_set_field(data, 1, fuse_string_new_utf8(msg.as_ptr(), msg.len())) };
+        unsafe { fuse_list_push(list, data) };
+    }
+    unsafe { fuse_err(list) }
+}
