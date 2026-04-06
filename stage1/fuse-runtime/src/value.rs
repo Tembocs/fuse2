@@ -2475,6 +2475,17 @@ pub unsafe extern "C" fn fuse_rt_time_elapsed_nanos(start_nanos: FuseHandle) -> 
     fuse_int(now - start)
 }
 
+// --- Timer FFI ---
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_timer_sleep_ms(ms_handle: FuseHandle) -> FuseHandle {
+    let ms = extract_int(ms_handle);
+    if ms > 0 {
+        std::thread::sleep(std::time::Duration::from_millis(ms as u64));
+    }
+    fuse_unit()
+}
+
 // --- Sys FFI ---
 
 #[unsafe(no_mangle)]

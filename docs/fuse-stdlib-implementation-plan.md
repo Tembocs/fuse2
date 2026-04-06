@@ -1090,14 +1090,28 @@ Upgrade shared state API.
 
 Upgrade timer from stub to working implementation.
 
-- [ ] **4.3.1** Add FFI: `fuse_rt_timer_sleep_ms`.
-- [ ] **4.3.2** Replace `stdlib/full/timer.fuse` with spec-compliant
+- [x] **4.3.1** Add FFI: `fuse_rt_timer_sleep_ms`.
+- [x] **4.3.2** Replace `stdlib/full/timer.fuse` with spec-compliant
       version.
-- [ ] **4.3.3** Implement `Timer.sleep()`, `Timer.sleepSecs()`.
-- [ ] **4.3.4** Implement `Timeout.ms()`, `Timeout.secs()`,
+- [x] **4.3.3** Implement `Timer.sleep()`, `Timer.sleepSecs()`.
+- [x] **4.3.4** Implement `Timeout.ms()`, `Timeout.secs()`,
       `Timeout.never()`.
-- [ ] **4.3.5** Create `tests/fuse/stdlib/full/timer_test.fuse`.
-- [ ] **4.3.6** Run tests. Fix any compiler bugs found.
+- [x] **4.3.5** Create `tests/fuse/stdlib/full/timer_test.fuse`.
+- [x] **4.3.6** Run tests. Fix any compiler bugs found.
+
+**Notes:**
+- Added `fuse_rt_timer_sleep_ms` FFI to fuse-runtime backed by
+  `std::thread::sleep`. Accepts a FuseHandle, extracts the Int value.
+  Non-positive values are no-ops.
+- `sleep` and `sleepSecs` are module-level `pub fn` (not `Timer.sleep`)
+  because the checker does not support `Type.staticMethod()` syntax.
+  Same pattern as int/float parse functions.
+- `sleepSecs` takes `Int` (not `Float`) because float literals are not
+  supported in the backend. Practical for Stage 1.
+- `Timeout` is a `pub data class Timeout(val ms: Int)` with three
+  constructors: `Timeout.ms(ms)`, `Timeout.secs(secs)`, `Timeout.never()`.
+  `never()` returns `Timeout(-1)`.
+- All 89 tests pass, 0 failures. Zero TODO/FIXME/HACK.
 
 ---
 

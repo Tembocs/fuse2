@@ -1,0 +1,37 @@
+// Fuse Full stdlib — timer module.
+//
+// Async sleep and timeouts. Timer.sleep and Timer.sleepSecs suspend
+// the current task for the given duration. In single-threaded Stage 1
+// this is a blocking thread sleep.
+//
+// import stdlib.full.timer
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_timer_sleep_ms(ms: Int) -> Int
+
+// --- Timeout data class ---
+
+pub data class Timeout(val ms: Int)
+
+pub fn Timeout.ms(ms: Int) -> Timeout {
+  Timeout(ms)
+}
+
+pub fn Timeout.secs(secs: Int) -> Timeout {
+  Timeout(secs * 1000)
+}
+
+pub fn Timeout.never() -> Timeout {
+  Timeout(-1)
+}
+
+// --- Timer ---
+
+pub fn sleep(ms: Int) {
+  fuse_rt_timer_sleep_ms(ms)
+}
+
+pub fn sleepSecs(secs: Int) {
+  fuse_rt_timer_sleep_ms(secs * 1000)
+}

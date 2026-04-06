@@ -1,0 +1,29 @@
+// EXPECTED OUTPUT:
+// --- Timeout ---
+// ms: 100
+// secs: 2000
+// never: -1
+// --- sleep ---
+// sleep done
+// sleepSecs done
+
+import stdlib.full.timer
+
+@entrypoint
+fn main() {
+  // --- Timeout ---
+  println("--- Timeout ---")
+  val t1 = Timeout.ms(100)
+  println("ms: " + t1.ms)
+  val t2 = Timeout.secs(2)
+  println("secs: " + t2.ms)
+  val t3 = Timeout.never()
+  println("never: " + t3.ms)
+
+  // --- sleep ---
+  println("--- sleep ---")
+  sleep(1)
+  println("sleep done")
+  sleepSecs(0)
+  println("sleepSecs done")
+}
