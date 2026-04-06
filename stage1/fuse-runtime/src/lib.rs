@@ -15,7 +15,7 @@ pub use value::{
     fuse_string_is_empty, fuse_string_new_utf8, fuse_sub, fuse_to_string, fuse_to_upper,
     fuse_unit, fuse_chan_bounded, fuse_chan_cap, fuse_chan_close, fuse_chan_is_closed,
     fuse_chan_len, fuse_chan_new, fuse_chan_recv, fuse_chan_send, fuse_chan_try_recv,
-    fuse_shared_new,
+    fuse_shared_new, fuse_shared_try_read,
     fuse_shared_read, fuse_shared_write, fuse_simd_sum,
     fuse_enum_new, fuse_enum_tag, fuse_enum_payload,
     fuse_map_new, fuse_map_set, fuse_map_get, fuse_map_remove,

@@ -1063,13 +1063,26 @@ Upgrade channel API to match spec.
 
 Upgrade shared state API.
 
-- [ ] **4.2.1** Review existing `stdlib/full/shared.fuse` and runtime.
-- [ ] **4.2.2** Replace with spec-compliant version.
-- [ ] **4.2.3** Verify `read`, `write`, `tryWrite` match spec signatures.
-- [ ] **4.2.4** Add `tryRead`.
-- [ ] **4.2.5** Update existing tests.
-- [ ] **4.2.6** Create `tests/fuse/stdlib/full/shared_test.fuse`.
-- [ ] **4.2.7** Run tests. Fix any compiler bugs found.
+- [x] **4.2.1** Review existing `stdlib/full/shared.fuse` and runtime.
+- [x] **4.2.2** Replace with spec-compliant version.
+- [x] **4.2.3** Verify `read`, `write`, `tryWrite` match spec signatures.
+- [x] **4.2.4** Add `tryRead`.
+- [x] **4.2.5** Update existing tests.
+- [x] **4.2.6** Create `tests/fuse/stdlib/full/shared_test.fuse`.
+- [x] **4.2.7** Run tests. Fix any compiler bugs found.
+
+**Notes:**
+- Created `stdlib/full/shared.fuse` with API documentation (Shared
+  operations are lowered directly by the compiler, like Chan).
+- Added `fuse_shared_try_read` to runtime (value.rs) — returns a clone
+  (snapshot) wrapped in Result, with timeout=0 forcing Err for testing.
+  Added matching `fuse_shared_runtime_try_read` wrapper in shared.rs.
+- Added `tryRead` to codegen member calls and type inference. Added
+  `tryWrite` as camelCase alias for existing `try_write` (both accepted).
+- Updated checker rank tracking to recognize `tryRead` (read lock) and
+  `tryWrite` (write lock).
+- Updated existing try_write tests to use camelCase `tryWrite`.
+- All 89 tests pass, 0 failures. Zero TODO/FIXME/HACK in stdlib files.
 
 ---
 

@@ -850,6 +850,35 @@ pub unsafe extern "C" fn fuse_shared_try_write(
     }
 }
 
+/// `try_read(timeout)` — like `try_write` but returns a clone (snapshot).
+/// In single-threaded Stage 1 the lock is always free, so the positive path
+/// always succeeds.  A timeout of 0 forces the error path for testing.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_shared_try_read(
+    shared: FuseHandle,
+    timeout: FuseHandle,
+) -> FuseHandle {
+    unsafe {
+        let timeout_val = match &value_ref(timeout).kind {
+            ValueKind::Int(v) => *v,
+            _ => 1, // non-zero default: succeed
+        };
+        if timeout_val == 0 {
+            return fuse_err(fuse_string_new_utf8(
+                b"timeout".as_ptr(),
+                7,
+            ));
+        }
+        match &value_ref(shared).kind {
+            ValueKind::Shared(value) => fuse_ok(clone_value(*value)),
+            _ => fuse_err(fuse_string_new_utf8(
+                b"not a Shared value".as_ptr(),
+                18,
+            )),
+        }
+    }
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_data_new(
     type_name_ptr: *const u8,

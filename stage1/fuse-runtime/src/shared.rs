@@ -32,7 +32,7 @@
 // module will grow an actual RwLock.  The public FFI surface stays the same.
 // ---------------------------------------------------------------------------
 
-use crate::value::{fuse_shared_new, fuse_shared_read, fuse_shared_try_write, fuse_shared_write, FuseHandle};
+use crate::value::{fuse_shared_new, fuse_shared_read, fuse_shared_try_read, fuse_shared_try_write, fuse_shared_write, FuseHandle};
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_shared_runtime_new(value: FuseHandle) -> FuseHandle {
@@ -55,4 +55,12 @@ pub unsafe extern "C" fn fuse_shared_runtime_try_write(
     timeout: FuseHandle,
 ) -> FuseHandle {
     unsafe { fuse_shared_try_write(shared, timeout) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_shared_runtime_try_read(
+    shared: FuseHandle,
+    timeout: FuseHandle,
+) -> FuseHandle {
+    unsafe { fuse_shared_try_read(shared, timeout) }
 }

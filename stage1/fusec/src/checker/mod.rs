@@ -906,8 +906,8 @@ impl Checker {
             return None;
         };
         let is_write = match member.name.as_str() {
-            "read" => false,
-            "write" | "try_write" => true,
+            "read" | "tryRead" => false,
+            "write" | "try_write" | "tryWrite" => true,
             _ => return None,
         };
         let hir::Expr::Name(name) = member.object.as_ref() else {

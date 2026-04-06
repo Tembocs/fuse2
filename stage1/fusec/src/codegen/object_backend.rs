@@ -241,6 +241,7 @@ struct RuntimeFns {
     shared_read: FuncId,
     shared_write: FuncId,
     shared_try_write: FuncId,
+    shared_try_read: FuncId,
     simd_sum: FuncId,
     data_new: FuncId,
     data_set_field: FuncId,
@@ -880,6 +881,7 @@ fn declare_runtime_functions(
         shared_read: declare(module, "fuse_shared_runtime_read", &[pointer_type], &[pointer_type])?,
         shared_write: declare(module, "fuse_shared_runtime_write", &[pointer_type], &[pointer_type])?,
         shared_try_write: declare(module, "fuse_shared_runtime_try_write", &[pointer_type, pointer_type], &[pointer_type])?,
+        shared_try_read: declare(module, "fuse_shared_runtime_try_read", &[pointer_type, pointer_type], &[pointer_type])?,
         simd_sum: declare(module, "fuse_simd_runtime_sum", &[pointer_type], &[pointer_type])?,
         data_new: declare(module, "fuse_data_new", &[pointer_type, pointer_type, pointer_type, pointer_type], &[pointer_type])?,
         data_set_field: declare(module, "fuse_data_set_field", &[pointer_type, pointer_type, pointer_type], &[])?,
@@ -2375,17 +2377,34 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     ),
                     ty: shared_inner_type(&receiver_type).or(Some("Unit".to_string())),
                 }),
-                "try_write" => {
+                "try_write" | "tryWrite" => {
                     let timeout = self.compile_expr(
                         builder,
                         args.first()
-                            .ok_or_else(|| "Shared.try_write requires a timeout argument".to_string())?,
+                            .ok_or_else(|| "Shared.tryWrite requires a timeout argument".to_string())?,
                     )?;
                     let inner = shared_inner_type(&receiver_type).unwrap_or_else(|| "Unit".to_string());
                     Ok(TypedValue {
                         value: self.runtime(
                             builder,
                             self.compiler.runtime.shared_try_write,
+                            &[receiver.value, timeout.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some(format!("Result<{inner}, String>")),
+                    })
+                }
+                "tryRead" => {
+                    let timeout = self.compile_expr(
+                        builder,
+                        args.first()
+                            .ok_or_else(|| "Shared.tryRead requires a timeout argument".to_string())?,
+                    )?;
+                    let inner = shared_inner_type(&receiver_type).unwrap_or_else(|| "Unit".to_string());
+                    Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.shared_try_read,
                             &[receiver.value, timeout.value],
                             self.compiler.pointer_type,
                         ),
@@ -3563,7 +3582,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     if layout::canonical_type_name(&receiver_type) == "Shared" {
                         return match member.name.as_str() {
                             "read" | "write" => shared_inner_type(&receiver_type).or(Some("Unit".to_string())),
-                            "try_write" => {
+                            "try_write" | "tryWrite" | "tryRead" => {
                                 let inner = shared_inner_type(&receiver_type).unwrap_or_else(|| "Unit".to_string());
                                 Some(format!("Result<{inner}, String>"))
                             }

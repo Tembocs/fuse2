@@ -4,7 +4,7 @@
 @entrypoint
 fn main() {
   @rank(1) val s: Shared<Int> = Shared::<Int>.new(42)
-  val result = s.try_write(0)
+  val result = s.tryWrite(0)
   match result {
     Ok(v) => println(f"ok: {v}")
     Err(e) => println(f"err: {e}")

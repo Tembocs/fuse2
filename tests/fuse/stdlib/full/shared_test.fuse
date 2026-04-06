@@ -1,0 +1,66 @@
+// EXPECTED OUTPUT:
+// --- read ---
+// read: 42
+// --- write ---
+// write: 0
+// mutated: 10
+// --- tryWrite ---
+// tryWrite ok: 10
+// tryWrite timeout: true
+// --- tryRead ---
+// tryRead ok: 10
+// tryRead timeout: true
+// --- snapshot independence ---
+// snapshot: 0
+// after mutation: 50
+
+@value
+data class Box(var value: Int)
+
+@entrypoint
+fn main() {
+  // --- read ---
+  println("--- read ---")
+  @rank(1) val s: Shared<Int> = Shared::<Int>.new(42)
+  val snapshot = s.read()
+  println("read: " + snapshot)
+
+  // --- write ---
+  println("--- write ---")
+  @rank(2) val s2: Shared<Box> = Shared::<Box>.new(Box(0))
+  val w = s2.write()
+  println("write: " + w.value)
+  w.value = 10
+  println("mutated: " + s2.read().value)
+
+  // --- tryWrite ---
+  println("--- tryWrite ---")
+  match s2.tryWrite(100) {
+    Ok(v) => println("tryWrite ok: " + v.value)
+    Err(e) => println("tryWrite err: " + e)
+  }
+  match s2.tryWrite(0) {
+    Ok(_) => println("tryWrite timeout: false")
+    Err(_) => println("tryWrite timeout: true")
+  }
+
+  // --- tryRead ---
+  println("--- tryRead ---")
+  match s2.tryRead(100) {
+    Ok(v) => println("tryRead ok: " + v.value)
+    Err(e) => println("tryRead err: " + e)
+  }
+  match s2.tryRead(0) {
+    Ok(_) => println("tryRead timeout: false")
+    Err(_) => println("tryRead timeout: true")
+  }
+
+  // --- snapshot independence ---
+  println("--- snapshot independence ---")
+  @rank(3) val s3: Shared<Box> = Shared::<Box>.new(Box(0))
+  val snap = s3.read()
+  println("snapshot: " + snap.value)
+  val live = s3.write()
+  live.value = 50
+  println("after mutation: " + s3.read().value)
+}

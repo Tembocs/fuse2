@@ -1,0 +1,42 @@
+// Fuse Full stdlib — shared module.
+//
+// Shared<T> — a @rank-annotated concurrent mutable value. The runtime
+// type is built-in (ValueKind::Shared). All operations are lowered
+// directly by the compiler. The declarations below document the public
+// API surface.
+//
+// Stage 1 is single-threaded. Concurrency safety rests on compile-time
+// rank checking: every Shared<T> must carry @rank(N), and locks must be
+// acquired in ascending rank order.
+//
+// import stdlib.full.shared
+
+// --- Construction ---
+//
+// Shared<T>.new(value: T) -> Shared<T>
+//   Wrap a value in a Shared container. The declaration site must
+//   carry a @rank(N) annotation:
+//     @rank(1) val s: Shared<Int> = Shared::<Int>.new(42)
+
+// --- Access ---
+//
+// Shared<T>.read(ref self) -> T
+//   Returns an immutable snapshot (clone) of the inner value.
+//   The caller receives an independent copy; subsequent writes
+//   do not affect the snapshot.
+//
+// Shared<T>.write(mutref self) -> T
+//   Returns the live inner handle. Mutations through this handle
+//   are immediately visible to future read()/write() calls.
+
+// --- Try Variants ---
+//
+// Shared<T>.tryWrite(mutref self, timeoutMs: Int) -> Result<T, String>
+//   Attempts to acquire a write lock within the given timeout.
+//   In single-threaded Stage 1, always succeeds unless timeoutMs == 0
+//   (which forces the error path for testing).
+//
+// Shared<T>.tryRead(ref self, timeoutMs: Int) -> Result<T, String>
+//   Attempts to acquire a read lock within the given timeout.
+//   Returns a snapshot (clone) on success.
+//   In single-threaded Stage 1, always succeeds unless timeoutMs == 0.
