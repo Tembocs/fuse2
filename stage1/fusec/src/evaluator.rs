@@ -1099,6 +1099,22 @@ impl Evaluator {
                     }
                     return Ok(Value::Bool(false));
                 }
+                "fuse_rt_time_instant_now" => {
+                    thread_local! { static BASE: std::time::Instant = std::time::Instant::now(); }
+                    let n = BASE.with(|base| base.elapsed().as_nanos() as i64);
+                    return Ok(Value::Int(n));
+                }
+                "fuse_rt_time_system_now" => {
+                    let secs = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
+                    return Ok(Value::Int(secs));
+                }
+                "fuse_rt_time_elapsed_nanos" => {
+                    thread_local! { static BASE: std::time::Instant = std::time::Instant::now(); }
+                    let now = BASE.with(|base| base.elapsed().as_nanos() as i64);
+                    let start = if let Some(Value::Int(n)) = args.first() { *n } else { 0 };
+                    return Ok(Value::Int(now - start));
+                }
                 "fuse_rt_sys_args" => {
                     let items: Vec<Value> = std::env::args().map(Value::String).collect();
                     return Ok(Value::List(items));

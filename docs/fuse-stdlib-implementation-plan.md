@@ -869,20 +869,21 @@ Process-level information.
 
 Timestamps, durations, and calendar dates.
 
-- [ ] **2.6.1** Add FFI: `fuse_rt_time_instant_now`,
+- [x] **2.6.1** Add FFI: `fuse_rt_time_instant_now`,
       `fuse_rt_time_system_now`, `fuse_rt_time_elapsed_nanos`.
-- [ ] **2.6.2** Create `stdlib/full/time.fuse`.
-- [ ] **2.6.3** Define `Instant`, `Duration`, `DateTime` data classes.
-- [ ] **2.6.4** Implement `Duration` methods — pure Fuse arithmetic on
-      nanos field.
-- [ ] **2.6.5** Implement `Instant.now()`, `Instant.elapsed()`,
+- [x] **2.6.2** Create `stdlib/full/time.fuse`.
+- [x] **2.6.3** Define `Instant`, `Duration`, `DateTime` data classes.
+- [x] **2.6.4** Implement `Duration` methods: `fromNanos`, `fromMicros`,
+      `fromMillis`, `fromSecs`, `fromMins`, `toNanos`, `toMicros`,
+      `toMillis`, `toSecs`, `add`, `sub`, `mul`, `toString`.
+- [x] **2.6.5** Implement `Instant.now()`, `Instant.elapsed()`,
       `Instant.durationSince()`.
-- [ ] **2.6.6** Implement `DateTime` methods: `now()`, `fromUnix()`,
+- [x] **2.6.6** Implement `DateTime` methods: `now()`, `fromUnix()`,
       `toString()`, `toDate()`, `toTime()`, `add()`, `sub()`, `diff()`,
       `dayOfWeek()`, `isLeapYear()`.
-- [ ] **2.6.7** Implement `DateTime.parse()` — ISO 8601, pure Fuse.
-- [ ] **2.6.8** Create `tests/fuse/stdlib/full/time_test.fuse`.
-- [ ] **2.6.9** Run tests. Fix any compiler bugs found.
+- [x] **2.6.7** Implement `DateTime.parse()` — ISO 8601, pure Fuse.
+- [x] **2.6.8** Create `tests/fuse/stdlib/full/time_test.fuse`.
+- [x] **2.6.9** Run tests. No compiler bugs found.
 
 ---
 

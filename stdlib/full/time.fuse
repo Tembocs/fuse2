@@ -1,0 +1,366 @@
+// Fuse Full stdlib — time module.
+//
+// Real-world clock, timestamps, dates, and durations.
+// All times are UTC. Distinct from timer.fuse (async sleep/timeout).
+//
+// import stdlib.full.time
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_time_instant_now() -> Int
+extern fn fuse_rt_time_system_now() -> Int
+extern fn fuse_rt_time_elapsed_nanos(start_nanos: Int) -> Int
+extern fn fuse_rt_string_len(s: String) -> Int
+extern fn fuse_rt_string_char_at(s: String, index: Int) -> String
+extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
+extern fn fuse_rt_int_parse(s: String) -> Result<Int, String>
+
+// --- Data classes ---
+
+pub data class Instant(val nanos: Int)
+
+pub data class Duration(val nanos: Int)
+
+pub data class DateTime(
+  val year: Int,
+  val month: Int,
+  val day: Int,
+  val hour: Int,
+  val minute: Int,
+  val second: Int,
+  val nanoSecond: Int,
+  val unixSeconds: Int
+)
+
+// --- Duration: construction ---
+
+pub fn Duration.fromNanos(nanos: Int) -> Duration {
+  Duration(nanos)
+}
+
+pub fn Duration.fromMicros(micros: Int) -> Duration {
+  Duration(micros * 1000)
+}
+
+pub fn Duration.fromMillis(millis: Int) -> Duration {
+  Duration(millis * 1000000)
+}
+
+pub fn Duration.fromSecs(secs: Int) -> Duration {
+  Duration(secs * 1000000000)
+}
+
+pub fn Duration.fromMins(mins: Int) -> Duration {
+  Duration(mins * 60000000000)
+}
+
+// --- Duration: conversion ---
+
+pub fn Duration.toNanos(ref self) -> Int {
+  self.nanos
+}
+
+pub fn Duration.toMicros(ref self) -> Int {
+  self.nanos / 1000
+}
+
+pub fn Duration.toMillis(ref self) -> Int {
+  self.nanos / 1000000
+}
+
+pub fn Duration.toSecs(ref self) -> Int {
+  self.nanos / 1000000000
+}
+
+// --- Duration: arithmetic ---
+
+pub fn Duration.add(ref self, other: ref Duration) -> Duration {
+  Duration(self.nanos + other.nanos)
+}
+
+pub fn Duration.sub(ref self, other: ref Duration) -> Duration {
+  Duration(self.nanos - other.nanos)
+}
+
+pub fn Duration.mul(ref self, factor: Int) -> Duration {
+  Duration(self.nanos * factor)
+}
+
+// --- Duration: display ---
+
+pub fn Duration.toString(ref self) -> String {
+  val n = self.nanos
+  if n < 0 {
+    val pos = 0 - n
+    val inner = Duration(pos)
+    return f"-{inner.toString()}"
+  }
+  if n < 1000 {
+    return f"{n}ns"
+  }
+  if n < 1000000 {
+    val us = n / 1000
+    val rem = n - us * 1000
+    if rem == 0 { return f"{us}us" }
+    return f"{us}.{padThree(rem)}us"
+  }
+  if n < 1000000000 {
+    val ms = n / 1000000
+    val rem = (n - ms * 1000000) / 1000
+    if rem == 0 { return f"{ms}ms" }
+    return f"{ms}.{padThree(rem)}ms"
+  }
+  val secs = n / 1000000000
+  val rem = (n - secs * 1000000000) / 1000000
+  if rem == 0 { return f"{secs}s" }
+  return f"{secs}.{padThree(rem)}s"
+}
+
+fn padThree(n: Int) -> String {
+  // Format as 3-digit fractional part, stripping trailing zeros
+  var v = n
+  while v > 0 {
+    val lastDigit = v % 10
+    if lastDigit == 0 {
+      v = v / 10
+    } else {
+      break
+    }
+  }
+  f"{v}"
+}
+
+// --- Instant ---
+
+pub fn Instant.now() -> Instant {
+  Instant(fuse_rt_time_instant_now())
+}
+
+pub fn Instant.elapsed(ref self) -> Duration {
+  val elapsedNanos = fuse_rt_time_elapsed_nanos(self.nanos)
+  Duration(elapsedNanos)
+}
+
+pub fn Instant.durationSince(ref self, earlier: ref Instant) -> Duration {
+  Duration(self.nanos - earlier.nanos)
+}
+
+// --- DateTime: internal helpers ---
+
+fn isLeapYearVal(year: Int) -> Bool {
+  if year % 400 == 0 { return true }
+  if year % 100 == 0 { return false }
+  year % 4 == 0
+}
+
+fn daysInMonth(year: Int, month: Int) -> Int {
+  if month == 2 {
+    val leap = isLeapYearVal(year)
+    if leap { return 29 }
+    return 28
+  }
+  if month == 4 or month == 6 or month == 9 or month == 11 {
+    return 30
+  }
+  31
+}
+
+fn daysInYear(year: Int) -> Int {
+  val leap = isLeapYearVal(year)
+  if leap { 366 } else { 365 }
+}
+
+// Convert unix seconds to DateTime fields
+fn unixToFields(unixSecs: Int) -> DateTime {
+  var remaining = unixSecs
+  var year = 1970
+  // Handle positive timestamps
+  if remaining >= 0 {
+    while remaining >= daysInYear(year) * 86400 {
+      remaining = remaining - daysInYear(year) * 86400
+      year = year + 1
+    }
+  } else {
+    // Handle negative timestamps (before epoch)
+    while remaining < 0 {
+      year = year - 1
+      remaining = remaining + daysInYear(year) * 86400
+    }
+  }
+  var month = 1
+  while month <= 12 {
+    val dim = daysInMonth(year, month)
+    if remaining < dim * 86400 { break }
+    remaining = remaining - dim * 86400
+    month = month + 1
+  }
+  val day = remaining / 86400 + 1
+  remaining = remaining - (day - 1) * 86400
+  val hour = remaining / 3600
+  remaining = remaining - hour * 3600
+  val minute = remaining / 60
+  val second = remaining - minute * 60
+  DateTime(year, month, day, hour, minute, second, 0, unixSecs)
+}
+
+// Convert fields to unix seconds
+fn fieldsToUnix(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) -> Int {
+  var secs = 0
+  // Years from 1970
+  if year >= 1970 {
+    var y = 1970
+    while y < year {
+      secs = secs + daysInYear(y) * 86400
+      y = y + 1
+    }
+  } else {
+    var y = 1969
+    while y >= year {
+      secs = secs - daysInYear(y) * 86400
+      y = y - 1
+    }
+  }
+  // Months
+  var m = 1
+  while m < month {
+    secs = secs + daysInMonth(year, m) * 86400
+    m = m + 1
+  }
+  secs = secs + (day - 1) * 86400
+  secs = secs + hour * 3600
+  secs = secs + minute * 60
+  secs = secs + second
+  secs
+}
+
+// --- DateTime: construction ---
+
+pub fn DateTime.now() -> DateTime {
+  val secs = fuse_rt_time_system_now()
+  unixToFields(secs)
+}
+
+pub fn DateTime.fromUnix(secs: Int) -> DateTime {
+  unixToFields(secs)
+}
+
+// --- DateTime: display ---
+
+fn padTwo(n: Int) -> String {
+  if n < 10 { f"0{n}" } else { f"{n}" }
+}
+
+fn padFour(n: Int) -> String {
+  if n < 10 { return f"000{n}" }
+  if n < 100 { return f"00{n}" }
+  if n < 1000 { return f"0{n}" }
+  f"{n}"
+}
+
+pub fn DateTime.toString(ref self) -> String {
+  val y = padFour(self.year)
+  val mo = padTwo(self.month)
+  val d = padTwo(self.day)
+  val h = padTwo(self.hour)
+  val mi = padTwo(self.minute)
+  val s = padTwo(self.second)
+  f"{y}-{mo}-{d}T{h}:{mi}:{s}Z"
+}
+
+pub fn DateTime.toDate(ref self) -> String {
+  val y = padFour(self.year)
+  val mo = padTwo(self.month)
+  val d = padTwo(self.day)
+  f"{y}-{mo}-{d}"
+}
+
+pub fn DateTime.toTime(ref self) -> String {
+  val h = padTwo(self.hour)
+  val mi = padTwo(self.minute)
+  val s = padTwo(self.second)
+  f"{h}:{mi}:{s}"
+}
+
+// --- DateTime: arithmetic ---
+
+pub fn DateTime.add(ref self, d: ref Duration) -> DateTime {
+  val newSecs = self.unixSeconds + d.nanos / 1000000000
+  unixToFields(newSecs)
+}
+
+pub fn DateTime.sub(ref self, d: ref Duration) -> DateTime {
+  val newSecs = self.unixSeconds - d.nanos / 1000000000
+  unixToFields(newSecs)
+}
+
+pub fn DateTime.diff(ref self, other: ref DateTime) -> Duration {
+  var delta = self.unixSeconds - other.unixSeconds
+  if delta < 0 { delta = 0 - delta }
+  Duration(delta * 1000000000)
+}
+
+// --- DateTime: queries ---
+
+pub fn DateTime.dayOfWeek(ref self) -> Int {
+  // Tomohiko Sakamoto's algorithm. 0 = Monday, 6 = Sunday.
+  // Unix epoch (1970-01-01) was a Thursday = 3.
+  // Use days since epoch mod 7.
+  var days = self.unixSeconds / 86400
+  // 1970-01-01 is Thursday. Monday=0 so Thursday=3.
+  var dow = (days + 3) % 7
+  if dow < 0 { dow = dow + 7 }
+  dow
+}
+
+pub fn DateTime.isLeapYear(ref self) -> Bool {
+  isLeapYearVal(self.year)
+}
+
+// --- DateTime: parse (ISO 8601) ---
+
+pub fn DateTime.parse(s: String) -> Result<DateTime, String> {
+  // Accepts: "YYYY-MM-DDTHH:MM:SSZ" or "YYYY-MM-DDTHH:MM:SS"
+  val len = fuse_rt_string_len(s)
+  if len < 19 { return Err("time: invalid ISO 8601 format") }
+  val yearStr = fuse_rt_string_slice(s, 0, 4)
+  val monthStr = fuse_rt_string_slice(s, 5, 7)
+  val dayStr = fuse_rt_string_slice(s, 8, 10)
+  val hourStr = fuse_rt_string_slice(s, 11, 13)
+  val minStr = fuse_rt_string_slice(s, 14, 16)
+  val secStr = fuse_rt_string_slice(s, 17, 19)
+
+  val yearR = fuse_rt_int_parse(yearStr)
+  val monthR = fuse_rt_int_parse(monthStr)
+  val dayR = fuse_rt_int_parse(dayStr)
+  val hourR = fuse_rt_int_parse(hourStr)
+  val minR = fuse_rt_int_parse(minStr)
+  val secR = fuse_rt_int_parse(secStr)
+
+  match yearR {
+    Err(e) => Err(f"time: invalid year: {e}")
+    Ok(year) => match monthR {
+      Err(e) => Err(f"time: invalid month: {e}")
+      Ok(month) => match dayR {
+        Err(e) => Err(f"time: invalid day: {e}")
+        Ok(day) => match hourR {
+          Err(e) => Err(f"time: invalid hour: {e}")
+          Ok(hour) => match minR {
+            Err(e) => Err(f"time: invalid minute: {e}")
+            Ok(minute) => match secR {
+              Err(e) => Err(f"time: invalid second: {e}")
+              Ok(second) => {
+                if month < 1 or month > 12 { return Err("time: month out of range") }
+                if day < 1 or day > 31 { return Err("time: day out of range") }
+                if hour < 0 or hour > 23 { return Err("time: hour out of range") }
+                if minute < 0 or minute > 59 { return Err("time: minute out of range") }
+                if second < 0 or second > 59 { return Err("time: second out of range") }
+                val unix = fieldsToUnix(year, month, day, hour, minute, second)
+                Ok(DateTime(year, month, day, hour, minute, second, 0, unix))
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

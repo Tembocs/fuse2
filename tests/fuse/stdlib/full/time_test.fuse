@@ -1,0 +1,157 @@
+// EXPECTED OUTPUT:
+// === Duration construction ===
+// fromSecs: 5000000000
+// fromMillis: 1234000000
+// fromMicros: 500000
+// fromMins: 120000000000
+// === Duration conversion ===
+// toSecs: 5
+// toMillis: 5000
+// toMicros: 5000000
+// toNanos: 5000000000
+// === Duration arithmetic ===
+// add: 8000000000
+// sub: 2000000000
+// mul: 15000000000
+// === Duration toString ===
+// 500ns
+// 1.5us
+// 42ms
+// 1.234s
+// 0ns
+// === DateTime.fromUnix epoch ===
+// 1970-01-01T00:00:00Z
+// 1970-01-01
+// 00:00:00
+// === DateTime.fromUnix known date ===
+// 2024-01-15T10:30:00Z
+// === DateTime.fromUnix end of year ===
+// 2023-12-31T23:59:59Z
+// === DateTime leap year ===
+// 2000 leap: true
+// 1900 leap: false
+// 2024 leap: true
+// 2023 leap: false
+// === DateTime dayOfWeek ===
+// epoch dow: 3
+// === DateTime arithmetic ===
+// plus 1 day: 1970-01-02T00:00:00Z
+// minus 1 hour: 1969-12-31T23:00:00Z
+// === DateTime diff ===
+// diff: 86400
+// === DateTime parse ===
+// parse ok: 2024-01-15T10:30:00Z
+// parse invalid: true
+// === Instant.now ===
+// instant ok: true
+// === done ===
+// done
+
+import stdlib.full.time
+
+@entrypoint
+fn main() {
+  // Duration construction
+  println("=== Duration construction ===")
+  val d1 = Duration.fromSecs(5)
+  println(f"fromSecs: {d1.nanos}")
+  val d2 = Duration.fromMillis(1234)
+  println(f"fromMillis: {d2.nanos}")
+  val d3 = Duration.fromMicros(500)
+  println(f"fromMicros: {d3.nanos}")
+  val d4 = Duration.fromMins(2)
+  println(f"fromMins: {d4.nanos}")
+
+  // Duration conversion
+  println("=== Duration conversion ===")
+  println(f"toSecs: {d1.toSecs()}")
+  println(f"toMillis: {d1.toMillis()}")
+  println(f"toMicros: {d1.toMicros()}")
+  println(f"toNanos: {d1.toNanos()}")
+
+  // Duration arithmetic
+  println("=== Duration arithmetic ===")
+  val d5 = Duration.fromSecs(3)
+  val added = d1.add(ref d5)
+  println(f"add: {added.nanos}")
+  val subbed = d1.sub(ref d5)
+  println(f"sub: {subbed.nanos}")
+  val mulled = d1.mul(3)
+  println(f"mul: {mulled.nanos}")
+
+  // Duration toString
+  println("=== Duration toString ===")
+  println(Duration.fromNanos(500).toString())
+  println(Duration.fromNanos(1500).toString())
+  println(Duration.fromMillis(42).toString())
+  println(Duration.fromMillis(1234).toString())
+  println(Duration.fromNanos(0).toString())
+
+  // DateTime.fromUnix — epoch
+  println("=== DateTime.fromUnix epoch ===")
+  val epoch = DateTime.fromUnix(0)
+  println(epoch.toString())
+  println(epoch.toDate())
+  println(epoch.toTime())
+
+  // DateTime.fromUnix — known date: 2024-01-15 10:30:00 UTC
+  println("=== DateTime.fromUnix known date ===")
+  val known = DateTime.fromUnix(1705314600)
+  println(known.toString())
+
+  // DateTime.fromUnix — end of 2023
+  println("=== DateTime.fromUnix end of year ===")
+  val eoy = DateTime.fromUnix(1704067199)
+  println(eoy.toString())
+
+  // Leap year
+  println("=== DateTime leap year ===")
+  val y2000 = DateTime.fromUnix(946684800)
+  println(f"2000 leap: {y2000.isLeapYear()}")
+  val y1900 = DateTime.fromUnix(-2208988800)
+  println(f"1900 leap: {y1900.isLeapYear()}")
+  val y2024 = DateTime.fromUnix(1704067200)
+  println(f"2024 leap: {y2024.isLeapYear()}")
+  val y2023 = DateTime.fromUnix(1672531200)
+  println(f"2023 leap: {y2023.isLeapYear()}")
+
+  // dayOfWeek — epoch was Thursday (3)
+  println("=== DateTime dayOfWeek ===")
+  println(f"epoch dow: {epoch.dayOfWeek()}")
+
+  // DateTime arithmetic
+  println("=== DateTime arithmetic ===")
+  val oneDay = Duration.fromSecs(86400)
+  val tomorrow = epoch.add(ref oneDay)
+  println(f"plus 1 day: {tomorrow.toString()}")
+  val oneHour = Duration.fromSecs(3600)
+  val before = epoch.sub(ref oneHour)
+  println(f"minus 1 hour: {before.toString()}")
+
+  // DateTime diff
+  println("=== DateTime diff ===")
+  val diffDur = tomorrow.diff(ref epoch)
+  println(f"diff: {diffDur.toSecs()}")
+
+  // DateTime parse
+  println("=== DateTime parse ===")
+  val parsed = DateTime.parse("2024-01-15T10:30:00Z")
+  match parsed {
+    Ok(dt) => println(f"parse ok: {dt.toString()}")
+    Err(e) => println(f"parse error: {e}")
+  }
+  val bad = DateTime.parse("not a date")
+  match bad {
+    Ok(dt) => println("parse invalid: false")
+    Err(e) => println("parse invalid: true")
+  }
+
+  // Instant.now — just verify it returns something
+  println("=== Instant.now ===")
+  val start = Instant.now()
+  val ok = start.nanos >= 0
+  println(f"instant ok: {ok}")
+
+  println("=== done ===")
+  println("done")
+}

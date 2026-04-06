@@ -1410,6 +1410,38 @@ pub unsafe extern "C" fn fuse_rt_env_has(name: FuseHandle) -> FuseHandle {
     fuse_bool(std::env::var(key).is_ok())
 }
 
+// --- Time FFI ---
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_time_instant_now() -> FuseHandle {
+    let nanos = std::time::Instant::now().elapsed().as_nanos() as i64;
+    // Use a thread-local base instant for monotonic measurement
+    thread_local! {
+        static BASE: std::time::Instant = std::time::Instant::now();
+    }
+    let n = BASE.with(|base| base.elapsed().as_nanos() as i64);
+    fuse_int(n)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_time_system_now() -> FuseHandle {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    fuse_int(secs)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_time_elapsed_nanos(start_nanos: FuseHandle) -> FuseHandle {
+    thread_local! {
+        static BASE: std::time::Instant = std::time::Instant::now();
+    }
+    let now = BASE.with(|base| base.elapsed().as_nanos() as i64);
+    let start = match &(*start_nanos).kind { ValueKind::Int(n) => *n, _ => 0 };
+    fuse_int(now - start)
+}
+
 // --- Sys FFI ---
 
 #[unsafe(no_mangle)]
