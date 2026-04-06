@@ -3,10 +3,10 @@
 
 @entrypoint
 fn main() {
-  val ch = Chan::<Int>.bounded(1)
-  ch.send(1)
-  spawn { ch.send(2) }
-  val first = ch.recv()
-  val second = ch.recv()
+  val (tx, rx) = Chan::<Int>.bounded(1)
+  tx.send(1)
+  spawn { tx.send(2) }
+  rx.recv()
+  rx.recv()
   println("blocked until receiver drains")
 }

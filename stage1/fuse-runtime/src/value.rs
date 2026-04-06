@@ -43,6 +43,7 @@ struct ChannelValue {
     items: VecDeque<FuseHandle>,
     pending: VecDeque<FuseHandle>,
     capacity: Option<usize>,
+    closed: bool,
 }
 
 struct DataValue {
@@ -608,6 +609,7 @@ pub unsafe extern "C" fn fuse_chan_new() -> FuseHandle {
         items: VecDeque::new(),
         pending: VecDeque::new(),
         capacity: None,
+        closed: false,
     }))
 }
 
@@ -617,13 +619,18 @@ pub unsafe extern "C" fn fuse_chan_bounded(capacity: usize) -> FuseHandle {
         items: VecDeque::new(),
         pending: VecDeque::new(),
         capacity: Some(capacity),
+        closed: false,
     }))
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fuse_chan_send(chan: FuseHandle, value: FuseHandle) {
+pub unsafe extern "C" fn fuse_chan_send(chan: FuseHandle, value: FuseHandle) -> FuseHandle {
     unsafe {
         if let ValueKind::Channel(channel) = &mut value_mut(chan).kind {
+            if channel.closed {
+                let msg = "channel closed";
+                return fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()));
+            }
             let is_full = channel
                 .capacity
                 .is_some_and(|capacity| channel.items.len() >= capacity);
@@ -632,7 +639,10 @@ pub unsafe extern "C" fn fuse_chan_send(chan: FuseHandle, value: FuseHandle) {
             } else {
                 channel.pending.push_back(value);
             }
+            return fuse_ok(fuse_unit());
         }
+        let msg = "not a channel";
+        fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()))
     }
 }
 
@@ -641,18 +651,90 @@ pub unsafe extern "C" fn fuse_chan_recv(chan: FuseHandle) -> FuseHandle {
     unsafe {
         match &mut value_mut(chan).kind {
             ValueKind::Channel(channel) => {
-                let value = channel.items.pop_front().unwrap_or(ptr::null_mut());
-                let can_promote = channel
-                    .capacity
-                    .is_none_or(|capacity| channel.items.len() < capacity);
-                if can_promote {
-                    if let Some(next) = channel.pending.pop_front() {
-                        channel.items.push_back(next);
+                if let Some(value) = channel.items.pop_front() {
+                    let can_promote = channel
+                        .capacity
+                        .is_none_or(|capacity| channel.items.len() < capacity);
+                    if can_promote {
+                        if let Some(next) = channel.pending.pop_front() {
+                            channel.items.push_back(next);
+                        }
                     }
+                    return fuse_ok(value);
                 }
-                value
+                let msg = if channel.closed { "channel closed" } else { "channel empty" };
+                fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()))
             }
-            _ => ptr::null_mut(),
+            _ => {
+                let msg = "not a channel";
+                fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()))
+            }
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_chan_try_recv(chan: FuseHandle) -> FuseHandle {
+    unsafe {
+        match &mut value_mut(chan).kind {
+            ValueKind::Channel(channel) => {
+                if let Some(value) = channel.items.pop_front() {
+                    let can_promote = channel
+                        .capacity
+                        .is_none_or(|capacity| channel.items.len() < capacity);
+                    if can_promote {
+                        if let Some(next) = channel.pending.pop_front() {
+                            channel.items.push_back(next);
+                        }
+                    }
+                    fuse_some(value)
+                } else {
+                    fuse_none()
+                }
+            }
+            _ => fuse_none(),
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_chan_close(chan: FuseHandle) {
+    unsafe {
+        if let ValueKind::Channel(channel) = &mut value_mut(chan).kind {
+            channel.closed = true;
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_chan_is_closed(chan: FuseHandle) -> bool {
+    unsafe {
+        match &value_ref(chan).kind {
+            ValueKind::Channel(channel) => channel.closed,
+            _ => false,
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_chan_len(chan: FuseHandle) -> i64 {
+    unsafe {
+        match &value_ref(chan).kind {
+            ValueKind::Channel(channel) => channel.items.len() as i64,
+            _ => 0,
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_chan_cap(chan: FuseHandle) -> FuseHandle {
+    unsafe {
+        match &value_ref(chan).kind {
+            ValueKind::Channel(channel) => match channel.capacity {
+                Some(cap) => fuse_some(fuse_int(cap as i64)),
+                None => fuse_none(),
+            },
+            _ => fuse_none(),
         }
     }
 }
@@ -2547,6 +2629,10 @@ pub unsafe extern "C" fn fuse_rt_list_join(list: FuseHandle, sep: FuseHandle) ->
 }
 
 // --- String FFI helpers ---
+
+pub fn extract_int(handle: FuseHandle) -> i64 {
+    unsafe { match &(*handle).kind { ValueKind::Int(n) => *n, _ => 0 } }
+}
 
 fn extract_string(handle: FuseHandle) -> &'static str {
     unsafe { match &(*handle).kind { ValueKind::String(s) => s.as_str(), _ => "" } }

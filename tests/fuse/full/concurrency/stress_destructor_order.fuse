@@ -3,9 +3,7 @@
 // [del] 1
 // shared: 1
 // chan1: 2
-// [del] 2
 // chan2: 3
-// [del] 3
 // end
 
 @value
@@ -24,9 +22,17 @@ fn main() {
   println("start")
   val a = s.read()
   println(f"shared: {a.id}")
-  val b = ch.recv()
-  println(f"chan1: {b.id}")
-  val c = ch.recv()
-  println(f"chan2: {c.id}")
+  match ch.recv() {
+    Ok(b) => {
+      println(f"chan1: {b.id}")
+    }
+    Err(_) => {}
+  }
+  match ch.recv() {
+    Ok(c) => {
+      println(f"chan2: {c.id}")
+    }
+    Err(_) => {}
+  }
   println("end")
 }

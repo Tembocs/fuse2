@@ -57,3 +57,36 @@ pub fn shared_inner_type(type_name: &str) -> Option<String> {
     (type_name.trim().trim_end_matches('>').contains("Shared") && args.len() == 1)
         .then(|| args[0].clone())
 }
+
+/// Split a tuple type string "(T1,T2,...)" into element types.
+pub fn split_tuple_types(type_name: &str) -> Option<Vec<String>> {
+    let s = type_name.trim();
+    if !s.starts_with('(') || !s.ends_with(')') {
+        return None;
+    }
+    let inner = &s[1..s.len() - 1];
+    let mut types = Vec::new();
+    let mut depth = 0usize;
+    let mut current = String::new();
+    for ch in inner.chars() {
+        match ch {
+            '<' | '(' => {
+                depth += 1;
+                current.push(ch);
+            }
+            '>' | ')' => {
+                depth = depth.saturating_sub(1);
+                current.push(ch);
+            }
+            ',' if depth == 0 => {
+                types.push(current.trim().to_string());
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+    if !current.trim().is_empty() {
+        types.push(current.trim().to_string());
+    }
+    Some(types)
+}

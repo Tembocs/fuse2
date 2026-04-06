@@ -5,6 +5,8 @@
 fn main() {
   val ch = Chan::<Int>.new()
   spawn { ch.send(1) }
-  val received = ch.recv()
-  println("recv: " + received)
+  match ch.recv() {
+    Ok(v) => println("recv: " + v)
+    Err(e) => println("error: " + e)
+  }
 }

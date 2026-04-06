@@ -1,0 +1,54 @@
+// Fuse Full stdlib — chan module.
+//
+// Typed channels for inter-task communication. Chan<T> is a built-in
+// runtime type backed by ValueKind::Channel. All operations are lowered
+// directly by the compiler — the declarations below document the public
+// API surface.
+//
+// import stdlib.full.chan
+
+// --- Construction ---
+//
+// Chan<T>.bounded(capacity: Int) -> (Chan<T>, Chan<T>)
+//   Create a bounded channel with the given capacity.
+//   Returns a (sender, receiver) tuple. Both halves share the same
+//   underlying channel.
+//
+// Chan<T>.unbounded() -> (Chan<T>, Chan<T>)
+//   Create an unbounded channel.
+//   Returns a (sender, receiver) tuple.
+
+// --- Sending and Receiving ---
+//
+// Chan<T>.send(mutref self, value: T) -> Result<(), String>
+//   Send a value into the channel.
+//   Returns Err("channel closed") if the channel has been closed.
+//   Bounded channels queue excess sends until space is available.
+//
+// Chan<T>.recv(mutref self) -> Result<T, String>
+//   Receive the next value from the channel.
+//   Returns Err("channel closed") if the channel is closed and empty.
+//   Returns Err("channel empty") if the channel is open but empty
+//   (single-threaded: caller must ensure items are queued before recv).
+//
+// Chan<T>.tryRecv(mutref self) -> Option<T>
+//   Non-blocking receive. Returns Some(value) if an item is available,
+//   None otherwise.
+
+// --- Lifecycle ---
+//
+// Chan<T>.close(owned self)
+//   Mark the channel as closed. Subsequent sends return Err.
+//   Pending items can still be received until the queue drains.
+//
+// Chan<T>.isClosed(ref self) -> Bool
+//   Returns true if the channel has been closed.
+
+// --- Query ---
+//
+// Chan<T>.len(ref self) -> Int
+//   Number of items currently queued in the channel.
+//
+// Chan<T>.cap(ref self) -> Option<Int>
+//   Channel capacity. Returns Some(n) for bounded channels,
+//   None for unbounded channels.

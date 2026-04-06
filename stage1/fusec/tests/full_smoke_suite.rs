@@ -45,7 +45,7 @@ fn bounded_chan_smoke_compiles_and_runs() {
         .join("phase8_bounded_chan_smoke.fuse");
     fs::write(
         &fixture,
-        "@entrypoint\nfn main() {\n  val ch = Chan::<Int>.bounded(1)\n  ch.send(1)\n  println(ch.recv())\n}\n",
+        "@entrypoint\nfn main() {\n  val (tx, rx) = Chan::<Int>.bounded(1)\n  tx.send(1)\n  match rx.recv() {\n    Ok(v) => println(v)\n    Err(e) => println(e)\n  }\n}\n",
     )
     .expect("write bounded smoke fixture");
     let output = harness::unique_output_path("bounded_chan_full");

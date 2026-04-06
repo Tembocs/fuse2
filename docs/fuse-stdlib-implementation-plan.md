@@ -1022,16 +1022,40 @@ and SIMD to match the spec.
 
 Upgrade channel API to match spec.
 
-- [ ] **4.1.1** Review existing `stdlib/full/chan.fuse` and runtime.
-- [ ] **4.1.2** Replace with spec-compliant version.
-- [ ] **4.1.3** Implement `Chan.bounded() -> (Chan<T>, Chan<T>)` and
+- [x] **4.1.1** Review existing `stdlib/full/chan.fuse` and runtime.
+- [x] **4.1.2** Replace with spec-compliant version.
+- [x] **4.1.3** Implement `Chan.bounded() -> (Chan<T>, Chan<T>)` and
       `Chan.unbounded() -> (Chan<T>, Chan<T>)` (tuple returns).
-- [ ] **4.1.4** Implement `send`, `recv` with `Result` return types.
-- [ ] **4.1.5** Implement `tryRecv`, `close`, `isClosed`, `len`, `cap`.
-- [ ] **4.1.6** Add any missing FFI to runtime.
-- [ ] **4.1.7** Update `tests/fuse/full/concurrency/chan_*.fuse` tests.
-- [ ] **4.1.8** Create `tests/fuse/stdlib/full/chan_test.fuse`.
-- [ ] **4.1.9** Run tests. Fix any compiler bugs found.
+- [x] **4.1.4** Implement `send`, `recv` with `Result` return types.
+- [x] **4.1.5** Implement `tryRecv`, `close`, `isClosed`, `len`, `cap`.
+- [x] **4.1.6** Add any missing FFI to runtime.
+- [x] **4.1.7** Update `tests/fuse/full/concurrency/chan_*.fuse` tests.
+- [x] **4.1.8** Create `tests/fuse/stdlib/full/chan_test.fuse`.
+- [x] **4.1.9** Run tests. Fix any compiler bugs found.
+
+**Notes:**
+- Added `closed` field to `ChannelValue` in fuse-runtime. New runtime
+  functions: `fuse_chan_try_recv`, `fuse_chan_close`, `fuse_chan_is_closed`,
+  `fuse_chan_len`, `fuse_chan_cap` with matching `fuse_chan_runtime_*`
+  wrappers in chan.rs.
+- `send` now returns `Result<Unit, String>` (Err if channel closed).
+  `recv` now returns `Result<T, String>` (Err if closed/empty).
+- `bounded()` and `unbounded()` return `(Chan<T>, Chan<T>)` tuples.
+  Both halves share the same underlying channel handle.
+- Fixed TupleDestruct codegen: element types are now extracted from
+  the tuple type string and assigned to destructured variables.
+- Fixed ASAP release aliasing: tuple-destructured Chan/Shared bindings
+  set `destroy = false` to prevent releasing shared handles.
+- Fixed match arm ASAP release: outer-scope locals are now protected
+  from ASAP release inside match arm block bodies (same pattern as
+  loop bodies).
+- Fixed `fuse_chan_runtime_bounded`: capacity argument was being
+  interpreted as raw usize (pointer value) instead of extracting the
+  Int from the FuseHandle. Added `extract_int` helper.
+- Updated all existing chan tests (chan_basic, chan_bounded_backpressure,
+  chan_repeated_send_recv, stress_destructor_order) and the
+  bounded_chan_smoke inline test to use Result-returning API.
+- All 89 tests pass, 0 failures. Zero TODO/FIXME/HACK in stdlib files.
 
 ---
 
@@ -1250,6 +1274,10 @@ fix commits. Full details including root cause analysis are in
 | 8 | 1.5 | Evaluator `+` operator for Float+Float fell through to string concatenation. `0.1 + 0.2` produced `"0.10.2"` instead of `0.30...`. Only Int+Int and String+String were handled. | `val x = 0.1 + 0.2` → `"0.10.2"` | See Phase 1.5 commit |
 | 9 | 1.5 | Evaluator `compare_binary` only handled Int comparisons. Float `<`, `>`, `<=`, `>=` all returned `false`. `1.5 < 3.7` evaluated to false. | `if 1.5 < 3.7 { ... }` → false branch taken | See Phase 1.5 commit |
 | 10 | 1.6 | F-string ASAP name extraction used hand-rolled `split('.')` that only found the first identifier. Variables inside function call arguments (e.g., `halfPi` in `{math.sin(halfPi)}`) were missed, causing premature move/destroy before the f-string evaluated. | `val x = 1.0; println(f"{math.sin(x)}")` → "cannot use x after move" | See Phase 1.6 commit |
+| 11 | 4.1 | `TupleDestruct` codegen set `ty: None` for all destructured elements, losing type information. Chan/Shared methods on destructured variables failed with "cannot infer receiver type". | `val (tx, rx) = Chan::<Int>.bounded(1); tx.send(1)` → "unknown extension" | See Phase 4.1 commit |
+| 12 | 4.1 | Match arm block bodies called `compile_statements` with their own ASAP analysis, which released outer-scope locals (e.g., `ch`) prematurely. Only triggered when match arms contained block bodies `{ ... }`, not expression bodies. | `match ch.recv() { Ok(b) => { println(b) } ... }; ch.recv()` → channel released between matches | See Phase 4.1 commit |
+| 13 | 4.1 | Tuple-destructured Chan/Shared handles aliased the same runtime object. ASAP release of one handle destroyed the shared state, making the other handle invalid. | `val (tx, rx) = Chan::<Int>.bounded(1); tx.send(1); rx.recv()` → "channel empty" | See Phase 4.1 commit |
+| 14 | 4.1 | `fuse_chan_runtime_bounded` accepted `capacity: usize` but received a FuseHandle (pointer to Int). The pointer value was used as capacity (huge number), making all bounded channels effectively unbounded. `cap()` returned the pointer value, not the intended capacity. | `Chan::<Int>.bounded(5); ch.cap()` → Some(huge_number) | See Phase 4.1 commit |
 
 ---
 

@@ -1,0 +1,99 @@
+// EXPECTED OUTPUT:
+// --- bounded ---
+// send ok: true
+// recv ok: 1
+// --- unbounded ---
+// send ok: true
+// recv ok: 42
+// --- tryRecv ---
+// tryRecv empty: true
+// tryRecv has: 10
+// --- close ---
+// closed: true
+// send after close err: true
+// recv after close err: true
+// --- len ---
+// len 0: true
+// len 3: true
+// --- cap ---
+// bounded cap: true
+// unbounded cap: true
+
+@entrypoint
+fn main() {
+  // --- bounded ---
+  println("--- bounded ---")
+  val (tx, rx) = Chan::<Int>.bounded(10)
+  match tx.send(1) {
+    Ok(_) => println("send ok: true")
+    Err(e) => println("send ok: false " + e)
+  }
+  match rx.recv() {
+    Ok(v) => println("recv ok: " + v)
+    Err(e) => println("recv ok: false " + e)
+  }
+
+  // --- unbounded ---
+  println("--- unbounded ---")
+  val (tx2, rx2) = Chan::<Int>.unbounded()
+  match tx2.send(42) {
+    Ok(_) => println("send ok: true")
+    Err(e) => println("send ok: false " + e)
+  }
+  match rx2.recv() {
+    Ok(v) => println("recv ok: " + v)
+    Err(e) => println("recv ok: false " + e)
+  }
+
+  // --- tryRecv ---
+  println("--- tryRecv ---")
+  val ch3 = Chan::<Int>.new()
+  match ch3.tryRecv() {
+    Some(v) => println("tryRecv empty: false")
+    None => println("tryRecv empty: true")
+  }
+  ch3.send(10)
+  match ch3.tryRecv() {
+    Some(v) => println("tryRecv has: " + v)
+    None => println("tryRecv has: none")
+  }
+
+  // --- close ---
+  println("--- close ---")
+  val ch4 = Chan::<Int>.new()
+  ch4.send(99)
+  ch4.close()
+  println("closed: " + ch4.isClosed())
+  match ch4.send(1) {
+    Ok(_) => println("send after close err: false")
+    Err(_) => println("send after close err: true")
+  }
+  // Drain the queued item first
+  ch4.recv()
+  match ch4.recv() {
+    Ok(_) => println("recv after close err: false")
+    Err(_) => println("recv after close err: true")
+  }
+
+  // --- len ---
+  println("--- len ---")
+  val ch5 = Chan::<Int>.new()
+  println("len 0: " + (ch5.len() == 0))
+  ch5.send(1)
+  ch5.send(2)
+  ch5.send(3)
+  println("len 3: " + (ch5.len() == 3))
+
+  // --- cap ---
+  println("--- cap ---")
+  val (btx, _) = Chan::<Int>.bounded(5)
+  match btx.cap() {
+    Some(c) => println("bounded cap: " + (c == 5))
+    None => println("bounded cap: false")
+  }
+  val uch = Chan::<Int>.new()
+  match uch.cap() {
+    Some(_) => println("unbounded cap: false")
+    None => println("unbounded cap: true")
+  }
+}

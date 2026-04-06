@@ -12,7 +12,10 @@ fn main() {
   var total = 0
   var j = 0
   while j < 100 {
-    total = total + ch.recv()
+    match ch.recv() {
+      Ok(v) => { total = total + v }
+      Err(_) => {}
+    }
     j = j + 1
   }
   println(total)

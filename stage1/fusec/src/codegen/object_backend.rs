@@ -16,7 +16,7 @@ use crate::hir::lower_program;
 use crate::parser::parse_source;
 
 use super::layout::{self, ProgramLayout};
-use super::type_names::{chan_inner_type, option_inner_type, result_err_type, result_ok_type, shared_inner_type};
+use super::type_names::{chan_inner_type, option_inner_type, result_err_type, result_ok_type, shared_inner_type, split_tuple_types};
 
 pub fn backend_name() -> &'static str {
     "cranelift-object"
@@ -232,6 +232,11 @@ struct RuntimeFns {
     chan_new: FuncId,
     chan_send: FuncId,
     chan_recv: FuncId,
+    chan_try_recv: FuncId,
+    chan_close: FuncId,
+    chan_is_closed: FuncId,
+    chan_len: FuncId,
+    chan_cap: FuncId,
     shared_new: FuncId,
     shared_read: FuncId,
     shared_write: FuncId,
@@ -864,8 +869,13 @@ fn declare_runtime_functions(
         list_get: declare(module, "fuse_list_get", &[pointer_type, pointer_type], &[pointer_type])?,
         chan_bounded: declare(module, "fuse_chan_runtime_bounded", &[pointer_type], &[pointer_type])?,
         chan_new: declare(module, "fuse_chan_runtime_new", &[], &[pointer_type])?,
-        chan_send: declare(module, "fuse_chan_runtime_send", &[pointer_type, pointer_type], &[])?,
+        chan_send: declare(module, "fuse_chan_runtime_send", &[pointer_type, pointer_type], &[pointer_type])?,
         chan_recv: declare(module, "fuse_chan_runtime_recv", &[pointer_type], &[pointer_type])?,
+        chan_try_recv: declare(module, "fuse_chan_runtime_try_recv", &[pointer_type], &[pointer_type])?,
+        chan_close: declare(module, "fuse_chan_runtime_close", &[pointer_type], &[])?,
+        chan_is_closed: declare(module, "fuse_chan_runtime_is_closed", &[pointer_type], &[types::I8])?,
+        chan_len: declare(module, "fuse_chan_runtime_len", &[pointer_type], &[types::I64])?,
+        chan_cap: declare(module, "fuse_chan_runtime_cap", &[pointer_type], &[pointer_type])?,
         shared_new: declare(module, "fuse_shared_runtime_new", &[pointer_type], &[pointer_type])?,
         shared_read: declare(module, "fuse_shared_runtime_read", &[pointer_type], &[pointer_type])?,
         shared_write: declare(module, "fuse_shared_runtime_write", &[pointer_type], &[pointer_type])?,
@@ -1052,6 +1062,8 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             fa::Statement::Defer(_) => {}
             fa::Statement::TupleDestruct(td) => {
                 let value = self.compile_expr(builder, &td.value)?;
+                // Extract element types from the tuple type "(T1,T2,...)"
+                let elem_types = value.ty.as_deref().and_then(split_tuple_types);
                 for (i, name) in td.names.iter().enumerate() {
                     let idx = builder.ins().iconst(self.compiler.pointer_type, i as i64);
                     let item = self.runtime(
@@ -1062,12 +1074,18 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     );
                     let variable = self.new_var(builder, self.compiler.pointer_type);
                     builder.def_var(variable, item);
+                    let elem_ty = elem_types.as_ref().and_then(|ts| ts.get(i).cloned());
+                    // Disable ASAP release for reference-like types (Chan, Shared)
+                    // that alias the same handle — releasing one would invalidate the other.
+                    let is_ref_type = elem_ty.as_deref()
+                        .map(|t| matches!(layout::canonical_type_name(t), "Chan" | "Shared"))
+                        .unwrap_or(false);
                     self.locals.insert(
                         name.clone(),
                         LocalBinding {
                             var: variable,
-                            ty: None,
-                            destroy: true,
+                            ty: elem_ty,
+                            destroy: !is_ref_type,
                         },
                     );
                 }
@@ -1393,7 +1411,76 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         &[receiver.value],
                         self.compiler.pointer_type,
                     ),
-                    ty: chan_inner_type(&receiver_type),
+                    ty: {
+                        let inner = chan_inner_type(&receiver_type).unwrap_or_else(|| "Unknown".to_string());
+                        Some(format!("Result<{inner}, String>"))
+                    },
+                }),
+                "tryRecv" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.chan_try_recv,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: {
+                        let inner = chan_inner_type(&receiver_type).unwrap_or_else(|| "Unknown".to_string());
+                        Some(format!("Option<{inner}>"))
+                    },
+                }),
+                "close" => {
+                    self.runtime_void(
+                        builder,
+                        self.compiler.runtime.chan_close,
+                        &[receiver.value],
+                    );
+                    Ok(TypedValue {
+                        value: self.runtime_nullary(builder, self.compiler.runtime.unit),
+                        ty: Some("Unit".to_string()),
+                    })
+                }
+                "isClosed" => {
+                    let raw = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.chan_is_closed,
+                        &[receiver.value],
+                        types::I8,
+                    );
+                    Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.bool_,
+                            &[raw],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Bool".to_string()),
+                    })
+                }
+                "len" => {
+                    let raw_len = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.chan_len,
+                        &[receiver.value],
+                        types::I64,
+                    );
+                    Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.int,
+                            &[raw_len],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Int".to_string()),
+                    })
+                }
+                "cap" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.chan_cap,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some("Option<Int>".to_string()),
                 }),
                 other => Err(format!("unsupported Chan zero-arg member `{other}()`")),
             };
@@ -2012,14 +2099,32 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     builder,
                     _args.first().ok_or_else(|| "Chan::<T>.bounded requires a capacity".to_string())?,
                 )?;
+                let chan = self.runtime(
+                    builder,
+                    self.compiler.runtime.chan_bounded,
+                    &[arg.value],
+                    self.compiler.pointer_type,
+                );
+                // Return (Chan<T>, Chan<T>) tuple — both halves share the same channel
+                let tuple = self.runtime_nullary(builder, self.compiler.runtime.list_new);
+                self.runtime_void(builder, self.compiler.runtime.list_push, &[tuple, chan]);
+                self.runtime_void(builder, self.compiler.runtime.list_push, &[tuple, chan]);
+                let chan_type = namespace.replace("::", "");
                 Ok(TypedValue {
-                    value: self.runtime(
-                        builder,
-                        self.compiler.runtime.chan_bounded,
-                        &[arg.value],
-                        self.compiler.pointer_type,
-                    ),
-                    ty: Some(namespace.replace("::", "")),
+                    value: tuple,
+                    ty: Some(format!("({chan_type},{chan_type})")),
+                })
+            }
+            ("Chan", "unbounded") => {
+                let chan = self.runtime_nullary(builder, self.compiler.runtime.chan_new);
+                // Return (Chan<T>, Chan<T>) tuple — both halves share the same channel
+                let tuple = self.runtime_nullary(builder, self.compiler.runtime.list_new);
+                self.runtime_void(builder, self.compiler.runtime.list_push, &[tuple, chan]);
+                self.runtime_void(builder, self.compiler.runtime.list_push, &[tuple, chan]);
+                let chan_type = namespace.replace("::", "");
+                Ok(TypedValue {
+                    value: tuple,
+                    ty: Some(format!("({chan_type},{chan_type})")),
                 })
             }
             ("Shared", "new") => {
@@ -2159,14 +2264,14 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             return match member.name.as_str() {
                 "send" => {
                     let value = self.compile_expr(builder, &args[0])?;
-                    self.runtime_void(
-                        builder,
-                        self.compiler.runtime.chan_send,
-                        &[receiver.value, value.value],
-                    );
                     Ok(TypedValue {
-                        value: self.runtime_nullary(builder, self.compiler.runtime.unit),
-                        ty: Some("Unit".to_string()),
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.chan_send,
+                            &[receiver.value, value.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Result<Unit, String>".to_string()),
                     })
                 }
                 "recv" => Ok(TypedValue {
@@ -2176,7 +2281,76 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         &[receiver.value],
                         self.compiler.pointer_type,
                     ),
-                    ty: chan_inner_type(&receiver_type),
+                    ty: {
+                        let inner = chan_inner_type(&receiver_type).unwrap_or_else(|| "Unknown".to_string());
+                        Some(format!("Result<{inner}, String>"))
+                    },
+                }),
+                "close" => {
+                    self.runtime_void(
+                        builder,
+                        self.compiler.runtime.chan_close,
+                        &[receiver.value],
+                    );
+                    Ok(TypedValue {
+                        value: self.runtime_nullary(builder, self.compiler.runtime.unit),
+                        ty: Some("Unit".to_string()),
+                    })
+                }
+                "tryRecv" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.chan_try_recv,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: {
+                        let inner = chan_inner_type(&receiver_type).unwrap_or_else(|| "Unknown".to_string());
+                        Some(format!("Option<{inner}>"))
+                    },
+                }),
+                "isClosed" => {
+                    let raw = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.chan_is_closed,
+                        &[receiver.value],
+                        types::I8,
+                    );
+                    Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.bool_,
+                            &[raw],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Bool".to_string()),
+                    })
+                }
+                "len" => {
+                    let raw_len = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.chan_len,
+                        &[receiver.value],
+                        types::I64,
+                    );
+                    Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.int,
+                            &[raw_len],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Int".to_string()),
+                    })
+                }
+                "cap" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.chan_cap,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some("Option<Int>".to_string()),
                 }),
                 other => Err(format!("unsupported Chan member call `{other}`")),
             };
@@ -2763,6 +2937,12 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             builder.switch_to_block(body_block);
             self.locals = base_locals.clone();
             self.bind_pattern(builder, subject.value, &subject_type, &arm.pattern)?;
+            // Protect outer locals from ASAP release inside arm body.
+            for (name, binding) in self.locals.iter_mut() {
+                if base_locals.contains_key(name) {
+                    binding.destroy = false;
+                }
+            }
             match &arm.body {
                 fa::ArmBody::Expr(expr) => {
                     let value = self.compile_expr(builder, expr)?;
@@ -2814,6 +2994,12 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         builder.switch_to_block(first_block);
         self.locals = base_locals.clone();
         self.bind_pattern(builder, subject.value, subject_type, &match_expr.arms[0].pattern)?;
+        // Protect outer locals from ASAP release inside arm body.
+        for (name, binding) in self.locals.iter_mut() {
+            if base_locals.contains_key(name) {
+                binding.destroy = false;
+            }
+        }
         match &match_expr.arms[0].body {
             fa::ArmBody::Expr(expr) => {
                 let value = self.compile_expr(builder, expr)?;
@@ -2833,6 +3019,12 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         builder.switch_to_block(second_block);
         self.locals = base_locals.clone();
         self.bind_pattern(builder, subject.value, subject_type, &match_expr.arms[1].pattern)?;
+        // Protect outer locals from ASAP release inside arm body.
+        for (name, binding) in self.locals.iter_mut() {
+            if base_locals.contains_key(name) {
+                binding.destroy = false;
+            }
+        }
         match &match_expr.arms[1].body {
             fa::ArmBody::Expr(expr) => {
                 let value = self.compile_expr(builder, expr)?;
@@ -3352,8 +3544,19 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     }
                     if layout::canonical_type_name(&receiver_type) == "Chan" {
                         return match member.name.as_str() {
-                            "send" => Some("Unit".to_string()),
-                            "recv" => chan_inner_type(&receiver_type),
+                            "send" => Some("Result<Unit, String>".to_string()),
+                            "recv" => {
+                                let inner = chan_inner_type(&receiver_type).unwrap_or_else(|| "Unknown".to_string());
+                                Some(format!("Result<{inner}, String>"))
+                            }
+                            "tryRecv" => {
+                                let inner = chan_inner_type(&receiver_type).unwrap_or_else(|| "Unknown".to_string());
+                                Some(format!("Option<{inner}>"))
+                            }
+                            "close" => Some("Unit".to_string()),
+                            "isClosed" => Some("Bool".to_string()),
+                            "len" => Some("Int".to_string()),
+                            "cap" => Some("Option<Int>".to_string()),
                             _ => None,
                         };
                     }
