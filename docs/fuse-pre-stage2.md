@@ -477,11 +477,11 @@ importing modules. `path.SEPARATOR` cannot be read after `import path`.
 
 ---
 
-### Phase W2.2 — Float32 Lexer & Parser
+### Phase W2.2 — Float32 Lexer & Parser [DONE]
 
-- [ ] **W2.2.1** Verify `Float32` accepted as type name (plain identifier).
-- [ ] **W2.2.2** Verify in parameter types, return types, annotations, generics.
-- [ ] **W2.2.3** Float32 via explicit conversion only (`Float32.from(3.14)`).
+- [x] **W2.2.1** Verify `Float32` accepted as type name (plain identifier).
+- [x] **W2.2.2** Verify in parameter types, return types, annotations, generics.
+- [x] **W2.2.3** Float32 via explicit conversion only (`Float32.from(3.14)`).
 
 ---
 
