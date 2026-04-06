@@ -434,18 +434,18 @@ Pass through HIR. Codegen needs no change (type erasure).
 
 ---
 
-### Phase W1.4 — Module-Level Constants
+### Phase W1.4 — Module-Level Constants [DONE]
 
 **Root cause:** Module-level `val` declarations are not accessible from
 importing modules. `path.SEPARATOR` cannot be read after `import path`.
 
-- [ ] **W1.4.1** Audit how module-level `val` are stored in evaluator
+- [x] **W1.4.1** Audit how module-level `val` are stored in evaluator
       module environment.
-- [ ] **W1.4.2** Add `module.CONSTANT` access in evaluator.
-- [ ] **W1.4.3** In codegen: compile module-level `val` as global symbols.
-- [ ] **W1.4.4** Test: `module_constant_access.fuse`.
-- [ ] **W1.4.5** Test: `module_constant_string.fuse`.
-- [ ] **W1.4.6** Full test suite green.
+- [x] **W1.4.2** Add `module.CONSTANT` access in evaluator.
+- [x] **W1.4.3** In codegen: compile module-level `val` as global symbols.
+- [x] **W1.4.4** Test: `module_constant_access.fuse`.
+- [x] **W1.4.5** Test: `module_constant_string.fuse`.
+- [x] **W1.4.6** Full test suite green.
 
 ---
 

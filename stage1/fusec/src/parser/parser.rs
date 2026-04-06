@@ -497,7 +497,7 @@ impl Parser {
         self.expect(TokenKind::RParen, "expected `)` after parameters")?;
         let mut return_type = None;
         if self.match_kind(TokenKind::Arrow).is_some() {
-            return_type = Some(self.parse_type_name(&[TokenKind::LBrace, TokenKind::FatArrow, TokenKind::Fn, TokenKind::Extern, TokenKind::Pub, TokenKind::Data, TokenKind::Enum, TokenKind::Import, TokenKind::At, TokenKind::Eof]));
+            return_type = Some(self.parse_type_name(&[TokenKind::LBrace, TokenKind::FatArrow, TokenKind::Fn, TokenKind::Extern, TokenKind::Pub, TokenKind::Data, TokenKind::Enum, TokenKind::Import, TokenKind::At, TokenKind::Val, TokenKind::Var, TokenKind::Struct, TokenKind::Eof]));
         }
         Ok(ExternFnDecl {
             name,

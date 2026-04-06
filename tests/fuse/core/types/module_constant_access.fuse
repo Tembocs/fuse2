@@ -1,0 +1,8 @@
+// EXPECTED OUTPUT:
+// 3.141592653589793
+import math
+
+@entrypoint
+fn main() {
+  println(math.PI)
+}
