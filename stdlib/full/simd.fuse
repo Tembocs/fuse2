@@ -1,0 +1,66 @@
+// Fuse Full stdlib — simd module.
+//
+// SIMD<T, N> — data-parallel operations on fixed-size vectors.
+// T must be Float32, Float64, Int32, Int64 (or aliases Int, Float).
+// N must be a power of 2 in {2, 4, 8, 16}.
+//
+// Stage 1 uses scalar fallback (no hardware SIMD). The public API is
+// designed so that Cranelift SIMD intrinsics can be layered underneath
+// without changing call sites.
+//
+// At runtime, SIMD vectors are represented as List<T>. All operations
+// accept and return lists. Type and lane validation happen at compile
+// time via the SIMD::<T, N> namespace.
+//
+// import stdlib.full.simd
+
+// --- Construction ---
+//
+// SIMD<T, N>.broadcast(value: T) -> List<T>
+//   Create a vector with all N lanes set to the same value.
+//
+// SIMD<T, N>.fromList(items: List<T>) -> List<T>
+//   Create a vector from a list. Identity in Stage 1.
+
+// --- Conversion ---
+//
+// SIMD<T, N>.toList(vec: List<T>) -> List<T>
+//   Convert a vector back to a list. Identity in Stage 1.
+
+// --- Elementwise Arithmetic ---
+//
+// SIMD<T, N>.add(a: List<T>, b: List<T>) -> List<T>
+// SIMD<T, N>.sub(a: List<T>, b: List<T>) -> List<T>
+// SIMD<T, N>.mul(a: List<T>, b: List<T>) -> List<T>
+// SIMD<T, N>.div(a: List<T>, b: List<T>) -> List<T>
+//   Elementwise binary operations. Result length is min(len(a), len(b)).
+
+// --- Elementwise Comparison ---
+//
+// SIMD<T, N>.min(a: List<T>, b: List<T>) -> List<T>
+// SIMD<T, N>.max(a: List<T>, b: List<T>) -> List<T>
+//   Elementwise min/max.
+
+// --- Unary ---
+//
+// SIMD<T, N>.abs(vec: List<T>) -> List<T>
+//   Absolute value of each element.
+//
+// SIMD<T, N>.sqrt(vec: List<T>) -> List<T>
+//   Square root of each element (always returns Float).
+
+// --- Reductions ---
+//
+// SIMD<T, N>.sum(vec: List<T>) -> T
+//   Sum all elements.
+//
+// SIMD<T, N>.dot(a: List<T>, b: List<T>) -> T
+//   Dot product: sum of elementwise products.
+
+// --- Access ---
+//
+// SIMD<T, N>.get(vec: List<T>, index: Int) -> T
+//   Get element at index.
+//
+// SIMD<T, N>.len(vec: List<T>) -> Int
+//   Number of elements in the vector.

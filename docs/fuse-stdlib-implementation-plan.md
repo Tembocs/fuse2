@@ -1119,15 +1119,41 @@ Upgrade timer from stub to working implementation.
 
 Upgrade SIMD API to match spec.
 
-- [ ] **4.4.1** Review existing `stdlib/full/simd.fuse` and runtime.
-- [ ] **4.4.2** Replace with spec-compliant version.
-- [ ] **4.4.3** Implement `broadcast`, `fromList`, `toList`.
-- [ ] **4.4.4** Implement `add`, `sub`, `mul`, `div`, `sum`, `dot`.
-- [ ] **4.4.5** Implement `min`, `max`, `abs`, `sqrt`, `get`, `len`.
-- [ ] **4.4.6** Add any missing FFI to runtime.
-- [ ] **4.4.7** Update existing SIMD tests.
-- [ ] **4.4.8** Create `tests/fuse/stdlib/full/simd_test.fuse`.
-- [ ] **4.4.9** Run tests. Fix any compiler bugs found.
+- [x] **4.4.1** Review existing `stdlib/full/simd.fuse` and runtime.
+- [x] **4.4.2** Replace with spec-compliant version.
+- [x] **4.4.3** Implement `broadcast`, `fromList`, `toList`.
+- [x] **4.4.4** Implement `add`, `sub`, `mul`, `div`, `sum`, `dot`.
+- [x] **4.4.5** Implement `min`, `max`, `abs`, `sqrt`, `get`, `len`.
+- [x] **4.4.6** Add any missing FFI to runtime.
+- [x] **4.4.7** Update existing SIMD tests.
+- [x] **4.4.8** Create `tests/fuse/stdlib/full/simd_test.fuse`.
+- [x] **4.4.9** Run tests. Fix any compiler bugs found.
+
+**Notes:**
+- Implemented all 15 spec methods as scalar fallback operations on
+  lists: `broadcast`, `fromList`, `toList`, `add`, `sub`, `mul`, `div`,
+  `sum`, `dot`, `min`, `max`, `abs`, `sqrt`, `get`, `len`.
+- Added 12 new runtime functions (`fuse_simd_*`) to value.rs with
+  matching `fuse_simd_runtime_*` wrappers in simd.rs. Shared helper
+  functions (`simd_extract_f64`, `simd_extract_i64`, `simd_is_float_list`,
+  `simd_list_items`, `simd_elementwise_op`) reduce duplication.
+- Codegen expanded from single `("SIMD", "sum")` to full `("SIMD", method)`
+  dispatcher with 12 new FuncIds. Operations categorized: constructors
+  (broadcast, fromList), conversions (toList), elementwise binary
+  (add/sub/mul/div/min/max), unary (abs/sqrt), reductions (sum/dot),
+  and accessors (get/len).
+- SIMD vectors are represented as `List<T>` at runtime. `fromList` and
+  `toList` are identity operations. Type and lane validation remain
+  compile-time only via `parse_simd_params`/`validate_simd_type`/
+  `validate_simd_lanes`.
+- `sqrt` always returns Float values. `div` includes zero-division guard.
+  `abs` handles both Int and Float. `broadcast` pushes the same handle
+  N times (values are immutable).
+- All 89 tests pass (7 existing SIMD tests + new simd_test.fuse), 0
+  failures. Zero TODO/FIXME/HACK.
+
+**Wave 4 complete.** All four concurrency modules (chan, shared, timer,
+simd) are now spec-compliant.
 
 ---
 

@@ -1,0 +1,123 @@
+// EXPECTED OUTPUT:
+// --- broadcast ---
+// broadcast: 4
+// val: 5
+// --- fromList/toList ---
+// len: 4
+// get 0: 1
+// get 3: 4
+// --- add ---
+// add: 5 7 9 11
+// --- sub ---
+// sub: -3 -3 -3 -3
+// --- mul ---
+// mul: 4 10 18 28
+// --- div ---
+// div: 2 2 2 2
+// --- min/max ---
+// min: 1 2 3 4
+// max: 4 5 6 7
+// --- abs ---
+// abs: 3 1 2 4
+// --- sum ---
+// sum int: 10
+// --- dot ---
+// dot: 60
+// --- sqrt ---
+// sqrt sum: 14
+
+@entrypoint
+fn main() {
+  // --- broadcast ---
+  println("--- broadcast ---")
+  val bcast = SIMD::<Int, 4>.broadcast(5)
+  println("broadcast: " + SIMD::<Int, 4>.len(bcast))
+  println("val: " + SIMD::<Int, 4>.get(bcast, 0))
+
+  // --- fromList/toList ---
+  println("--- fromList/toList ---")
+  val v = SIMD::<Int, 4>.fromList([1, 2, 3, 4])
+  val lst = SIMD::<Int, 4>.toList(v)
+  println("len: " + SIMD::<Int, 4>.len(lst))
+  println("get 0: " + SIMD::<Int, 4>.get(lst, 0))
+  println("get 3: " + SIMD::<Int, 4>.get(lst, 3))
+
+  // --- add ---
+  println("--- add ---")
+  val a = [1, 2, 3, 4]
+  val b = [4, 5, 6, 7]
+  val added = SIMD::<Int, 4>.add(a, b)
+  val s0 = SIMD::<Int, 4>.get(added, 0)
+  val s1 = SIMD::<Int, 4>.get(added, 1)
+  val s2 = SIMD::<Int, 4>.get(added, 2)
+  val s3 = SIMD::<Int, 4>.get(added, 3)
+  println("add: " + s0 + " " + s1 + " " + s2 + " " + s3)
+
+  // --- sub ---
+  println("--- sub ---")
+  val subbed = SIMD::<Int, 4>.sub(a, b)
+  val d0 = SIMD::<Int, 4>.get(subbed, 0)
+  val d1 = SIMD::<Int, 4>.get(subbed, 1)
+  val d2 = SIMD::<Int, 4>.get(subbed, 2)
+  val d3 = SIMD::<Int, 4>.get(subbed, 3)
+  println("sub: " + d0 + " " + d1 + " " + d2 + " " + d3)
+
+  // --- mul ---
+  println("--- mul ---")
+  val muled = SIMD::<Int, 4>.mul(a, b)
+  val m0 = SIMD::<Int, 4>.get(muled, 0)
+  val m1 = SIMD::<Int, 4>.get(muled, 1)
+  val m2 = SIMD::<Int, 4>.get(muled, 2)
+  val m3 = SIMD::<Int, 4>.get(muled, 3)
+  println("mul: " + m0 + " " + m1 + " " + m2 + " " + m3)
+
+  // --- div ---
+  println("--- div ---")
+  val c = [8, 10, 12, 14]
+  val dived = SIMD::<Int, 4>.div(c, b)
+  val q0 = SIMD::<Int, 4>.get(dived, 0)
+  val q1 = SIMD::<Int, 4>.get(dived, 1)
+  val q2 = SIMD::<Int, 4>.get(dived, 2)
+  val q3 = SIMD::<Int, 4>.get(dived, 3)
+  println("div: " + q0 + " " + q1 + " " + q2 + " " + q3)
+
+  // --- min/max ---
+  println("--- min/max ---")
+  val mn = SIMD::<Int, 4>.min(a, b)
+  val mx = SIMD::<Int, 4>.max(a, b)
+  val mn0 = SIMD::<Int, 4>.get(mn, 0)
+  val mn1 = SIMD::<Int, 4>.get(mn, 1)
+  val mn2 = SIMD::<Int, 4>.get(mn, 2)
+  val mn3 = SIMD::<Int, 4>.get(mn, 3)
+  println("min: " + mn0 + " " + mn1 + " " + mn2 + " " + mn3)
+  val mx0 = SIMD::<Int, 4>.get(mx, 0)
+  val mx1 = SIMD::<Int, 4>.get(mx, 1)
+  val mx2 = SIMD::<Int, 4>.get(mx, 2)
+  val mx3 = SIMD::<Int, 4>.get(mx, 3)
+  println("max: " + mx0 + " " + mx1 + " " + mx2 + " " + mx3)
+
+  // --- abs ---
+  println("--- abs ---")
+  val neg = [-3, 1, -2, 4]
+  val absed = SIMD::<Int, 4>.abs(neg)
+  val ab0 = SIMD::<Int, 4>.get(absed, 0)
+  val ab1 = SIMD::<Int, 4>.get(absed, 1)
+  val ab2 = SIMD::<Int, 4>.get(absed, 2)
+  val ab3 = SIMD::<Int, 4>.get(absed, 3)
+  println("abs: " + ab0 + " " + ab1 + " " + ab2 + " " + ab3)
+
+  // --- sum ---
+  println("--- sum ---")
+  println("sum int: " + SIMD::<Int, 4>.sum(a))
+
+  // --- dot ---
+  println("--- dot ---")
+  println("dot: " + SIMD::<Int, 4>.dot(a, b))
+
+  // --- sqrt ---
+  println("--- sqrt ---")
+  val squares = [4, 9, 16, 25]
+  val roots = SIMD::<Int, 4>.sqrt(squares)
+  val sum_roots = SIMD::<Float, 4>.sum(roots)
+  println("sqrt sum: " + sum_roots)
+}

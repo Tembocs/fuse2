@@ -243,6 +243,18 @@ struct RuntimeFns {
     shared_try_write: FuncId,
     shared_try_read: FuncId,
     simd_sum: FuncId,
+    simd_dot: FuncId,
+    simd_add: FuncId,
+    simd_sub: FuncId,
+    simd_mul: FuncId,
+    simd_div: FuncId,
+    simd_min: FuncId,
+    simd_max: FuncId,
+    simd_abs: FuncId,
+    simd_sqrt: FuncId,
+    simd_broadcast: FuncId,
+    simd_get: FuncId,
+    simd_len: FuncId,
     data_new: FuncId,
     data_set_field: FuncId,
     data_get_field: FuncId,
@@ -883,6 +895,18 @@ fn declare_runtime_functions(
         shared_try_write: declare(module, "fuse_shared_runtime_try_write", &[pointer_type, pointer_type], &[pointer_type])?,
         shared_try_read: declare(module, "fuse_shared_runtime_try_read", &[pointer_type, pointer_type], &[pointer_type])?,
         simd_sum: declare(module, "fuse_simd_runtime_sum", &[pointer_type], &[pointer_type])?,
+        simd_dot: declare(module, "fuse_simd_runtime_dot", &[pointer_type, pointer_type], &[pointer_type])?,
+        simd_add: declare(module, "fuse_simd_runtime_add", &[pointer_type, pointer_type], &[pointer_type])?,
+        simd_sub: declare(module, "fuse_simd_runtime_sub", &[pointer_type, pointer_type], &[pointer_type])?,
+        simd_mul: declare(module, "fuse_simd_runtime_mul", &[pointer_type, pointer_type], &[pointer_type])?,
+        simd_div: declare(module, "fuse_simd_runtime_div", &[pointer_type, pointer_type], &[pointer_type])?,
+        simd_min: declare(module, "fuse_simd_runtime_min", &[pointer_type, pointer_type], &[pointer_type])?,
+        simd_max: declare(module, "fuse_simd_runtime_max", &[pointer_type, pointer_type], &[pointer_type])?,
+        simd_abs: declare(module, "fuse_simd_runtime_abs", &[pointer_type], &[pointer_type])?,
+        simd_sqrt: declare(module, "fuse_simd_runtime_sqrt", &[pointer_type], &[pointer_type])?,
+        simd_broadcast: declare(module, "fuse_simd_runtime_broadcast", &[pointer_type, types::I64], &[pointer_type])?,
+        simd_get: declare(module, "fuse_simd_runtime_get", &[pointer_type, pointer_type], &[pointer_type])?,
+        simd_len: declare(module, "fuse_simd_runtime_len", &[pointer_type], &[pointer_type])?,
         data_new: declare(module, "fuse_data_new", &[pointer_type, pointer_type, pointer_type, pointer_type], &[pointer_type])?,
         data_set_field: declare(module, "fuse_data_set_field", &[pointer_type, pointer_type, pointer_type], &[])?,
         data_get_field: declare(module, "fuse_data_get_field", &[pointer_type, pointer_type], &[pointer_type])?,
@@ -2145,24 +2169,122 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     ty: Some(namespace.replace("::", "")),
                 })
             }
-            ("SIMD", "sum") => {
+            ("SIMD", method) => {
                 let (simd_type, lane_count) = parse_simd_params(namespace)?;
                 validate_simd_type(&simd_type)?;
                 validate_simd_lanes(lane_count)?;
-                let list = self.compile_expr(
-                    builder,
-                    _args.first().ok_or_else(|| "SIMD.sum requires one argument".to_string())?,
-                )?;
-                let return_type = if simd_type.starts_with("Float") { "Float" } else { "Int" };
-                Ok(TypedValue {
-                    value: self.runtime(
-                        builder,
-                        self.compiler.runtime.simd_sum,
-                        &[list.value],
-                        self.compiler.pointer_type,
-                    ),
-                    ty: Some(return_type.to_string()),
-                })
+                let scalar_type = if simd_type.starts_with("Float") { "Float" } else { "Int" };
+                let list_type = format!("List<{scalar_type}>");
+                match method {
+                    // Constructors: one list arg → list result
+                    "fromList" => {
+                        let list = self.compile_expr(builder, _args.first()
+                            .ok_or_else(|| "SIMD.fromList requires one argument".to_string())?)?;
+                        Ok(TypedValue { value: list.value, ty: Some(list_type) })
+                    }
+                    // broadcast(value) → list of N copies
+                    "broadcast" => {
+                        let value = self.compile_expr(builder, _args.first()
+                            .ok_or_else(|| "SIMD.broadcast requires one argument".to_string())?)?;
+                        let lanes = builder.ins().iconst(types::I64, lane_count as i64);
+                        Ok(TypedValue {
+                            value: self.runtime(builder, self.compiler.runtime.simd_broadcast,
+                                &[value.value, lanes], self.compiler.pointer_type),
+                            ty: Some(list_type),
+                        })
+                    }
+                    // Reductions: one list arg → scalar result
+                    "sum" => {
+                        let list = self.compile_expr(builder, _args.first()
+                            .ok_or_else(|| "SIMD.sum requires one argument".to_string())?)?;
+                        Ok(TypedValue {
+                            value: self.runtime(builder, self.compiler.runtime.simd_sum,
+                                &[list.value], self.compiler.pointer_type),
+                            ty: Some(scalar_type.to_string()),
+                        })
+                    }
+                    // Two-list reductions: two list args → scalar result
+                    "dot" => {
+                        let a = self.compile_expr(builder, _args.get(0)
+                            .ok_or_else(|| "SIMD.dot requires two arguments".to_string())?)?;
+                        let b = self.compile_expr(builder, _args.get(1)
+                            .ok_or_else(|| "SIMD.dot requires two arguments".to_string())?)?;
+                        Ok(TypedValue {
+                            value: self.runtime(builder, self.compiler.runtime.simd_dot,
+                                &[a.value, b.value], self.compiler.pointer_type),
+                            ty: Some(scalar_type.to_string()),
+                        })
+                    }
+                    // Elementwise binary: two list args → list result
+                    "add" | "sub" | "mul" | "div" | "min" | "max" => {
+                        let a = self.compile_expr(builder, _args.get(0)
+                            .ok_or_else(|| format!("SIMD.{method} requires two arguments"))?)?;
+                        let b = self.compile_expr(builder, _args.get(1)
+                            .ok_or_else(|| format!("SIMD.{method} requires two arguments"))?)?;
+                        let func = match method {
+                            "add" => self.compiler.runtime.simd_add,
+                            "sub" => self.compiler.runtime.simd_sub,
+                            "mul" => self.compiler.runtime.simd_mul,
+                            "div" => self.compiler.runtime.simd_div,
+                            "min" => self.compiler.runtime.simd_min,
+                            "max" => self.compiler.runtime.simd_max,
+                            _ => unreachable!(),
+                        };
+                        Ok(TypedValue {
+                            value: self.runtime(builder, func,
+                                &[a.value, b.value], self.compiler.pointer_type),
+                            ty: Some(list_type),
+                        })
+                    }
+                    // Unary list → list
+                    "abs" => {
+                        let list = self.compile_expr(builder, _args.first()
+                            .ok_or_else(|| "SIMD.abs requires one argument".to_string())?)?;
+                        Ok(TypedValue {
+                            value: self.runtime(builder, self.compiler.runtime.simd_abs,
+                                &[list.value], self.compiler.pointer_type),
+                            ty: Some(list_type),
+                        })
+                    }
+                    "sqrt" => {
+                        let list = self.compile_expr(builder, _args.first()
+                            .ok_or_else(|| "SIMD.sqrt requires one argument".to_string())?)?;
+                        Ok(TypedValue {
+                            value: self.runtime(builder, self.compiler.runtime.simd_sqrt,
+                                &[list.value], self.compiler.pointer_type),
+                            ty: Some(list_type),
+                        })
+                    }
+                    // toList: identity (SIMD vectors are already lists)
+                    "toList" => {
+                        let list = self.compile_expr(builder, _args.first()
+                            .ok_or_else(|| "SIMD.toList requires one argument".to_string())?)?;
+                        Ok(TypedValue { value: list.value, ty: Some(list_type) })
+                    }
+                    // get(list, index) → scalar
+                    "get" => {
+                        let list = self.compile_expr(builder, _args.get(0)
+                            .ok_or_else(|| "SIMD.get requires two arguments".to_string())?)?;
+                        let index = self.compile_expr(builder, _args.get(1)
+                            .ok_or_else(|| "SIMD.get requires two arguments".to_string())?)?;
+                        Ok(TypedValue {
+                            value: self.runtime(builder, self.compiler.runtime.simd_get,
+                                &[list.value, index.value], self.compiler.pointer_type),
+                            ty: Some(scalar_type.to_string()),
+                        })
+                    }
+                    // len(list) → Int
+                    "len" => {
+                        let list = self.compile_expr(builder, _args.first()
+                            .ok_or_else(|| "SIMD.len requires one argument".to_string())?)?;
+                        Ok(TypedValue {
+                            value: self.runtime(builder, self.compiler.runtime.simd_len,
+                                &[list.value], self.compiler.pointer_type),
+                            ty: Some("Int".to_string()),
+                        })
+                    }
+                    _ => Err(format!("unsupported SIMD method `{method}`")),
+                }
             }
             ("Map", "new") => Ok(TypedValue {
                 value: self.runtime_nullary(builder, self.compiler.runtime.map_new),

@@ -574,32 +574,207 @@ pub unsafe extern "C" fn fuse_map_entries(map: FuseHandle) -> FuseHandle {
     }
 }
 
+// --- SIMD scalar fallback helpers ---
+
+unsafe fn simd_extract_f64(h: FuseHandle) -> f64 {
+    unsafe {
+        match &value_ref(h).kind {
+            ValueKind::Float(v) => *v,
+            ValueKind::Int(v) => *v as f64,
+            _ => 0.0,
+        }
+    }
+}
+
+unsafe fn simd_extract_i64(h: FuseHandle) -> i64 {
+    unsafe {
+        match &value_ref(h).kind {
+            ValueKind::Int(v) => *v,
+            ValueKind::Float(v) => *v as i64,
+            _ => 0,
+        }
+    }
+}
+
+unsafe fn simd_is_float_list(items: &[FuseHandle]) -> bool {
+    unsafe {
+        items.iter().any(|h| matches!(&value_ref(*h).kind, ValueKind::Float(_)))
+    }
+}
+
+unsafe fn simd_list_items(handle: FuseHandle) -> &'static [FuseHandle] {
+    unsafe {
+        match &value_ref(handle).kind {
+            ValueKind::List(items) => items.as_slice(),
+            _ => &[],
+        }
+    }
+}
+
+// --- SIMD operations ---
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_simd_sum(list: FuseHandle) -> FuseHandle {
     unsafe {
-        match &value_ref(list).kind {
-            ValueKind::List(items) => {
-                let mut int_total = 0_i64;
-                let mut float_total = 0.0_f64;
-                let mut saw_float = false;
-                for item in items {
-                    match &value_ref(*item).kind {
-                        ValueKind::Int(value) => int_total += *value,
-                        ValueKind::Float(value) => {
-                            saw_float = true;
-                            float_total += *value;
-                        }
-                        _ => {}
-                    }
-                }
-                if saw_float {
-                    fuse_float(float_total + int_total as f64)
-                } else {
-                    fuse_int(int_total)
-                }
-            }
-            _ => fuse_unit(),
+        let items = simd_list_items(list);
+        if items.is_empty() {
+            return fuse_int(0);
         }
+        if simd_is_float_list(items) {
+            let total: f64 = items.iter().map(|h| simd_extract_f64(*h)).sum();
+            fuse_float(total)
+        } else {
+            let total: i64 = items.iter().map(|h| simd_extract_i64(*h)).sum();
+            fuse_int(total)
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_simd_dot(a: FuseHandle, b: FuseHandle) -> FuseHandle {
+    unsafe {
+        let items_a = simd_list_items(a);
+        let items_b = simd_list_items(b);
+        let len = items_a.len().min(items_b.len());
+        if len == 0 {
+            return fuse_int(0);
+        }
+        let is_float = simd_is_float_list(items_a) || simd_is_float_list(items_b);
+        if is_float {
+            let total: f64 = (0..len)
+                .map(|i| simd_extract_f64(items_a[i]) * simd_extract_f64(items_b[i]))
+                .sum();
+            fuse_float(total)
+        } else {
+            let total: i64 = (0..len)
+                .map(|i| simd_extract_i64(items_a[i]) * simd_extract_i64(items_b[i]))
+                .sum();
+            fuse_int(total)
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_simd_add(a: FuseHandle, b: FuseHandle) -> FuseHandle {
+    unsafe { simd_elementwise_op(a, b, |x, y| x + y, |x, y| x + y) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_simd_sub(a: FuseHandle, b: FuseHandle) -> FuseHandle {
+    unsafe { simd_elementwise_op(a, b, |x, y| x - y, |x, y| x - y) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_simd_mul(a: FuseHandle, b: FuseHandle) -> FuseHandle {
+    unsafe { simd_elementwise_op(a, b, |x, y| x * y, |x, y| x * y) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_simd_div(a: FuseHandle, b: FuseHandle) -> FuseHandle {
+    unsafe {
+        simd_elementwise_op(
+            a, b,
+            |x, y| if y != 0 { x / y } else { 0 },
+            |x, y| if y != 0.0 { x / y } else { 0.0 },
+        )
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_simd_min(a: FuseHandle, b: FuseHandle) -> FuseHandle {
+    unsafe {
+        simd_elementwise_op(a, b, |x, y| x.min(y), |x: f64, y: f64| x.min(y))
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_simd_max(a: FuseHandle, b: FuseHandle) -> FuseHandle {
+    unsafe {
+        simd_elementwise_op(a, b, |x, y| x.max(y), |x: f64, y: f64| x.max(y))
+    }
+}
+
+unsafe fn simd_elementwise_op(
+    a: FuseHandle,
+    b: FuseHandle,
+    int_op: impl Fn(i64, i64) -> i64,
+    float_op: impl Fn(f64, f64) -> f64,
+) -> FuseHandle {
+    unsafe {
+        let items_a = simd_list_items(a);
+        let items_b = simd_list_items(b);
+        let len = items_a.len().min(items_b.len());
+        let result = fuse_list_new();
+        let is_float = simd_is_float_list(items_a) || simd_is_float_list(items_b);
+        for i in 0..len {
+            if is_float {
+                let v = float_op(simd_extract_f64(items_a[i]), simd_extract_f64(items_b[i]));
+                fuse_list_push(result, fuse_float(v));
+            } else {
+                let v = int_op(simd_extract_i64(items_a[i]), simd_extract_i64(items_b[i]));
+                fuse_list_push(result, fuse_int(v));
+            }
+        }
+        result
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_simd_abs(list: FuseHandle) -> FuseHandle {
+    unsafe {
+        let items = simd_list_items(list);
+        let result = fuse_list_new();
+        let is_float = simd_is_float_list(items);
+        for item in items {
+            if is_float {
+                fuse_list_push(result, fuse_float(simd_extract_f64(*item).abs()));
+            } else {
+                fuse_list_push(result, fuse_int(simd_extract_i64(*item).abs()));
+            }
+        }
+        result
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_simd_sqrt(list: FuseHandle) -> FuseHandle {
+    unsafe {
+        let items = simd_list_items(list);
+        let result = fuse_list_new();
+        for item in items {
+            let v = simd_extract_f64(*item).sqrt();
+            fuse_list_push(result, fuse_float(v));
+        }
+        result
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_simd_broadcast(value: FuseHandle, lanes: i64) -> FuseHandle {
+    unsafe {
+        let result = fuse_list_new();
+        for _ in 0..lanes {
+            // Push the same handle — values are immutable at this level
+            fuse_list_push(result, value);
+        }
+        result
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_simd_get(list: FuseHandle, index: FuseHandle) -> FuseHandle {
+    unsafe {
+        let idx = extract_int(index) as usize;
+        let items = simd_list_items(list);
+        items.get(idx).copied().unwrap_or(fuse_int(0))
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_simd_len(list: FuseHandle) -> FuseHandle {
+    unsafe {
+        let items = simd_list_items(list);
+        fuse_int(items.len() as i64)
     }
 }
 
