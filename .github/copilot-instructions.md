@@ -110,22 +110,22 @@ if !self.current_block_is_terminated(builder) {
 
 ## Current Limitations (Pre-Hardening)
 
-These are known. See `docs/fuse-hardening-plan.md` for the fix plan:
+These were known. Wave 0 of `docs/fuse-pre-stage2.md` fixed them all:
 
-- `if/else` blocks always return `Unit` in codegen — use `match` as workaround for conditional return values
-- Float literals produce a hard error in codegen — use FFI functions instead
-- F-string nested quotes `f"{s.join(",")}"` terminate early — assign to variable first
-- `Type.staticMethod()` rejected by checker — use module-level `pub fn` instead
-- Structs not compiled in codegen — use `data class` instead
-- `data class Name<T>(...)` generic syntax not parsed — type params in field annotations only
-- Builder methods cannot return `mutref Self` — return `Int` as workaround
+- ~~`if/else` blocks always return `Unit` in codegen~~ — fixed in W0.1
+- ~~Float literals produce a hard error in codegen~~ — fixed in W0.2
+- ~~F-string nested quotes terminate early~~ — fixed in W0.3
+- ~~Builder methods cannot return `mutref Self`~~ — fixed in W0.4
+- ~~`Type.staticMethod()` rejected by checker~~ — fixed in W0.5
+- ~~`async`/`await`/`suspend` dead code~~ — removed in W0.6
+- Structs not compiled in codegen — planned in W1.1
+- `data class Name<T>(...)` generic syntax not parsed — planned in W1.2
 
 ## Mandatory References
 
 Before modifying any compiler code, read:
 - `docs/fuse-language-guide-2.md` — the authoritative language specification
-- `docs/fuse-hardening-plan.md` — current fix plan with root causes and solutions
-- `docs/fuse-interfaces-spec.md` — interface system and concurrency model specification
+- `docs/fuse-pre-stage2.md` — unified pre-Stage 2 plan (hardening + interfaces)
 - `docs/fuse-tooling-spec.md` — manifest file (fuel.toml), mobile support, project sequencing
 - `docs/stdlib_implementation_learning.md` — catalog of 15 bugs found and lessons learned
 - `docs/fuse-stdlib-implementation-plan.md` — complete stdlib implementation history

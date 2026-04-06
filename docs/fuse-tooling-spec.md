@@ -19,9 +19,9 @@
 
 > **Before starting any implementation from this document, re-read:**
 >
-> 1. The **Language Philosophy** section in `docs/fuse-hardening-plan.md`
-> 2. The **Mandatory Rules** section in `docs/fuse-hardening-plan.md`
-> 3. `docs/fuse-interfaces-spec.md` — interfaces and concurrency model
+> 1. The **Language Philosophy** section in `docs/fuse-pre-stage2.md`
+> 2. The **Mandatory Rules** section in `docs/fuse-pre-stage2.md`
+> 3. `docs/fuse-pre-stage2.md` — unified pre-Stage 2 plan
 > 4. `docs/fuse-language-guide-2.md` — the authoritative language specification
 >
 > All rules from the hardening plan apply here without exception.
@@ -404,7 +404,7 @@ Stage 1 Hardening (current)
 ├── H6: LSP Foundation
 ├── H7: WASM Target
 │
-├── Implement interfaces (docs/fuse-interfaces-spec.md)
+├── Implement interfaces (docs/fuse-pre-stage2.md Wave 5)
 ├── Implement @entrypoint → fn main() transition
 ├── Operator overloading
 ├── Fixed-size arrays [T; N]

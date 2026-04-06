@@ -1205,9 +1205,9 @@ Is the lock order truly dynamic?
 
 ### Spawn capture rules
 
-- `spawn move || { ... }` — task takes ownership (ok).
-- `spawn ref || { ... }` — task gets read access (ok).
-- `spawn || { mutref x }` — COMPILE ERROR (no mutref across spawn).
+- `spawn move { ... }` — task takes ownership of captured values (ok).
+- `spawn ref { ... }` — task gets read-only access to captured values (ok).
+- `spawn { mutref x }` — COMPILE ERROR (no mutable borrows across spawn).
 
 ### Rules
 
