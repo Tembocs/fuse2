@@ -164,6 +164,7 @@ fn numeric_binary(lhs: FuseHandle, rhs: FuseHandle, int_op: fn(i64, i64) -> i64,
             (ValueKind::Float(left), ValueKind::Float(right)) => fuse_float(float_op(*left, *right)),
             (ValueKind::Int(left), ValueKind::Float(right)) => fuse_float(float_op(*left as f64, *right)),
             (ValueKind::Float(left), ValueKind::Int(right)) => fuse_float(float_op(*left, *right as f64)),
+            (ValueKind::Float32(left), ValueKind::Float32(right)) => fuse_rt_f32_new(float_op(*left as f64, *right as f64)),
             _ => fuse_unit(),
         }
     }
@@ -176,6 +177,7 @@ fn numeric_compare(lhs: FuseHandle, rhs: FuseHandle, int_op: fn(i64, i64) -> boo
             (ValueKind::Float(left), ValueKind::Float(right)) => fuse_bool(float_op(*left, *right)),
             (ValueKind::Int(left), ValueKind::Float(right)) => fuse_bool(float_op(*left as f64, *right)),
             (ValueKind::Float(left), ValueKind::Int(right)) => fuse_bool(float_op(*left, *right as f64)),
+            (ValueKind::Float32(left), ValueKind::Float32(right)) => fuse_bool(float_op(*left as f64, *right as f64)),
             _ => fuse_bool(false),
         }
     }
@@ -1196,6 +1198,15 @@ pub unsafe extern "C" fn fuse_rt_float_parse(h: FuseHandle) -> FuseHandle {
     fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()))
 }
 // --- Float32 FFI helpers ---
+
+/// Handle-based wrapper: accepts a FuseHandle containing a Float and
+/// returns a FuseHandle containing a Float32. Used by Fuse extern fn
+/// declarations where all values are handles.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_box(handle: FuseHandle) -> FuseHandle {
+    let f = unsafe { extract_float(handle) };
+    FuseValue::new(ValueKind::Float32(f as f32))
+}
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_f32_new(value: f64) -> FuseHandle {

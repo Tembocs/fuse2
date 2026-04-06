@@ -400,6 +400,17 @@ struct RuntimeFns {
     test_assert_ne: FuncId,
     test_assert_approx: FuncId,
     test_assert_panics: FuncId,
+    f32_new: FuncId,
+    f32_add: FuncId,
+    f32_sub: FuncId,
+    f32_mul: FuncId,
+    f32_div: FuncId,
+    f32_eq: FuncId,
+    f32_lt: FuncId,
+    f32_le: FuncId,
+    f32_gt: FuncId,
+    f32_ge: FuncId,
+    f32_to_string: FuncId,
 }
 
 struct PendingLambda {
@@ -1192,6 +1203,17 @@ fn declare_runtime_functions(
         test_assert_ne: declare(module, "fuse_rt_test_assert_ne", &[pointer_type, pointer_type, pointer_type], &[pointer_type])?,
         test_assert_approx: declare(module, "fuse_rt_test_assert_approx", &[pointer_type, pointer_type, pointer_type, pointer_type], &[pointer_type])?,
         test_assert_panics: declare(module, "fuse_rt_test_assert_panics", &[pointer_type], &[pointer_type])?,
+        f32_new: declare(module, "fuse_rt_f32_new", &[types::F64], &[pointer_type])?,
+        f32_add: declare(module, "fuse_rt_f32_add", &[pointer_type, pointer_type], &[pointer_type])?,
+        f32_sub: declare(module, "fuse_rt_f32_sub", &[pointer_type, pointer_type], &[pointer_type])?,
+        f32_mul: declare(module, "fuse_rt_f32_mul", &[pointer_type, pointer_type], &[pointer_type])?,
+        f32_div: declare(module, "fuse_rt_f32_div", &[pointer_type, pointer_type], &[pointer_type])?,
+        f32_eq: declare(module, "fuse_rt_f32_eq", &[pointer_type, pointer_type], &[pointer_type])?,
+        f32_lt: declare(module, "fuse_rt_f32_lt", &[pointer_type, pointer_type], &[pointer_type])?,
+        f32_le: declare(module, "fuse_rt_f32_le", &[pointer_type, pointer_type], &[pointer_type])?,
+        f32_gt: declare(module, "fuse_rt_f32_gt", &[pointer_type, pointer_type], &[pointer_type])?,
+        f32_ge: declare(module, "fuse_rt_f32_ge", &[pointer_type, pointer_type], &[pointer_type])?,
+        f32_to_string: declare(module, "fuse_rt_f32_to_string", &[pointer_type], &[pointer_type])?,
     })
 }
 
@@ -2034,15 +2056,18 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             _ => {
                 let left = self.compile_expr(builder, &binary.left)?;
                 let right = self.compile_expr(builder, &binary.right)?;
+                let is_f32 = left.ty.as_deref() == Some("Float32");
                 let (value, ty) = match binary.op.as_str() {
                     "+" => (
                         self.runtime(
                             builder,
-                            self.compiler.runtime.add,
+                            if is_f32 { self.compiler.runtime.f32_add } else { self.compiler.runtime.add },
                             &[left.value, right.value],
                             self.compiler.pointer_type,
                         ),
-                        if left.ty.as_deref() == Some("String")
+                        if is_f32 {
+                            Some("Float32".to_string())
+                        } else if left.ty.as_deref() == Some("String")
                             || right.ty.as_deref() == Some("String")
                         {
                             Some("String".to_string())
@@ -2053,29 +2078,29 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     "-" => (
                         self.runtime(
                             builder,
-                            self.compiler.runtime.sub,
+                            if is_f32 { self.compiler.runtime.f32_sub } else { self.compiler.runtime.sub },
                             &[left.value, right.value],
                             self.compiler.pointer_type,
                         ),
-                        Some("Int".to_string()),
+                        if is_f32 { Some("Float32".to_string()) } else { Some("Int".to_string()) },
                     ),
                     "*" => (
                         self.runtime(
                             builder,
-                            self.compiler.runtime.mul,
+                            if is_f32 { self.compiler.runtime.f32_mul } else { self.compiler.runtime.mul },
                             &[left.value, right.value],
                             self.compiler.pointer_type,
                         ),
-                        Some("Int".to_string()),
+                        if is_f32 { Some("Float32".to_string()) } else { Some("Int".to_string()) },
                     ),
                     "/" => (
                         self.runtime(
                             builder,
-                            self.compiler.runtime.div,
+                            if is_f32 { self.compiler.runtime.f32_div } else { self.compiler.runtime.div },
                             &[left.value, right.value],
                             self.compiler.pointer_type,
                         ),
-                        Some("Int".to_string()),
+                        if is_f32 { Some("Float32".to_string()) } else { Some("Int".to_string()) },
                     ),
                     "%" => (
                         self.runtime(
@@ -2089,16 +2114,17 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     "==" => (
                         self.runtime(
                             builder,
-                            self.compiler.runtime.eq,
+                            if is_f32 { self.compiler.runtime.f32_eq } else { self.compiler.runtime.eq },
                             &[left.value, right.value],
                             self.compiler.pointer_type,
                         ),
                         Some("Bool".to_string()),
                     ),
                     "!=" => {
+                        let eq_fn = if is_f32 { self.compiler.runtime.f32_eq } else { self.compiler.runtime.eq };
                         let eq = self.runtime(
                             builder,
-                            self.compiler.runtime.eq,
+                            eq_fn,
                             &[left.value, right.value],
                             self.compiler.pointer_type,
                         );
@@ -2114,10 +2140,10 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                             Some("Bool".to_string()),
                         )
                     }
-                    "<" => (self.compare(builder, self.compiler.runtime.lt, left.value, right.value), Some("Bool".to_string())),
-                    "<=" => (self.compare(builder, self.compiler.runtime.le, left.value, right.value), Some("Bool".to_string())),
-                    ">" => (self.compare(builder, self.compiler.runtime.gt, left.value, right.value), Some("Bool".to_string())),
-                    ">=" => (self.compare(builder, self.compiler.runtime.ge, left.value, right.value), Some("Bool".to_string())),
+                    "<" => (self.compare(builder, if is_f32 { self.compiler.runtime.f32_lt } else { self.compiler.runtime.lt }, left.value, right.value), Some("Bool".to_string())),
+                    "<=" => (self.compare(builder, if is_f32 { self.compiler.runtime.f32_le } else { self.compiler.runtime.le }, left.value, right.value), Some("Bool".to_string())),
+                    ">" => (self.compare(builder, if is_f32 { self.compiler.runtime.f32_gt } else { self.compiler.runtime.gt }, left.value, right.value), Some("Bool".to_string())),
+                    ">=" => (self.compare(builder, if is_f32 { self.compiler.runtime.f32_ge } else { self.compiler.runtime.ge }, left.value, right.value), Some("Bool".to_string())),
                     other => return Err(format!("unsupported binary operator `{other}`")),
                 };
                 Ok(TypedValue { value, ty })

@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// 5.5
+// 1.5
+// 7.0
+// 1.75
+
+extern fn fuse_rt_f32_box(value: Float) -> Float32
+
+@entrypoint
+fn main() {
+  val a = fuse_rt_f32_box(3.5)
+  val b = fuse_rt_f32_box(2.0)
+  println(a + b)
+  println(a - b)
+  println(a * b)
+  println(a / b)
+}

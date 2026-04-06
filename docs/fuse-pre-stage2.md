@@ -495,14 +495,14 @@ importing modules. `path.SEPARATOR` cannot be read after `import path`.
 
 ---
 
-### Phase W2.4 — Float32 Codegen
+### Phase W2.4 — Float32 Codegen [DONE]
 
-- [ ] **W2.4.1** Register `fuse_rt_f32_*` in codegen runtime table.
-- [ ] **W2.4.2** Handle `Float32` in `compile_binary`.
-- [ ] **W2.4.3** Handle `Float32` in type inference.
-- [ ] **W2.4.4** Test: `float32_basic.fuse`.
-- [ ] **W2.4.5** Test: `float32_comparison.fuse`.
-- [ ] **W2.4.6** Full test suite green.
+- [x] **W2.4.1** Register `fuse_rt_f32_*` in codegen runtime table.
+- [x] **W2.4.2** Handle `Float32` in `compile_binary`.
+- [x] **W2.4.3** Handle `Float32` in type inference.
+- [x] **W2.4.4** Test: `float32_basic.fuse`.
+- [x] **W2.4.5** Test: `float32_comparison.fuse`.
+- [x] **W2.4.6** Full test suite green.
 
 ---
 

@@ -1,0 +1,19 @@
+// EXPECTED OUTPUT:
+// false
+// true
+// true
+// false
+// true
+
+extern fn fuse_rt_f32_box(value: Float) -> Float32
+
+@entrypoint
+fn main() {
+  val a = fuse_rt_f32_box(1.5)
+  val b = fuse_rt_f32_box(2.5)
+  println(a == b)
+  println(a < b)
+  println(a <= b)
+  println(a > b)
+  println(a >= fuse_rt_f32_box(1.5))
+}
