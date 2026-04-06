@@ -1,0 +1,282 @@
+// Fuse Ext stdlib — URI parsing and manipulation.
+//
+// Pure Fuse string operations. Simplified RFC 3986 parsing focused on
+// file://, http://, and https:// schemes. Includes percent-encoding,
+// percent-decoding, and file-path conversion.
+//
+// import stdlib.ext.uri
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_string_len(s: String) -> Int
+extern fn fuse_rt_string_char_at(s: String, index: Int) -> String
+extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
+extern fn fuse_rt_string_contains(s: String, sub: String) -> Bool
+extern fn fuse_rt_string_index_of(s: String, sub: String) -> Int
+extern fn fuse_rt_string_starts_with(s: String, prefix: String) -> Bool
+extern fn fuse_rt_string_replace(s: String, from: String, to: String) -> String
+extern fn fuse_rt_string_to_bytes(s: String) -> List<Int>
+extern fn fuse_rt_string_from_char_code(code: Int) -> String
+
+// --- Data class ---
+
+pub data class Uri(
+  val scheme: String,
+  val authority: String,
+  val path: String,
+  val query: String,
+  val fragment: String
+)
+
+// --- Internal helpers ---
+
+fn strLen(s: String) -> Int { fuse_rt_string_len(s) }
+fn charAt(s: String, i: Int) -> String { fuse_rt_string_char_at(s, i) }
+fn slice(s: String, start: Int, end: Int) -> String { fuse_rt_string_slice(s, start, end) }
+fn startsWith(s: String, prefix: String) -> Bool { fuse_rt_string_starts_with(s, prefix) }
+fn contains(s: String, sub: String) -> Bool { fuse_rt_string_contains(s, sub) }
+fn indexOf(s: String, sub: String) -> Int { fuse_rt_string_index_of(s, sub) }
+
+// Find the first occurrence of sub starting at or after pos.
+// Returns -1 if not found.
+fn indexOfFrom(s: String, sub: String, from: Int) -> Int {
+  val len = strLen(s)
+  if from >= len { return -1 }
+  val tail = slice(s, from, len)
+  val idx = indexOf(tail, sub)
+  match idx < 0 {
+    true => -1
+    false => idx + from
+  }
+}
+
+// Check if a byte value is unreserved per RFC 3986.
+// unreserved = ALPHA / DIGIT / "-" / "." / "_" / "~"
+fn isUnreserved(b: Int) -> Bool {
+  // A-Z: 65-90, a-z: 97-122, 0-9: 48-57
+  val isUpper = b >= 65 and b <= 90
+  val isLower = b >= 97 and b <= 122
+  val isDigit = b >= 48 and b <= 57
+  // -: 45, .: 46, _: 95, ~: 126
+  val isSpecial = b == 45 or b == 46 or b == 95 or b == 126
+  isUpper or isLower or isDigit or isSpecial
+}
+
+// Convert a nibble (0-15) to a hex character.
+fn hexChar(n: Int) -> String {
+  match n {
+    0 => "0"
+    1 => "1"
+    2 => "2"
+    3 => "3"
+    4 => "4"
+    5 => "5"
+    6 => "6"
+    7 => "7"
+    8 => "8"
+    9 => "9"
+    10 => "A"
+    11 => "B"
+    12 => "C"
+    13 => "D"
+    14 => "E"
+    _ => "F"
+  }
+}
+
+// Convert a hex character to its value (0-15), or -1 if invalid.
+fn hexVal(ch: String) -> Int {
+  match ch {
+    "0" => 0
+    "1" => 1
+    "2" => 2
+    "3" => 3
+    "4" => 4
+    "5" => 5
+    "6" => 6
+    "7" => 7
+    "8" => 8
+    "9" => 9
+    "a" => 10
+    "A" => 10
+    "b" => 11
+    "B" => 11
+    "c" => 12
+    "C" => 12
+    "d" => 13
+    "D" => 13
+    "e" => 14
+    "E" => 14
+    "f" => 15
+    "F" => 15
+    _ => -1
+  }
+}
+
+// Encode a single byte as %XX.
+fn encodeByte(b: Int) -> String {
+  val hi = hexChar(b / 16)
+  val lo = hexChar(b - (b / 16) * 16)
+  f"%{hi}{lo}"
+}
+
+// --- Public API ---
+
+// Parse a URI string into components.
+// Simplified RFC 3986: splits on "://", "?", "#".
+pub fn parse(s: String) -> Result<Uri, String> {
+  val len = strLen(s)
+  if len == 0 { return Err("empty URI") }
+
+  // Extract scheme — find "://"
+  val schemeSep = indexOf(s, "://")
+  if schemeSep < 0 { return Err("missing scheme separator ://") }
+  val scheme = slice(s, 0, schemeSep)
+  if strLen(scheme) == 0 { return Err("empty scheme") }
+
+  // After "://"
+  val afterScheme = schemeSep + 3
+  val rest = slice(s, afterScheme, len)
+  val restLen = strLen(rest)
+
+  // Split off fragment (#)
+  var mainPart = rest
+  var fragment = ""
+  val hashPos = indexOf(rest, "#")
+  val hasHash = hashPos >= 0
+  if hasHash {
+    mainPart = slice(rest, 0, hashPos)
+    fragment = slice(rest, hashPos + 1, restLen)
+  }
+
+  // Split off query (?)
+  val mainLen = strLen(mainPart)
+  var preQuery = mainPart
+  var query = ""
+  val qPos = indexOf(mainPart, "?")
+  val hasQuery = qPos >= 0
+  if hasQuery {
+    preQuery = slice(mainPart, 0, qPos)
+    query = slice(mainPart, qPos + 1, mainLen)
+  }
+
+  // Split authority and path at first "/"
+  val preQueryLen = strLen(preQuery)
+  var authority = preQuery
+  var path = ""
+  val slashPos = indexOf(preQuery, "/")
+  val hasSlash = slashPos >= 0
+  if hasSlash {
+    authority = slice(preQuery, 0, slashPos)
+    path = slice(preQuery, slashPos, preQueryLen)
+  }
+
+  Ok(Uri(scheme, authority, path, query, fragment))
+}
+
+// Reconstruct a URI string from its components.
+pub fn Uri.toString(ref self) -> String {
+  var result = f"{self.scheme}://{self.authority}{self.path}"
+  val hasQuery = strLen(self.query) > 0
+  if hasQuery {
+    result = f"{result}?{self.query}"
+  }
+  val hasFrag = strLen(self.fragment) > 0
+  if hasFrag {
+    result = f"{result}#{self.fragment}"
+  }
+  result
+}
+
+// Build a file URI for a non-drive-letter path (Unix or relative).
+fn buildFileUri(normalized: String) -> String {
+  val startsSlash = startsWith(normalized, "/")
+  match startsSlash {
+    true => f"file://{normalized}"
+    false => f"file:///{normalized}"
+  }
+}
+
+// Convert an OS file path to a file:/// URI string.
+// Handles Windows drive letters (C:\foo -> file:///C:/foo)
+// and Unix paths (/foo -> file:///foo).
+pub fn fromFilePath(path: String) -> String {
+  val len = strLen(path)
+  if len == 0 { return "file:///" }
+
+  // Normalize backslashes to forward slashes
+  val normalized = fuse_rt_string_replace(path, "\\", "/")
+  val normLen = strLen(normalized)
+
+  // Check for Windows drive letter (e.g., C:/)
+  val hasDrive = normLen >= 2 and charAt(normalized, 1) == ":"
+  match hasDrive {
+    true => f"file:///{normalized}"
+    false => buildFileUri(normalized)
+  }
+}
+
+// Extract an OS file path from a file:/// URI string.
+pub fn toFilePath(uri: String) -> Result<String, String> {
+  val hasFileScheme = startsWith(uri, "file:///")
+  if not hasFileScheme { return Err("not a file:// URI") }
+  val afterScheme = slice(uri, 8, strLen(uri))
+  val afterLen = strLen(afterScheme)
+
+  // Check for Windows drive letter (e.g., file:///C:/foo -> C:/foo)
+  val hasDrive = afterLen >= 2 and charAt(afterScheme, 1) == ":"
+  match hasDrive {
+    true => Ok(afterScheme)
+    false => Ok(f"/{afterScheme}")
+  }
+}
+
+// Percent-encode reserved characters in a string.
+// Unreserved characters (A-Z, a-z, 0-9, -, ., _, ~) are not encoded.
+// Multi-byte UTF-8 characters are encoded byte-by-byte.
+pub fn encode(s: String) -> String {
+  val bytes = fuse_rt_string_to_bytes(s)
+  var result = ""
+  for b in bytes {
+    val safe = isUnreserved(b)
+    match safe {
+      true => {
+        val ch = fuse_rt_string_from_char_code(b)
+        result = f"{result}{ch}"
+      }
+      false => {
+        val enc = encodeByte(b)
+        result = f"{result}{enc}"
+      }
+    }
+  }
+  result
+}
+
+// Decode percent-encoded characters in a string.
+pub fn decode(s: String) -> Result<String, String> {
+  val len = strLen(s)
+  var result = ""
+  var i = 0
+  while i < len {
+    val ch = charAt(s, i)
+    match ch {
+      "%" => {
+        if i + 2 >= len { return Err("incomplete percent-encoding") }
+        val h1 = hexVal(charAt(s, i + 1))
+        val h2 = hexVal(charAt(s, i + 2))
+        if h1 < 0 { return Err("invalid hex digit in percent-encoding") }
+        if h2 < 0 { return Err("invalid hex digit in percent-encoding") }
+        val code = h1 * 16 + h2
+        val decoded = fuse_rt_string_from_char_code(code)
+        result = f"{result}{decoded}"
+        i = i + 3
+      }
+      _ => {
+        result = f"{result}{ch}"
+        i = i + 1
+      }
+    }
+  }
+  Ok(result)
+}

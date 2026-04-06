@@ -1,0 +1,256 @@
+// EXPECTED OUTPUT:
+// --- new parser ---
+// name: myapp
+// --- builder ---
+// builder ok
+// --- parse flags ---
+// has verbose: true
+// verbose val: true
+// --- parse option ---
+// has output: true
+// output val: out.txt
+// --- parse key=value ---
+// has output: true
+// output val: result.txt
+// --- parse short flag ---
+// has verbose: true
+// --- parse short option ---
+// has output: true
+// output val: short.txt
+// --- parse positional ---
+// pos count: 2
+// --- parse double dash ---
+// pos0: --not-a-flag
+// --- parse defaults ---
+// has format: true
+// format val: json
+// --- parse missing value ---
+// error: true
+// --- parse required missing ---
+// error: true
+// --- helpText ---
+// has usage: true
+// has options: true
+// --- get unknown ---
+// found: false
+// --- has unknown ---
+// found: false
+// --- done ---
+// done
+
+import stdlib.ext.argparse
+import stdlib.core.string
+
+extern fn fuse_list_push(list: List<String>, item: String)
+
+@entrypoint
+fn main() {
+  // --- new parser ---
+  println("--- new parser ---")
+  var parser = ArgParser.new("myapp")
+  println(f"name: {parser.name}")
+
+  // --- builder ---
+  println("--- builder ---")
+  parser.withDescription("A test application")
+  parser.withVersion("1.0.0")
+  parser.flag("--verbose", "-v", "Enable verbose output")
+  parser.option("--output", "-o", "Output file", "")
+  println("builder ok")
+
+  // --- parse flags ---
+  println("--- parse flags ---")
+  var flagArgs: List<String> = []
+  fuse_list_push(flagArgs, "--verbose")
+  val r1 = parser.parse(flagArgs)
+  match r1 {
+    Ok(parsed) => {
+      val hasV = parsed.has("--verbose")
+      println(f"has verbose: {hasV}")
+      val vVal = parsed.get("--verbose")
+      match vVal {
+        Some(v) => println(f"verbose val: {v}")
+        None => println("verbose val: none")
+      }
+    }
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // --- parse option ---
+  println("--- parse option ---")
+  var optArgs: List<String> = []
+  fuse_list_push(optArgs, "--output")
+  fuse_list_push(optArgs, "out.txt")
+  val r2 = parser.parse(optArgs)
+  match r2 {
+    Ok(parsed) => {
+      val hasO = parsed.has("--output")
+      println(f"has output: {hasO}")
+      val oVal = parsed.get("--output")
+      match oVal {
+        Some(v) => println(f"output val: {v}")
+        None => println("output val: none")
+      }
+    }
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // --- parse key=value ---
+  println("--- parse key=value ---")
+  var kvArgs: List<String> = []
+  fuse_list_push(kvArgs, "--output=result.txt")
+  val r3 = parser.parse(kvArgs)
+  match r3 {
+    Ok(parsed) => {
+      val hasO = parsed.has("--output")
+      println(f"has output: {hasO}")
+      val oVal = parsed.get("--output")
+      match oVal {
+        Some(v) => println(f"output val: {v}")
+        None => println("output val: none")
+      }
+    }
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // --- parse short flag ---
+  println("--- parse short flag ---")
+  var shortFlagArgs: List<String> = []
+  fuse_list_push(shortFlagArgs, "-v")
+  val r4 = parser.parse(shortFlagArgs)
+  match r4 {
+    Ok(parsed) => {
+      val hasV = parsed.has("--verbose")
+      println(f"has verbose: {hasV}")
+    }
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // --- parse short option ---
+  println("--- parse short option ---")
+  var shortOptArgs: List<String> = []
+  fuse_list_push(shortOptArgs, "-o")
+  fuse_list_push(shortOptArgs, "short.txt")
+  val r5 = parser.parse(shortOptArgs)
+  match r5 {
+    Ok(parsed) => {
+      val hasO = parsed.has("--output")
+      println(f"has output: {hasO}")
+      val oVal = parsed.get("--output")
+      match oVal {
+        Some(v) => println(f"output val: {v}")
+        None => println("output val: none")
+      }
+    }
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // --- parse positional ---
+  println("--- parse positional ---")
+  var posArgs: List<String> = []
+  fuse_list_push(posArgs, "file1.txt")
+  fuse_list_push(posArgs, "file2.txt")
+  val r6 = parser.parse(posArgs)
+  match r6 {
+    Ok(parsed) => {
+      var count = 0
+      for p in parsed.positionalArgs {
+        count = count + 1
+      }
+      println(f"pos count: {count}")
+    }
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // --- parse double dash ---
+  println("--- parse double dash ---")
+  var ddArgs: List<String> = []
+  fuse_list_push(ddArgs, "--")
+  fuse_list_push(ddArgs, "--not-a-flag")
+  val r7 = parser.parse(ddArgs)
+  match r7 {
+    Ok(parsed) => {
+      for p in parsed.positionalArgs {
+        println(f"pos0: {p}")
+      }
+    }
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // --- parse defaults ---
+  println("--- parse defaults ---")
+  var parser2 = ArgParser.new("app2")
+  parser2.option("--format", "-f", "Output format", "json")
+  var emptyArgs: List<String> = []
+  val r8 = parser2.parse(emptyArgs)
+  match r8 {
+    Ok(parsed) => {
+      val hasF = parsed.has("--format")
+      println(f"has format: {hasF}")
+      val fVal = parsed.get("--format")
+      match fVal {
+        Some(v) => println(f"format val: {v}")
+        None => println("format val: none")
+      }
+    }
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // --- parse missing value ---
+  println("--- parse missing value ---")
+  var mvArgs: List<String> = []
+  fuse_list_push(mvArgs, "--output")
+  val r9 = parser.parse(mvArgs)
+  match r9 {
+    Ok(_) => println("error: false")
+    Err(_) => println("error: true")
+  }
+
+  // --- parse required missing ---
+  println("--- parse required missing ---")
+  var parser3 = ArgParser.new("app3")
+  parser3.positional("input", "Input file", true)
+  var noArgs: List<String> = []
+  val r10 = parser3.parse(noArgs)
+  match r10 {
+    Ok(_) => println("error: false")
+    Err(_) => println("error: true")
+  }
+
+  // --- helpText ---
+  println("--- helpText ---")
+  val help = parser.helpText()
+  val hasUsage = help.contains("Usage:")
+  println(f"has usage: {hasUsage}")
+  val hasOpts = help.contains("Options:")
+  println(f"has options: {hasOpts}")
+
+  // --- get unknown ---
+  println("--- get unknown ---")
+  var emptyArgs2: List<String> = []
+  val r11 = parser.parse(emptyArgs2)
+  match r11 {
+    Ok(parsed) => {
+      val unk = parsed.get("--nonexistent")
+      val found = match unk {
+        Some(_) => true
+        None => false
+      }
+      println(f"found: {found}")
+    }
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // --- has unknown ---
+  println("--- has unknown ---")
+  match r11 {
+    Ok(parsed) => {
+      val found = parsed.has("--nonexistent")
+      println(f"found: {found}")
+    }
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  println("--- done ---")
+  println("done")
+}

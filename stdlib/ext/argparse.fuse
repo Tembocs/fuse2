@@ -1,0 +1,347 @@
+// Fuse Ext stdlib — command-line argument parsing.
+//
+// Pure Fuse implementation. Builder-style API for defining flags,
+// options, and positional arguments, then parsing a List<String>.
+//
+// import stdlib.ext.argparse
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_string_len(s: String) -> Int
+extern fn fuse_rt_string_char_at(s: String, index: Int) -> String
+extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
+extern fn fuse_rt_string_starts_with(s: String, prefix: String) -> Bool
+extern fn fuse_rt_string_index_of(s: String, sub: String) -> Int
+extern fn fuse_rt_string_contains(s: String, sub: String) -> Bool
+extern fn fuse_list_push(list: List<String>, item: String)
+
+// --- Data classes ---
+
+pub data class ArgError(val message: String)
+
+pub data class Arg(
+  val name: String,
+  val short: String,
+  val long: String,
+  val help: String,
+  val required: Bool,
+  val hasValue: Bool,
+  val defaultValue: String
+)
+
+pub data class ArgParser(
+  val name: String,
+  var description: String,
+  var version: String,
+  var args: List<Arg>
+)
+
+pub data class ParsedArgs(
+  val flags: List<String>,
+  val options: List<String>,
+  val values: List<String>,
+  val positionalArgs: List<String>
+)
+
+// --- Internal helpers ---
+
+fn strLen(s: String) -> Int { fuse_rt_string_len(s) }
+fn charAt(s: String, i: Int) -> String { fuse_rt_string_char_at(s, i) }
+fn slice(s: String, start: Int, end: Int) -> String { fuse_rt_string_slice(s, start, end) }
+fn startsWith(s: String, prefix: String) -> Bool { fuse_rt_string_starts_with(s, prefix) }
+
+// Push an Arg onto a list. The extern fn signature is declared for
+// String lists but the runtime handles any FuseHandle.
+fn pushArg(list: List<Arg>, item: Arg) {
+  fuse_list_push(list, item)
+}
+
+// Find an Arg definition by long name (e.g., "--verbose").
+fn findByLong(args: List<Arg>, long: String) -> Option<Arg> {
+  var found: Option<Arg> = None
+  for arg in args {
+    val eq = arg.long == long
+    if eq { found = Some(arg) }
+  }
+  found
+}
+
+// Find an Arg definition by short name (e.g., "-v").
+fn findByShort(args: List<Arg>, short: String) -> Option<Arg> {
+  var found: Option<Arg> = None
+  for arg in args {
+    val eq = arg.short == short
+    if eq { found = Some(arg) }
+  }
+  found
+}
+
+// Check if a name exists in a string list.
+fn listContains(list: List<String>, name: String) -> Bool {
+  var found = false
+  for item in list {
+    val eq = item == name
+    if eq { found = true }
+  }
+  found
+}
+
+// Find the value for a given option name in parallel name/value lists.
+fn listLookup(names: List<String>, vals: List<String>, key: String) -> Option<String> {
+  var result: Option<String> = None
+  var idx = 0
+  for n in names {
+    val eq = n == key
+    if eq {
+      // Walk vals list to the same index
+      var vi = 0
+      for v in vals {
+        val atIdx = vi == idx
+        if atIdx { result = Some(v) }
+        vi = vi + 1
+      }
+    }
+    idx = idx + 1
+  }
+  result
+}
+
+// --- ArgParser builder ---
+
+pub fn ArgParser.new(name: String) -> ArgParser {
+  ArgParser(name, "", "", [])
+}
+
+pub fn ArgParser.withDescription(mutref self, desc: String) -> Int {
+  self.description = desc
+  0
+}
+
+pub fn ArgParser.withVersion(mutref self, ver: String) -> Int {
+  self.version = ver
+  0
+}
+
+pub fn ArgParser.flag(mutref self, long: String, short: String, help: String) -> Int {
+  pushArg(self.args, Arg(long, short, long, help, false, false, ""))
+  0
+}
+
+pub fn ArgParser.option(mutref self, long: String, short: String, help: String, default: String) -> Int {
+  pushArg(self.args, Arg(long, short, long, help, false, true, default))
+  0
+}
+
+pub fn ArgParser.positional(mutref self, name: String, help: String, required: Bool) -> Int {
+  // Positional args: no long/short, identified by name
+  pushArg(self.args, Arg(name, "", "", help, required, true, ""))
+  0
+}
+
+// --- ParsedArgs access ---
+
+fn lookupFlag(flags: List<String>, name: String) -> Option<String> {
+  val isFlag = listContains(flags, name)
+  match isFlag {
+    true => Some("true")
+    false => None
+  }
+}
+
+pub fn ParsedArgs.get(ref self, name: String) -> Option<String> {
+  val optVal = listLookup(self.options, self.values, name)
+  match optVal {
+    Some(v) => Some(v)
+    None => lookupFlag(self.flags, name)
+  }
+}
+
+pub fn ParsedArgs.has(ref self, name: String) -> Bool {
+  val inFlags = listContains(self.flags, name)
+  val inOpts = listContains(self.options, name)
+  inFlags or inOpts
+}
+
+pub fn ParsedArgs.positionals(ref self) -> List<String> {
+  self.positionalArgs
+}
+
+// --- Parsing ---
+
+pub fn ArgParser.parse(ref self, args: List<String>) -> Result<ParsedArgs, ArgError> {
+  var flags: List<String> = []
+  var optNames: List<String> = []
+  var optVals: List<String> = []
+  var positionals: List<String> = []
+  var doubleDash = false
+  var expectValue = false
+  var pendingName = ""
+
+  for arg in args {
+    if expectValue {
+      // This arg is the value for the previous --key
+      fuse_list_push(optNames, pendingName)
+      fuse_list_push(optVals, arg)
+      expectValue = false
+    } else if doubleDash {
+      // After --, everything is positional
+      fuse_list_push(positionals, arg)
+    } else if arg == "--" {
+      doubleDash = true
+    } else if startsWith(arg, "--") {
+      // Long option: --key=value or --key value or --flag
+      val afterDash = slice(arg, 2, strLen(arg))
+      val eqPos = fuse_rt_string_index_of(afterDash, "=")
+      val hasEq = eqPos >= 0
+      if hasEq {
+        // --key=value
+        val key = slice(afterDash, 0, eqPos)
+        val value = slice(afterDash, eqPos + 1, strLen(afterDash))
+        val longName = f"--{key}"
+        fuse_list_push(optNames, longName)
+        fuse_list_push(optVals, value)
+      } else {
+        // --flag or --key <next arg>
+        val longName = arg
+        val argDef = findByLong(self.args, longName)
+        match argDef {
+          Some(ad) => {
+            match ad.hasValue {
+              true => {
+                // Expects a value as the next arg
+                expectValue = true
+                pendingName = longName
+              }
+              false => fuse_list_push(flags, longName)
+            }
+          }
+          None => {
+            // Unknown arg — treat as flag
+            fuse_list_push(flags, longName)
+          }
+        }
+      }
+    } else if startsWith(arg, "-") {
+      // Short option: -f or -o value
+      val shortName = arg
+      val argDef = findByShort(self.args, shortName)
+      match argDef {
+        Some(ad) => {
+          match ad.hasValue {
+            true => {
+              expectValue = true
+              pendingName = ad.long
+            }
+            false => fuse_list_push(flags, ad.long)
+          }
+        }
+        None => {
+          // Unknown short flag — store as-is
+          fuse_list_push(flags, shortName)
+        }
+      }
+    } else {
+      // Positional argument
+      fuse_list_push(positionals, arg)
+    }
+  }
+
+  if expectValue {
+    return Err(ArgError(f"missing value for {pendingName}"))
+  }
+
+  // Apply defaults for options not provided
+  for ad in self.args {
+    val hasVal = ad.hasValue
+    val hasLong = strLen(ad.long) > 0
+    if hasVal and hasLong {
+      val provided = listContains(optNames, ad.long)
+      val hasDefault = strLen(ad.defaultValue) > 0
+      if not provided and hasDefault {
+        fuse_list_push(optNames, ad.long)
+        fuse_list_push(optVals, ad.defaultValue)
+      }
+    }
+  }
+
+  // Check required positional args
+  var posIdx = 0
+  for ad in self.args {
+    val isPositional = strLen(ad.long) == 0 and strLen(ad.short) == 0
+    if isPositional and ad.required {
+      // Count if we have enough positionals
+      var count = 0
+      for p in positionals {
+        count = count + 1
+      }
+      if count <= posIdx {
+        return Err(ArgError(f"missing required argument: {ad.name}"))
+      }
+      posIdx = posIdx + 1
+    }
+  }
+
+  Ok(ParsedArgs(flags, optNames, optVals, positionals))
+}
+
+// --- Help text ---
+
+pub fn ArgParser.helpText(ref self) -> String {
+  val nl = "\n"
+  var result = f"Usage: {self.name} [OPTIONS]"
+
+  // Append positional arg names
+  for ad in self.args {
+    val isPositional = strLen(ad.long) == 0 and strLen(ad.short) == 0
+    if isPositional {
+      match ad.required {
+        true => { result = f"{result} <{ad.name}>" }
+        false => { result = f"{result} [{ad.name}]" }
+      }
+    }
+  }
+
+  result = f"{result}{nl}"
+
+  val hasDesc = strLen(self.description) > 0
+  if hasDesc {
+    result = f"{result}{nl}{self.description}{nl}"
+  }
+
+  result = f"{result}{nl}Options:{nl}"
+
+  for ad in self.args {
+    val isPositional = strLen(ad.long) == 0 and strLen(ad.short) == 0
+    if not isPositional {
+      val hasShort = strLen(ad.short) > 0
+      match hasShort {
+        true => { result = f"{result}  {ad.short}, {ad.long}" }
+        false => { result = f"{result}      {ad.long}" }
+      }
+      val hasHelp = strLen(ad.help) > 0
+      if hasHelp {
+        result = f"{result}  {ad.help}"
+      }
+      result = f"{result}{nl}"
+    }
+  }
+
+  // Positional args section
+  var hasPositional = false
+  for ad in self.args {
+    val isP = strLen(ad.long) == 0 and strLen(ad.short) == 0
+    if isP { hasPositional = true }
+  }
+
+  if hasPositional {
+    result = f"{result}{nl}Arguments:{nl}"
+    for ad in self.args {
+      val isP = strLen(ad.long) == 0 and strLen(ad.short) == 0
+      if isP {
+        result = f"{result}  {ad.name}  {ad.help}{nl}"
+      }
+    }
+  }
+
+  result
+}
