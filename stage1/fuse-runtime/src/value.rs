@@ -1410,6 +1410,57 @@ pub unsafe extern "C" fn fuse_rt_env_has(name: FuseHandle) -> FuseHandle {
     fuse_bool(std::env::var(key).is_ok())
 }
 
+// --- Random FFI ---
+
+// Splitmix64 — simple, high-quality PRNG. State is a single i64.
+fn splitmix64(state: i64) -> (i64, i64) {
+    let s = state.wrapping_add(0x9e3779b97f4a7c15_u64 as i64);
+    let mut z = s;
+    z = (z ^ (z as u64 >> 30) as i64).wrapping_mul(0xbf58476d1ce4e5b9_u64 as i64);
+    z = (z ^ (z as u64 >> 27) as i64).wrapping_mul(0x94d049bb133111eb_u64 as i64);
+    z = z ^ (z as u64 >> 31) as i64;
+    (s, z) // (new_state, output)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_random_new() -> FuseHandle {
+    // Seed from system time nanos
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as i64;
+    fuse_int(seed)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_random_seeded(seed: FuseHandle) -> FuseHandle {
+    let s = match &(*seed).kind { ValueKind::Int(n) => *n, _ => 0 };
+    fuse_int(s)
+}
+
+/// Returns a list [new_state, value] to allow functional state threading.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_random_next_int(state: FuseHandle) -> FuseHandle {
+    let s = match &(*state).kind { ValueKind::Int(n) => *n, _ => 0 };
+    let (new_state, val) = splitmix64(s);
+    let list = fuse_list_new();
+    fuse_list_push(list, fuse_int(new_state));
+    fuse_list_push(list, fuse_int(val));
+    list
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_random_next_float(state: FuseHandle) -> FuseHandle {
+    let s = match &(*state).kind { ValueKind::Int(n) => *n, _ => 0 };
+    let (new_state, val) = splitmix64(s);
+    // Convert to [0.0, 1.0) by using upper 53 bits
+    let f = ((val as u64) >> 11) as f64 / (1u64 << 53) as f64;
+    let list = fuse_list_new();
+    fuse_list_push(list, fuse_int(new_state));
+    fuse_list_push(list, fuse_float(f));
+    list
+}
+
 // --- Time FFI ---
 
 #[unsafe(no_mangle)]

@@ -1099,6 +1099,42 @@ impl Evaluator {
                     }
                     return Ok(Value::Bool(false));
                 }
+                "fuse_rt_random_new" => {
+                    let seed = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos() as i64;
+                    return Ok(Value::Int(seed));
+                }
+                "fuse_rt_random_seeded" => {
+                    if let Some(Value::Int(s)) = args.first() { return Ok(Value::Int(*s)); }
+                    return Ok(Value::Int(0));
+                }
+                "fuse_rt_random_next_int" => {
+                    fn splitmix64(state: i64) -> (i64, i64) {
+                        let s = state.wrapping_add(0x9e3779b97f4a7c15_u64 as i64);
+                        let mut z = s;
+                        z = (z ^ (z as u64 >> 30) as i64).wrapping_mul(0xbf58476d1ce4e5b9_u64 as i64);
+                        z = (z ^ (z as u64 >> 27) as i64).wrapping_mul(0x94d049bb133111eb_u64 as i64);
+                        z = z ^ (z as u64 >> 31) as i64;
+                        (s, z)
+                    }
+                    let s = if let Some(Value::Int(n)) = args.first() { *n } else { 0 };
+                    let (ns, val) = splitmix64(s);
+                    return Ok(Value::List(vec![Value::Int(ns), Value::Int(val)]));
+                }
+                "fuse_rt_random_next_float" => {
+                    fn splitmix64(state: i64) -> (i64, i64) {
+                        let s = state.wrapping_add(0x9e3779b97f4a7c15_u64 as i64);
+                        let mut z = s;
+                        z = (z ^ (z as u64 >> 30) as i64).wrapping_mul(0xbf58476d1ce4e5b9_u64 as i64);
+                        z = (z ^ (z as u64 >> 27) as i64).wrapping_mul(0x94d049bb133111eb_u64 as i64);
+                        z = z ^ (z as u64 >> 31) as i64;
+                        (s, z)
+                    }
+                    let s = if let Some(Value::Int(n)) = args.first() { *n } else { 0 };
+                    let (ns, val) = splitmix64(s);
+                    let f = ((val as u64) >> 11) as f64 / (1u64 << 53) as f64;
+                    return Ok(Value::List(vec![Value::Int(ns), Value::Float(f)]));
+                }
                 "fuse_rt_time_instant_now" => {
                     thread_local! { static BASE: std::time::Instant = std::time::Instant::now(); }
                     let n = BASE.with(|base| base.elapsed().as_nanos() as i64);

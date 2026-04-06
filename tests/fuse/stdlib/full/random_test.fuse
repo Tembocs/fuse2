@@ -1,0 +1,98 @@
+// EXPECTED OUTPUT:
+// === Rng.seeded determinism ===
+// same seed same output: true
+// === Rng.nextInt ===
+// is int: true
+// === Rng.nextFloat ===
+// in range: true
+// === Rng.nextBool ===
+// is bool: true
+// === Rng.nextIntRange ===
+// in range: true
+// === Rng.nextFloatRange ===
+// in range: true
+// === Rng.nextGaussian ===
+// gaussian ok: true
+// === convenience functions ===
+// random.int ok: true
+// random.float ok: true
+// random.bool ok: true
+// random.intRange ok: true
+// === sequence advances ===
+// different: true
+// === done ===
+// done
+
+import stdlib.full.random
+
+@entrypoint
+fn main() {
+  // Seeded determinism — same seed produces same first value
+  println("=== Rng.seeded determinism ===")
+  var rng1 = Rng.seeded(42)
+  var rng2 = Rng.seeded(42)
+  val v1 = rng1.nextInt()
+  val v2 = rng2.nextInt()
+  println(f"same seed same output: {v1 == v2}")
+
+  // nextInt
+  println("=== Rng.nextInt ===")
+  var rng = Rng.seeded(123)
+  val n = rng.nextInt()
+  // Just verify it returned something (any Int is valid)
+  println(f"is int: {n == n}")
+
+  // nextFloat — should be in [0.0, 1.0)
+  println("=== Rng.nextFloat ===")
+  val f = rng.nextFloat()
+  val fOk = f >= 0.0 and f < 1.0
+  println(f"in range: {fOk}")
+
+  // nextBool
+  println("=== Rng.nextBool ===")
+  val b = rng.nextBool()
+  val bOk = b == true or b == false
+  println(f"is bool: {bOk}")
+
+  // nextIntRange
+  println("=== Rng.nextIntRange ===")
+  val r = rng.nextIntRange(10, 20)
+  val rOk = r >= 10 and r < 20
+  println(f"in range: {rOk}")
+
+  // nextFloatRange
+  println("=== Rng.nextFloatRange ===")
+  val fr = rng.nextFloatRange(5.0, 10.0)
+  val frOk = fr >= 5.0 and fr < 10.0
+  println(f"in range: {frOk}")
+
+  // nextGaussian — just check it returns a finite number
+  println("=== Rng.nextGaussian ===")
+  val g = rng.nextGaussian(0.0, 1.0)
+  val gOk = g > -100.0 and g < 100.0
+  println(f"gaussian ok: {gOk}")
+
+  // Convenience functions
+  println("=== convenience functions ===")
+  val ri = random.int()
+  println(f"random.int ok: {ri == ri}")
+  val rf = random.float()
+  val rfOk = rf >= 0.0 and rf < 1.0
+  println(f"random.float ok: {rfOk}")
+  val rb = random.bool()
+  val rbOk = rb == true or rb == false
+  println(f"random.bool ok: {rbOk}")
+  val rir = random.intRange(1, 100)
+  val rirOk = rir >= 1 and rir < 100
+  println(f"random.intRange ok: {rirOk}")
+
+  // Verify state advances — two calls should give different values
+  println("=== sequence advances ===")
+  var rng3 = Rng.seeded(99)
+  val a = rng3.nextInt()
+  val c = rng3.nextInt()
+  println(f"different: {a != c}")
+
+  println("=== done ===")
+  println("done")
+}

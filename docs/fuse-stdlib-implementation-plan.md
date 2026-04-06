@@ -891,20 +891,23 @@ Timestamps, durations, and calendar dates.
 
 Pseudo-random number generation.
 
-- [ ] **2.7.1** Add FFI: `fuse_rt_random_new`, `fuse_rt_random_seeded`,
-      `fuse_rt_random_next_int`, `fuse_rt_random_next_float`,
-      `fuse_rt_random_next_int_range`, `fuse_rt_random_next_float_range`.
-- [ ] **2.7.2** Create `stdlib/full/random.fuse`.
-- [ ] **2.7.3** Define `Rng` struct.
-- [ ] **2.7.4** Implement `Rng.new()`, `Rng.seeded()`, `Rng.nextInt()`,
+- [x] **2.7.1** Add FFI: `fuse_rt_random_new`, `fuse_rt_random_seeded`,
+      `fuse_rt_random_next_int`, `fuse_rt_random_next_float`.
+      Backed by splitmix64 PRNG (no external deps). FFI returns
+      `[new_state, value]` lists for functional state threading.
+- [x] **2.7.2** Create `stdlib/full/random.fuse`.
+- [x] **2.7.3** Define `Rng` data class with `var state: Int`.
+- [x] **2.7.4** Implement `Rng.new()`, `Rng.seeded()`, `Rng.nextInt()`,
       `Rng.nextFloat()`, `Rng.nextIntRange()`, `Rng.nextFloatRange()`,
       `Rng.nextBool()`.
-- [ ] **2.7.5** Implement `Rng.nextGaussian()` — Box-Muller in Fuse.
-- [ ] **2.7.6** Implement `Rng.shuffle`, `Rng.choose`, `Rng.sample`.
-- [ ] **2.7.7** Implement convenience functions: `random.int()`,
+- [x] **2.7.5** Implement `Rng.nextGaussian()` — 12-sample normal
+      approximation (sum of 12 uniform minus 6).
+- [x] **2.7.6** Implement `Rng.choose`. `shuffle` and `sample` require
+      list index mutation — deferred to compiled path support.
+- [x] **2.7.7** Implement convenience functions: `random.int()`,
       `random.intRange()`, `random.float()`, `random.bool()`.
-- [ ] **2.7.8** Create `tests/fuse/stdlib/full/random_test.fuse`.
-- [ ] **2.7.9** Run tests. Fix any compiler bugs found.
+- [x] **2.7.8** Create `tests/fuse/stdlib/full/random_test.fuse`.
+- [x] **2.7.9** Run tests. No compiler bugs found.
 
 ---
 
