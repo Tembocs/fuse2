@@ -22,6 +22,17 @@ pub fn backend_name() -> &'static str {
     "cranelift-object"
 }
 
+/// Choose the correct linker symbol for a function declaration.
+/// Extension methods include the receiver type to avoid collisions with
+/// free functions of the same name in the same module.
+fn symbol_for_function(module_path: &Path, function: &fa::FunctionDecl) -> String {
+    if let Some(receiver) = &function.receiver_type {
+        layout::extension_symbol(module_path, receiver, &function.name)
+    } else {
+        layout::function_symbol(module_path, &function.name)
+    }
+}
+
 pub fn run_host_entry(entry: extern "C" fn() -> i32) -> Result<i32, String> {
     Ok(entry())
 }
@@ -355,7 +366,7 @@ impl<'a> BackendCompiler<'a> {
                 self.function_ids.insert(name, func_id);
             }
             for function in loaded.extensions.values() {
-                let name = layout::function_symbol(loaded.path.as_path(), &function.name);
+                let name = symbol_for_function(loaded.path.as_path(), function);
                 let func_id = self
                     .module
                     .declare_function(&name, Linkage::Local, &self.handle_signature(function.params.len()))
@@ -473,7 +484,7 @@ impl<'a> BackendCompiler<'a> {
         module_path: &Path,
         function: &fa::FunctionDecl,
     ) -> Result<Option<String>, String> {
-        let name = layout::function_symbol(module_path, &function.name);
+        let name = symbol_for_function(module_path, function);
         let func_id = match self.function_ids.get(&name) {
             Some(id) => *id,
             None => return Ok(None),
@@ -568,7 +579,7 @@ impl<'a> BackendCompiler<'a> {
     }
 
     fn compile_function(&mut self, module_path: &Path, function: &fa::FunctionDecl) -> Result<(), String> {
-        let name = layout::function_symbol(module_path, &function.name);
+        let name = symbol_for_function(module_path, function);
         let func_id = *self
             .function_ids
             .get(&name)
@@ -1621,7 +1632,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             .session
             .resolve_extension(&receiver_type, name)
         {
-            let symbol = layout::function_symbol(target_module, &function.name);
+            let symbol = symbol_for_function(target_module, function);
             let func_id = *self
                 .compiler
                 .function_ids
@@ -2341,7 +2352,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     .session
                     .resolve_extension(base, member)
                 {
-                    let symbol = layout::function_symbol(target_module, &function.name);
+                    let symbol = symbol_for_function(target_module, function);
                     let func_id = *self
                         .compiler
                         .function_ids
@@ -2381,7 +2392,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             .session
             .resolve_extension(&receiver_type, &member.name)
         {
-            let symbol = layout::function_symbol(target_module, &function.name);
+            let symbol = symbol_for_function(target_module, function);
             let func_id = *self
                 .compiler
                 .function_ids

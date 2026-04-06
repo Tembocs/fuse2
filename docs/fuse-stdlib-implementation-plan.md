@@ -1212,12 +1212,42 @@ Test assertion utilities.
 
 Structured logging.
 
-- [ ] **5.2.1** Create `stdlib/ext/log.fuse`.
-- [ ] **5.2.2** Define `Level` enum and `Logger` data class.
-- [ ] **5.2.3** Implement `Logger` builder and log methods.
-- [ ] **5.2.4** Implement global `log.*` convenience functions.
-- [ ] **5.2.5** Create `tests/fuse/stdlib/ext/log_test.fuse`.
-- [ ] **5.2.6** Run tests. Fix any compiler bugs found.
+- [x] **5.2.1** Create `stdlib/ext/log.fuse`.
+- [x] **5.2.2** Define `Level` enum and `Logger` data class.
+- [x] **5.2.3** Implement `Logger` builder and log methods.
+- [x] **5.2.4** Implement global `log.*` convenience functions.
+- [x] **5.2.5** Create `tests/fuse/stdlib/ext/log_test.fuse`.
+- [x] **5.2.6** Run tests. Fix any compiler bugs found.
+
+**Notes:**
+- `Level` is a user-defined enum: `{ Trace Debug Info Warn Error }`.
+  `levelToInt` converts to ordinals (0–4) via match. `levelLabel`
+  converts ordinals to strings ("TRACE".."ERROR") via match.
+- `Logger` is a `pub data class Logger(var level: Int, var prefix: String, var filePath: String)`. Builder methods (`withLevel`, `withPrefix`,
+  `toFile`, `toStderr`) use `mutref self` and return `Int` (same pattern
+  as `Command` in process.fuse — returning `mutref Self` is not yet
+  supported). The spec's `pub struct Logger` was changed to a data class
+  because structs are not compiled in the Stage 1 codegen.
+- Output format: `{ISO-8601-UTC} [{LEVEL}] {prefix}: {message}`.
+  Timestamp is generated in Rust via `SystemTime::now()` with a civil
+  date algorithm (Howard Hinnant). Output goes to stderr (via FFI
+  `fuse_rt_log_eprintln`) or to a file (via `fuse_rt_log_append_file`).
+- Global logger uses runtime thread-local state for the level
+  (`fuse_rt_log_global_level`, `fuse_rt_log_set_global_level`).
+  Global functions default to Info level, no prefix, stderr output.
+- **Compiler bug #15 (fixed):** Extension methods and free functions with
+  the same name in the same module produced symbol collisions at the
+  Cranelift level. Both `Logger.debug(ref self, msg)` and `debug(msg)`
+  mapped to `fuse_fn_{path}_debug`. Fixed by introducing
+  `layout::extension_symbol()` which includes the receiver type:
+  `fuse_ext_{path}_{Type}__{method}`. All 4 extension symbol sites in
+  `object_backend.rs` updated. All 89 existing tests pass.
+- **Codegen limitation:** `if`/`else` blocks are not treated as return
+  expressions in function bodies — the codegen only recognises the last
+  `Expr` statement as a return value. `if` is parsed as a `Statement`,
+  not `Statement::Expr(Expr::If)`. Workaround: use `match` for
+  conditional return values. Documented in learning doc.
+- All 89 existing tests pass, 0 regressions. Zero TODO/FIXME/HACK.
 
 ---
 
@@ -1357,6 +1387,7 @@ fix commits. Full details including root cause analysis are in
 | 12 | 4.1 | Match arm block bodies called `compile_statements` with their own ASAP analysis, which released outer-scope locals (e.g., `ch`) prematurely. Only triggered when match arms contained block bodies `{ ... }`, not expression bodies. | `match ch.recv() { Ok(b) => { println(b) } ... }; ch.recv()` → channel released between matches | See Phase 4.1 commit |
 | 13 | 4.1 | Tuple-destructured Chan/Shared handles aliased the same runtime object. ASAP release of one handle destroyed the shared state, making the other handle invalid. | `val (tx, rx) = Chan::<Int>.bounded(1); tx.send(1); rx.recv()` → "channel empty" | See Phase 4.1 commit |
 | 14 | 4.1 | `fuse_chan_runtime_bounded` accepted `capacity: usize` but received a FuseHandle (pointer to Int). The pointer value was used as capacity (huge number), making all bounded channels effectively unbounded. `cap()` returned the pointer value, not the intended capacity. | `Chan::<Int>.bounded(5); ch.cap()` → Some(huge_number) | See Phase 4.1 commit |
+| 15 | 5.2 | Extension methods and free functions with the same name in the same module produced symbol collisions. Both `Logger.debug(ref self, msg)` and `debug(msg)` mapped to `fuse_fn_{path}_debug`. Fixed by introducing `layout::extension_symbol()` which prefixes `fuse_ext_{path}_{Type}__{method}` for extensions. | `pub fn Logger.debug(ref self, msg: String)` + `pub fn debug(msg: String)` → link error | See Phase 5.2 commit |
 
 ---
 

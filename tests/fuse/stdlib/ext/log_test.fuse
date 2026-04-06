@@ -1,0 +1,120 @@
+// EXPECTED OUTPUT:
+// --- Logger.new ---
+// level: 2
+// prefix empty: true
+// --- Logger builder ---
+// builder done
+// --- Logger file output ---
+// log file has content: true
+// contains INFO: true
+// contains myapp: true
+// contains hello: true
+// --- level filtering ---
+// filtered file empty: true
+// --- Logger warn ---
+// warn file has content: true
+// contains WARN: true
+// --- Logger debug ---
+// debug file has content: true
+// contains DEBUG: true
+// --- done ---
+// done
+
+import stdlib.ext.log
+import stdlib.core.string
+
+extern fn fuse_rt_io_read_file(path: String) -> Result<String, String>
+extern fn fuse_rt_io_write_file(path: String, content: String) -> Result<Unit, String>
+
+@entrypoint
+fn main() {
+  val logFile = "__fuse_log_test__.txt"
+
+  // --- Logger.new ---
+  println("--- Logger.new ---")
+  val logger = Logger.new()
+  println(f"level: {logger.level}")
+  val prefixEmpty = logger.prefix == ""
+  println(f"prefix empty: {prefixEmpty}")
+
+  // --- Logger builder ---
+  println("--- Logger builder ---")
+  var lg = Logger(1, "myapp", logFile)
+  println("builder done")
+
+  // --- Logger file output ---
+  println("--- Logger file output ---")
+  fuse_rt_io_write_file(logFile, "")
+  lg.info("hello from logger")
+  val content = fuse_rt_io_read_file(logFile)
+  match content {
+    Ok(text) => {
+      val hasContent = text != ""
+      println(f"log file has content: {hasContent}")
+      val infoTag = "INFO"
+      val hasInfo = text.contains(infoTag)
+      println(f"contains INFO: {hasInfo}")
+      val appTag = "myapp"
+      val hasApp = text.contains(appTag)
+      println(f"contains myapp: {hasApp}")
+      val helloTag = "hello"
+      val hasHello = text.contains(helloTag)
+      println(f"contains hello: {hasHello}")
+    }
+    Err(e) => println(f"read error: {e}")
+  }
+
+  // --- level filtering ---
+  println("--- level filtering ---")
+  fuse_rt_io_write_file(logFile, "")
+  // Logger level is Debug (1), so Trace (0) should be filtered out
+  lg.trace("should not appear")
+  val filtered = fuse_rt_io_read_file(logFile)
+  match filtered {
+    Ok(text) => {
+      val isEmpty = text == ""
+      println(f"filtered file empty: {isEmpty}")
+    }
+    Err(e) => println(f"read error: {e}")
+  }
+
+  // --- Logger warn ---
+  println("--- Logger warn ---")
+  fuse_rt_io_write_file(logFile, "")
+  var wlog = Logger(2, "", logFile)
+  wlog.warn("warning test")
+  val warnContent = fuse_rt_io_read_file(logFile)
+  match warnContent {
+    Ok(text) => {
+      val hasContent = text != ""
+      println(f"warn file has content: {hasContent}")
+      val warnTag = "WARN"
+      val hasWarn = text.contains(warnTag)
+      println(f"contains WARN: {hasWarn}")
+    }
+    Err(e) => println(f"read error: {e}")
+  }
+
+  // --- Logger debug ---
+  println("--- Logger debug ---")
+  fuse_rt_io_write_file(logFile, "")
+  var dbgLog = Logger(1, "", logFile)
+  dbgLog.debug("debug message")
+  val dbgContent = fuse_rt_io_read_file(logFile)
+  match dbgContent {
+    Ok(text) => {
+      val hasContent = text != ""
+      println(f"debug file has content: {hasContent}")
+      val dbgTag = "DEBUG"
+      val hasDebug = text.contains(dbgTag)
+      println(f"contains DEBUG: {hasDebug}")
+    }
+    Err(e) => println(f"read error: {e}")
+  }
+
+  // Cleanup
+  fuse_rt_io_write_file(logFile, "")
+
+  println("--- done ---")
+  println("done")
+}

@@ -71,6 +71,15 @@ pub fn function_symbol(module_path: &Path, name: &str) -> String {
     format!("fuse_fn_{}_{}", sanitize_path(module_path), sanitize_name(name))
 }
 
+pub fn extension_symbol(module_path: &Path, receiver_type: &str, name: &str) -> String {
+    format!(
+        "fuse_ext_{}_{}__{}",
+        sanitize_path(module_path),
+        sanitize_name(canonical_type_name(receiver_type)),
+        sanitize_name(name),
+    )
+}
+
 pub fn destructor_symbol(module_path: &Path, type_name: &str) -> String {
     format!(
         "fuse_del_{}_{}",

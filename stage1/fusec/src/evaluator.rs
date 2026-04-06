@@ -1789,6 +1789,51 @@ impl Evaluator {
                 "fuse_rt_panic" => {
                     std::process::exit(101);
                 }
+                // --- log FFI ---
+                "fuse_rt_log_eprintln" => {
+                    if let Some(Value::String(s)) = args.first() {
+                        eprintln!("{s}");
+                    }
+                    return Ok(Value::Unit);
+                }
+                "fuse_rt_log_timestamp" => {
+                    use std::time::{SystemTime, UNIX_EPOCH};
+                    let secs = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+                    let days = (secs / 86400) as i64;
+                    let day_secs = (secs % 86400) as i64;
+                    let h = day_secs / 3600; let m = (day_secs % 3600) / 60; let s = day_secs % 60;
+                    let z = days + 719468;
+                    let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
+                    let doe = z - era * 146097;
+                    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+                    let y = yoe + era * 400;
+                    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+                    let mp = (5 * doy + 2) / 153;
+                    let d = doy - (153 * mp + 2) / 5 + 1;
+                    let mo = if mp < 10 { mp + 3 } else { mp - 9 };
+                    let y = if mo <= 2 { y + 1 } else { y };
+                    return Ok(Value::String(format!("{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}Z")));
+                }
+                "fuse_rt_log_global_level" => {
+                    thread_local! { static LVL: std::cell::Cell<i64> = const { std::cell::Cell::new(2) }; }
+                    return Ok(Value::Int(LVL.with(|c| c.get())));
+                }
+                "fuse_rt_log_set_global_level" => {
+                    if let Some(Value::Int(n)) = args.first() {
+                        thread_local! { static LVL: std::cell::Cell<i64> = const { std::cell::Cell::new(2) }; }
+                        LVL.with(|c| c.set(*n));
+                    }
+                    return Ok(Value::Unit);
+                }
+                "fuse_rt_log_append_file" => {
+                    if let (Some(Value::String(p)), Some(Value::String(m))) = (args.first(), args.get(1)) {
+                        use std::io::Write;
+                        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(p.as_str()) {
+                            let _ = writeln!(f, "{m}");
+                        }
+                    }
+                    return Ok(Value::Unit);
+                }
                 _ => {}
             }
             // Post-match handlers that need &self (for stringify).

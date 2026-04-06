@@ -1,0 +1,164 @@
+// Fuse Ext stdlib — structured logging.
+//
+// Provides levelled logging to stderr or file. Supports both
+// instance-based Logger and global convenience functions.
+//
+// import stdlib.ext.log
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_log_eprintln(msg: String) -> Unit
+extern fn fuse_rt_log_timestamp() -> String
+extern fn fuse_rt_log_global_level() -> Int
+extern fn fuse_rt_log_set_global_level(level: Int) -> Unit
+extern fn fuse_rt_log_append_file(path: String, msg: String) -> Unit
+
+// --- Level enum ---
+
+pub enum Level {
+  Trace
+  Debug
+  Info
+  Warn
+  Error
+}
+
+// Convert Level to its integer ordinal.
+pub fn levelToInt(level: Level) -> Int {
+  match level {
+    Level.Trace => 0
+    Level.Debug => 1
+    Level.Info => 2
+    Level.Warn => 3
+    Level.Error => 4
+  }
+}
+
+// Convert integer ordinal to label string.
+fn levelLabel(n: Int) -> String {
+  match n {
+    0 => "TRACE"
+    1 => "DEBUG"
+    2 => "INFO"
+    3 => "WARN"
+    _ => "ERROR"
+  }
+}
+
+// --- Logger data class ---
+
+pub data class Logger(var level: Int, var prefix: String, var filePath: String)
+
+// Create a new Logger. Defaults to Info level, no prefix, stderr output.
+pub fn Logger.new() -> Logger {
+  Logger(2, "", "")
+}
+
+// Set the minimum log level.
+pub fn Logger.withLevel(mutref self, level: Level) -> Int {
+  self.level = levelToInt(level)
+  0
+}
+
+// Set a prefix for all messages.
+pub fn Logger.withPrefix(mutref self, prefix: String) -> Int {
+  self.prefix = prefix
+  0
+}
+
+// Direct output to a file (appending).
+pub fn Logger.toFile(mutref self, path: String) -> Int {
+  self.filePath = path
+  0
+}
+
+// Direct output to stderr (default).
+pub fn Logger.toStderr(mutref self) -> Int {
+  self.filePath = ""
+  0
+}
+
+// --- Internal logging helper ---
+
+fn formatLine(ts: String, label: String, prefix: String, msg: String) -> String {
+  match prefix {
+    "" => f"{ts} [{label}] {msg}"
+    _ => f"{ts} [{label}] {prefix}: {msg}"
+  }
+}
+
+fn doLog(threshold: Int, prefix: String, filePath: String, msgLevel: Int, msg: String) {
+  if msgLevel >= threshold {
+    val ts = fuse_rt_log_timestamp()
+    val label = levelLabel(msgLevel)
+    val line = formatLine(ts, label, prefix, msg)
+    match filePath {
+      "" => fuse_rt_log_eprintln(line)
+      _ => fuse_rt_log_append_file(filePath, line)
+    }
+  }
+}
+
+// --- Logger instance methods ---
+
+// Log at Trace level.
+pub fn Logger.trace(ref self, msg: String) {
+  doLog(self.level, self.prefix, self.filePath, 0, msg)
+}
+
+// Log at Debug level.
+pub fn Logger.debug(ref self, msg: String) {
+  doLog(self.level, self.prefix, self.filePath, 1, msg)
+}
+
+// Log at Info level.
+pub fn Logger.info(ref self, msg: String) {
+  doLog(self.level, self.prefix, self.filePath, 2, msg)
+}
+
+// Log at Warn level.
+pub fn Logger.warn(ref self, msg: String) {
+  doLog(self.level, self.prefix, self.filePath, 3, msg)
+}
+
+// Log at Error level.
+pub fn Logger.error(ref self, msg: String) {
+  doLog(self.level, self.prefix, self.filePath, 4, msg)
+}
+
+// --- Global logger convenience functions ---
+
+// Log at Trace level using the global logger.
+pub fn trace(msg: String) {
+  val lvl = fuse_rt_log_global_level()
+  doLog(lvl, "", "", 0, msg)
+}
+
+// Log at Debug level using the global logger.
+pub fn debug(msg: String) {
+  val lvl = fuse_rt_log_global_level()
+  doLog(lvl, "", "", 1, msg)
+}
+
+// Log at Info level using the global logger.
+pub fn info(msg: String) {
+  val lvl = fuse_rt_log_global_level()
+  doLog(lvl, "", "", 2, msg)
+}
+
+// Log at Warn level using the global logger.
+pub fn warn(msg: String) {
+  val lvl = fuse_rt_log_global_level()
+  doLog(lvl, "", "", 3, msg)
+}
+
+// Log at Error level using the global logger.
+pub fn error(msg: String) {
+  val lvl = fuse_rt_log_global_level()
+  doLog(lvl, "", "", 4, msg)
+}
+
+// Set the global log level.
+pub fn setLevel(level: Level) {
+  fuse_rt_log_set_global_level(levelToInt(level))
+}

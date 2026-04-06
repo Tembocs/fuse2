@@ -463,6 +463,59 @@ Windows MSVC ("panic in a function that cannot unwind"). The
 unwind enforcement. Platform-specific `jmp_buf` sizes: MSVC x64 uses
 `[i64; 16]`, other platforms use `[i64; 32]`.
 
+### Bug #15 — Extension/free-function symbol collision (Wave 5, Phase 5.2)
+
+**Symptom:** Compiling `stdlib/ext/log.fuse` produced a Cranelift error:
+"Function ... signature ... is incompatible with previous declaration".
+This occurred because `Logger.debug(ref self, msg: String)` and
+`debug(msg: String)` both mapped to the same linker symbol
+`fuse_fn_{path}_debug`.
+
+**Minimal reproduction:**
+```fuse
+pub data class Foo(val x: Int)
+pub fn Foo.bar(ref self) -> Int { self.x }
+pub fn bar() -> Int { 42 }
+```
+Both `Foo.bar` and `bar` produce symbol `fuse_fn_{path}_bar`, which
+triggers a Cranelift duplicate-declaration error because the signatures
+differ (2 params vs 1 param).
+
+**Root cause:** `layout::function_symbol()` used only the function name,
+ignoring the receiver type for extension methods.
+
+**Category:** Codegen — symbol naming.
+
+**Fix:** Added `layout::extension_symbol(module_path, receiver_type, name)`
+which generates `fuse_ext_{path}_{Type}__{method}`. Added helper
+`symbol_for_function()` that dispatches to the correct symbol function
+based on whether `function.receiver_type` is set. Updated all 4 sites
+in `object_backend.rs` that declare or look up extension symbols.
+
+### Codegen limitation — `if`/`else` not treated as return expression
+
+**Symptom:** Functions using `if`/`else` as the last expression return
+`Unit` instead of the branch value. For example:
+```fuse
+fn foo(n: Int) -> String {
+  if n == 0 { "zero" } else { "nonzero" }
+}
+```
+Returns `Unit` instead of `"zero"` or `"nonzero"`.
+
+**Root cause:** The codegen splits the function body into prefix
+statements and a final expression via `split_last()`. It checks if the
+last statement is `Statement::Expr(...)`. However, `if` is parsed as
+`Statement::If`, not `Statement::Expr(Expr::If)`, so it's not
+recognised as a return expression.
+
+**Workaround:** Use `match` instead of `if`/`else` for conditional
+return values. `match` is parsed as `Statement::Expr(Expr::Match)` and
+works correctly as a return expression.
+
+**Status:** Not fixed (parser/codegen change needed). Documented as a
+known limitation. Does not affect any existing stdlib code.
+
 ---
 
 *End of Fuse Standard Library — Compiler Bug & Learning Reference*
