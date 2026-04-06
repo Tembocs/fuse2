@@ -1,0 +1,86 @@
+// Fuse Ext stdlib — cryptographic primitives.
+//
+// Backed by Rust's sha2, hmac, md5, blake3, and getrandom crates.
+//
+// import stdlib.ext.crypto
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_crypto_sha256(input: String) -> String
+extern fn fuse_rt_crypto_sha256_bytes(input: List<Int>) -> List<Int>
+extern fn fuse_rt_crypto_sha512(input: String) -> String
+extern fn fuse_rt_crypto_md5(input: String) -> String
+extern fn fuse_rt_crypto_blake3(input: String) -> String
+extern fn fuse_rt_crypto_hmac_sha256(key: String, input: String) -> String
+extern fn fuse_rt_crypto_constant_time_eq(a: String, b: String) -> Bool
+extern fn fuse_rt_crypto_random_bytes(n: Int) -> List<Int>
+extern fn fuse_rt_crypto_random_hex(n: Int) -> String
+
+extern fn fuse_rt_string_len(s: String) -> Int
+extern fn fuse_rt_string_char_at(s: String, index: Int) -> String
+extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
+
+// --- Hashing ---
+
+// SHA-256 hash. Returns hex-encoded string.
+pub fn sha256(input: String) -> String {
+  fuse_rt_crypto_sha256(input)
+}
+
+// SHA-256 hash of a byte list. Returns list of bytes.
+pub fn sha256Bytes(input: List<Int>) -> List<Int> {
+  fuse_rt_crypto_sha256_bytes(input)
+}
+
+// SHA-512 hash. Returns hex-encoded string.
+pub fn sha512(input: String) -> String {
+  fuse_rt_crypto_sha512(input)
+}
+
+// MD5 hash (legacy — not secure). Returns hex-encoded string.
+pub fn md5(input: String) -> String {
+  fuse_rt_crypto_md5(input)
+}
+
+// BLAKE3 hash. Returns hex-encoded string.
+pub fn blake3(input: String) -> String {
+  fuse_rt_crypto_blake3(input)
+}
+
+// --- HMAC ---
+
+// HMAC-SHA256. Returns hex-encoded string.
+pub fn hmacSha256(key: String, input: String) -> String {
+  fuse_rt_crypto_hmac_sha256(key, input)
+}
+
+// --- Comparison ---
+
+// Constant-time string comparison (prevents timing attacks).
+pub fn constantTimeEq(a: String, b: String) -> Bool {
+  fuse_rt_crypto_constant_time_eq(a, b)
+}
+
+// --- Random ---
+
+// Cryptographically secure random bytes.
+pub fn randomBytes(n: Int) -> List<Int> {
+  fuse_rt_crypto_random_bytes(n)
+}
+
+// Random hex string (n random bytes, 2n hex chars).
+pub fn randomHex(n: Int) -> String {
+  fuse_rt_crypto_random_hex(n)
+}
+
+// Random UUID v4.
+pub fn uuid4() -> String {
+  val hex = fuse_rt_crypto_random_hex(16)
+  // Format: 8-4-4-4-12
+  val p1 = fuse_rt_string_slice(hex, 0, 8)
+  val p2 = fuse_rt_string_slice(hex, 8, 12)
+  val p3 = fuse_rt_string_slice(hex, 12, 16)
+  val p4 = fuse_rt_string_slice(hex, 16, 20)
+  val p5 = fuse_rt_string_slice(hex, 20, 32)
+  f"{p1}-{p2}-{p3}-{p4}-{p5}"
+}

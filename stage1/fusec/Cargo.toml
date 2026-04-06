@@ -16,3 +16,8 @@ ureq = { version = "2", features = ["tls"] }
 regex = "1"
 toml = "0.8"
 serde_yaml = "0.9"
+sha2 = "0.10"
+hmac = "0.12"
+md-5 = "0.10"
+blake3 = "1"
+getrandom = "0.2"

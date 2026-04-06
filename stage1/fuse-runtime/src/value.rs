@@ -4195,13 +4195,142 @@ pub unsafe extern "C" fn fuse_rt_json_schema_validate(
         return unsafe { fuse_ok(fuse_unit()) };
     }
     // Build List<ValidationError>.
-    let list = unsafe { fuse_list_new() };
+    let err_list = unsafe { fuse_list_new() };
     for (path, msg) in &errors {
         let tn = b"ValidationError";
         let data = unsafe { fuse_data_new(tn.as_ptr(), tn.len(), 2, None) };
         unsafe { fuse_data_set_field(data, 0, fuse_string_new_utf8(path.as_ptr(), path.len())) };
         unsafe { fuse_data_set_field(data, 1, fuse_string_new_utf8(msg.as_ptr(), msg.len())) };
-        unsafe { fuse_list_push(list, data) };
+        unsafe { fuse_list_push(err_list, data) };
     }
-    unsafe { fuse_err(list) }
+    unsafe { fuse_err(err_list) }
+}
+
+// ---------------------------------------------------------------------------
+// Crypto runtime support
+// ---------------------------------------------------------------------------
+
+fn hex_encode(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
+}
+
+/// SHA-256 hash of a string.  Returns hex-encoded hash.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_crypto_sha256(data: FuseHandle) -> FuseHandle {
+    use sha2::Digest;
+    let s = unsafe { clone_to_string(data) };
+    let hash = sha2::Sha256::digest(s.as_bytes());
+    let hex = hex_encode(&hash);
+    unsafe { fuse_string_new_utf8(hex.as_ptr(), hex.len()) }
+}
+
+/// SHA-256 hash of a byte list.  Returns List<Int>.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_crypto_sha256_bytes(data: FuseHandle) -> FuseHandle {
+    use sha2::Digest;
+    let mut bytes = Vec::new();
+    if let ValueKind::List(items) = &unsafe { value_ref(data) }.kind {
+        for item in items {
+            bytes.push(extract_int(*item) as u8);
+        }
+    }
+    let hash = sha2::Sha256::digest(&bytes);
+    let list = unsafe { fuse_list_new() };
+    for b in hash.as_slice() {
+        unsafe { fuse_list_push(list, fuse_int(*b as i64)) };
+    }
+    list
+}
+
+/// SHA-512 hash.  Returns hex string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_crypto_sha512(data: FuseHandle) -> FuseHandle {
+    use sha2::Digest;
+    let s = unsafe { clone_to_string(data) };
+    let hash = sha2::Sha512::digest(s.as_bytes());
+    let hex = hex_encode(&hash);
+    unsafe { fuse_string_new_utf8(hex.as_ptr(), hex.len()) }
+}
+
+/// MD5 hash (legacy).  Returns hex string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_crypto_md5(data: FuseHandle) -> FuseHandle {
+    use md5::Digest;
+    let s = unsafe { clone_to_string(data) };
+    let hash = md5::Md5::digest(s.as_bytes());
+    let hex = hex_encode(&hash);
+    unsafe { fuse_string_new_utf8(hex.as_ptr(), hex.len()) }
+}
+
+/// BLAKE3 hash.  Returns hex string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_crypto_blake3(data: FuseHandle) -> FuseHandle {
+    let s = unsafe { clone_to_string(data) };
+    let hash = blake3::hash(s.as_bytes());
+    let hex = hash.to_hex().to_string();
+    unsafe { fuse_string_new_utf8(hex.as_ptr(), hex.len()) }
+}
+
+/// HMAC-SHA256.  Returns hex string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_crypto_hmac_sha256(
+    key: FuseHandle,
+    data: FuseHandle,
+) -> FuseHandle {
+    use hmac::{Hmac, Mac};
+    type HmacSha256 = Hmac<sha2::Sha256>;
+    let k = unsafe { clone_to_string(key) };
+    let d = unsafe { clone_to_string(data) };
+    let mut mac = HmacSha256::new_from_slice(k.as_bytes()).unwrap();
+    mac.update(d.as_bytes());
+    let result = mac.finalize().into_bytes();
+    let hex = hex_encode(&result);
+    unsafe { fuse_string_new_utf8(hex.as_ptr(), hex.len()) }
+}
+
+/// Constant-time string comparison.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_crypto_constant_time_eq(
+    a: FuseHandle,
+    b: FuseHandle,
+) -> FuseHandle {
+    let sa = unsafe { clone_to_string(a) };
+    let sb = unsafe { clone_to_string(b) };
+    let eq = if sa.len() != sb.len() {
+        false
+    } else {
+        let mut result = 0u8;
+        for (x, y) in sa.as_bytes().iter().zip(sb.as_bytes()) {
+            result |= x ^ y;
+        }
+        result == 0
+    };
+    unsafe { fuse_bool(eq) }
+}
+
+/// Cryptographically secure random bytes.  Returns List<Int>.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_crypto_random_bytes(n: FuseHandle) -> FuseHandle {
+    let count = extract_int(n) as usize;
+    let mut buf = vec![0u8; count];
+    getrandom::getrandom(&mut buf).unwrap_or(());
+    let list = unsafe { fuse_list_new() };
+    for b in &buf {
+        unsafe { fuse_list_push(list, fuse_int(*b as i64)) };
+    }
+    list
+}
+
+/// Random hex string (n bytes → 2n hex chars).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_crypto_random_hex(n: FuseHandle) -> FuseHandle {
+    let count = extract_int(n) as usize;
+    let mut buf = vec![0u8; count];
+    getrandom::getrandom(&mut buf).unwrap_or(());
+    let hex = hex_encode(&buf);
+    unsafe { fuse_string_new_utf8(hex.as_ptr(), hex.len()) }
 }

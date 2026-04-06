@@ -1384,17 +1384,31 @@ JSON Schema validation.
 
 Cryptographic primitives backed by Rust crates.
 
-- [ ] **5.7.1** Add dependencies: `sha2`, `hmac`, `md5`, `blake3`,
+- [x] **5.7.1** Add dependencies: `sha2`, `hmac`, `md5`, `blake3`,
       `getrandom` to `fuse-runtime/Cargo.toml`.
-- [ ] **5.7.2** Add FFI: `fuse_rt_crypto_sha256`, `fuse_rt_crypto_sha512`,
+- [x] **5.7.2** Add FFI: `fuse_rt_crypto_sha256`, `fuse_rt_crypto_sha512`,
       `fuse_rt_crypto_md5`, `fuse_rt_crypto_blake3`,
       `fuse_rt_crypto_hmac_sha256`, `fuse_rt_crypto_random_bytes`.
-- [ ] **5.7.3** Create `stdlib/ext/crypto.fuse`.
-- [ ] **5.7.4** Implement `hash.*`, `hmac.*`, `rand.*`,
+- [x] **5.7.3** Create `stdlib/ext/crypto.fuse`.
+- [x] **5.7.4** Implement `hash.*`, `hmac.*`, `rand.*`,
       `crypto.constantTimeEq`.
-- [ ] **5.7.5** Implement `rand.uuid4()` — pure Fuse formatting.
-- [ ] **5.7.6** Create `tests/fuse/stdlib/ext/crypto_test.fuse`.
-- [ ] **5.7.7** Run tests. Fix any compiler bugs found.
+- [x] **5.7.5** Implement `rand.uuid4()` — pure Fuse formatting.
+- [x] **5.7.6** Create `tests/fuse/stdlib/ext/crypto_test.fuse`.
+- [x] **5.7.7** Run tests. Fix any compiler bugs found.
+
+**Notes:**
+- 10 FFI functions: sha256, sha256Bytes, sha512, md5, blake3,
+  hmacSha256, constantTimeEq, randomBytes, randomHex (plus uuid4
+  in pure Fuse via hex + string slicing).
+- `data` is a Fuse keyword — all FFI/Fuse parameters renamed from
+  `data` to `input` to avoid parse errors.
+- Constant-time comparison uses byte-level XOR accumulation to prevent
+  timing attacks.
+- `uuid4()` generates 16 random bytes, hex-encodes, and formats as
+  `8-4-4-4-12` UUID string (36 chars).
+- Known hash values verified in test: sha256("hello") and md5("hello")
+  match expected hex strings.
+- No new compiler bugs found. All 89 tests pass, 0 regressions.
 
 ---
 

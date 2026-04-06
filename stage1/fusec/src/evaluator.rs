@@ -1880,6 +1880,81 @@ impl Evaluator {
                     }
                     return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("toml: expected string".into())) });
                 }
+                // --- crypto FFI ---
+                "fuse_rt_crypto_sha256" => {
+                    use sha2::Digest;
+                    if let Some(Value::String(s)) = args.first() {
+                        let hash = sha2::Sha256::digest(s.as_bytes());
+                        let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+                        return Ok(Value::String(hex));
+                    }
+                    return Ok(Value::String(String::new()));
+                }
+                "fuse_rt_crypto_sha256_bytes" => {
+                    use sha2::Digest;
+                    let mut bytes = Vec::new();
+                    if let Some(Value::List(items)) = args.first() {
+                        for item in items { if let Value::Int(n) = item { bytes.push(*n as u8); } }
+                    }
+                    let hash = sha2::Sha256::digest(&bytes);
+                    return Ok(Value::List(hash.iter().map(|b| Value::Int(*b as i64)).collect()));
+                }
+                "fuse_rt_crypto_sha512" => {
+                    use sha2::Digest;
+                    if let Some(Value::String(s)) = args.first() {
+                        let hash = sha2::Sha512::digest(s.as_bytes());
+                        let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+                        return Ok(Value::String(hex));
+                    }
+                    return Ok(Value::String(String::new()));
+                }
+                "fuse_rt_crypto_md5" => {
+                    use md5::Digest;
+                    if let Some(Value::String(s)) = args.first() {
+                        let hash = md5::Md5::digest(s.as_bytes());
+                        let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+                        return Ok(Value::String(hex));
+                    }
+                    return Ok(Value::String(String::new()));
+                }
+                "fuse_rt_crypto_blake3" => {
+                    if let Some(Value::String(s)) = args.first() {
+                        let hash = blake3::hash(s.as_bytes());
+                        return Ok(Value::String(hash.to_hex().to_string()));
+                    }
+                    return Ok(Value::String(String::new()));
+                }
+                "fuse_rt_crypto_hmac_sha256" => {
+                    use hmac::{Hmac, Mac};
+                    if let (Some(Value::String(k)), Some(Value::String(d))) = (args.first(), args.get(1)) {
+                        let mut mac = Hmac::<sha2::Sha256>::new_from_slice(k.as_bytes()).unwrap();
+                        mac.update(d.as_bytes());
+                        let result = mac.finalize().into_bytes();
+                        let hex: String = result.iter().map(|b| format!("{b:02x}")).collect();
+                        return Ok(Value::String(hex));
+                    }
+                    return Ok(Value::String(String::new()));
+                }
+                "fuse_rt_crypto_constant_time_eq" => {
+                    if let (Some(Value::String(a)), Some(Value::String(b))) = (args.first(), args.get(1)) {
+                        let eq = a.len() == b.len() && a.as_bytes().iter().zip(b.as_bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0;
+                        return Ok(Value::Bool(eq));
+                    }
+                    return Ok(Value::Bool(false));
+                }
+                "fuse_rt_crypto_random_bytes" => {
+                    let n = if let Some(Value::Int(n)) = args.first() { *n as usize } else { 0 };
+                    let mut buf = vec![0u8; n];
+                    getrandom::getrandom(&mut buf).unwrap_or(());
+                    return Ok(Value::List(buf.iter().map(|b| Value::Int(*b as i64)).collect()));
+                }
+                "fuse_rt_crypto_random_hex" => {
+                    let n = if let Some(Value::Int(n)) = args.first() { *n as usize } else { 0 };
+                    let mut buf = vec![0u8; n];
+                    getrandom::getrandom(&mut buf).unwrap_or(());
+                    let hex: String = buf.iter().map(|b| format!("{b:02x}")).collect();
+                    return Ok(Value::String(hex));
+                }
                 // --- json_schema FFI ---
                 "fuse_rt_json_schema_compile" => {
                     // Stub: store schema as-is, return handle.

@@ -1,0 +1,102 @@
+// EXPECTED OUTPUT:
+// --- sha256 ---
+// sha256 len: 64
+// sha256 known: true
+// --- sha512 ---
+// sha512 len: 128
+// --- md5 ---
+// md5 len: 32
+// md5 known: true
+// --- blake3 ---
+// blake3 len: 64
+// --- hmac ---
+// hmac len: 64
+// --- constantTimeEq ---
+// same: true
+// different: false
+// --- randomBytes ---
+// bytes len: 16
+// --- randomHex ---
+// hex len: 32
+// --- uuid4 ---
+// uuid len: 36
+// has dashes: true
+// --- done ---
+// done
+
+import stdlib.ext.crypto
+import stdlib.core.string
+
+extern fn fuse_rt_string_len(s: String) -> Int
+
+@entrypoint
+fn main() {
+  // --- sha256 ---
+  println("--- sha256 ---")
+  val h256 = sha256("hello")
+  val h256Len = h256.charCount()
+  println(f"sha256 len: {h256Len}")
+  // Known: sha256("hello") = 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+  val expected256 = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+  val known256 = h256 == expected256
+  println(f"sha256 known: {known256}")
+
+  // --- sha512 ---
+  println("--- sha512 ---")
+  val h512 = sha512("hello")
+  val h512Len = h512.charCount()
+  println(f"sha512 len: {h512Len}")
+
+  // --- md5 ---
+  println("--- md5 ---")
+  val hMd5 = md5("hello")
+  val md5Len = hMd5.charCount()
+  println(f"md5 len: {md5Len}")
+  // Known: md5("hello") = 5d41402abc4b2a76b9719d911017c592
+  val expectedMd5 = "5d41402abc4b2a76b9719d911017c592"
+  val knownMd5 = hMd5 == expectedMd5
+  println(f"md5 known: {knownMd5}")
+
+  // --- blake3 ---
+  println("--- blake3 ---")
+  val hB3 = blake3("hello")
+  val b3Len = hB3.charCount()
+  println(f"blake3 len: {b3Len}")
+
+  // --- hmac ---
+  println("--- hmac ---")
+  val hHmac = hmacSha256("secret", "hello")
+  val hmacLen = hHmac.charCount()
+  println(f"hmac len: {hmacLen}")
+
+  // --- constantTimeEq ---
+  println("--- constantTimeEq ---")
+  val same = constantTimeEq("abc", "abc")
+  println(f"same: {same}")
+  val different = constantTimeEq("abc", "xyz")
+  println(f"different: {different}")
+
+  // --- randomBytes ---
+  println("--- randomBytes ---")
+  val bytes = randomBytes(16)
+  val bytesLen = bytes.len()
+  println(f"bytes len: {bytesLen}")
+
+  // --- randomHex ---
+  println("--- randomHex ---")
+  val hex = randomHex(16)
+  val hexLen = hex.charCount()
+  println(f"hex len: {hexLen}")
+
+  // --- uuid4 ---
+  println("--- uuid4 ---")
+  val uuid = uuid4()
+  val uuidLen = uuid.charCount()
+  println(f"uuid len: {uuidLen}")
+  val dashTag = "-"
+  val hasDashes = uuid.contains(dashTag)
+  println(f"has dashes: {hasDashes}")
+
+  println("--- done ---")
+  println("done")
+}
