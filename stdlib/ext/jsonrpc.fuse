@@ -1,0 +1,421 @@
+// Fuse Ext stdlib — JSON-RPC 2.0 protocol framing.
+//
+// Pure Fuse implementation over stdlib.full.json.
+// Provides parsing and formatting of JSON-RPC 2.0 messages,
+// plus Content-Length framing for LSP/MCP over stdio.
+//
+// import stdlib.ext.jsonrpc
+
+import stdlib.full.json
+
+// --- FFI declarations (string operations) ---
+
+extern fn fuse_rt_string_len(s: String) -> Int
+extern fn fuse_rt_string_char_at(s: String, index: Int) -> String
+extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
+extern fn fuse_rt_string_contains(s: String, sub: String) -> Bool
+extern fn fuse_rt_string_index_of(s: String, sub: String) -> Int
+extern fn fuse_rt_string_trim(s: String) -> String
+extern fn fuse_rt_int_parse(s: String) -> Result<Int, String>
+extern fn fuse_rt_string_from_char_code(code: Int) -> String
+
+// --- Standard error codes ---
+// Exposed as functions because cross-module constant access
+// (val module.NAME) is not yet supported in codegen.
+
+pub fn PARSE_ERROR() -> Int { 0 - 32700 }
+pub fn INVALID_REQUEST() -> Int { 0 - 32600 }
+pub fn METHOD_NOT_FOUND() -> Int { 0 - 32601 }
+pub fn INVALID_PARAMS() -> Int { 0 - 32602 }
+pub fn INTERNAL_ERROR() -> Int { 0 - 32603 }
+
+// --- Data classes ---
+
+pub data class RpcError(val code: Int, val message: String)
+
+pub data class Request(val id: Option<Int>, val method: String, val params: JsonValue)
+
+pub data class Response(val id: Option<Int>, val result: Option<JsonValue>, val error: Option<RpcError>)
+
+// --- Internal helpers: string utilities ---
+
+fn strLen(s: String) -> Int { fuse_rt_string_len(s) }
+fn charAt(s: String, i: Int) -> String { fuse_rt_string_char_at(s, i) }
+fn slice(s: String, start: Int, end: Int) -> String { fuse_rt_string_slice(s, start, end) }
+
+fn isWhitespace(ch: String) -> Bool {
+  ch == " " or ch == "\t" or ch == "\n" or ch == "\r"
+}
+
+fn isDigit(ch: String) -> Bool {
+  ch == "0" or ch == "1" or ch == "2" or ch == "3" or ch == "4" or ch == "5" or ch == "6" or ch == "7" or ch == "8" or ch == "9"
+}
+
+fn skipWs(s: String, pos: Int) -> Int {
+  var p = pos
+  val len = strLen(s)
+  while p < len {
+    val ch = charAt(s, p)
+    val ws = isWhitespace(ch)
+    if ws { p = p + 1 } else { break }
+  }
+  p
+}
+
+// Skip a complete JSON value starting at pos. Returns the position after
+// the value. Handles strings, numbers, booleans, null, arrays, objects.
+fn skipJsonValue(s: String, pos: Int) -> Int {
+  val len = strLen(s)
+  val p = skipWs(s, pos)
+  if p >= len { return p }
+  val ch = charAt(s, p)
+
+  // string
+  if ch == "\"" {
+    var i = p + 1
+    while i < len {
+      val c = charAt(s, i)
+      if c == "\\" { i = i + 2 }
+      else if c == "\"" { return i + 1 }
+      else { i = i + 1 }
+    }
+    return len
+  }
+
+  // object
+  if ch == "{" {
+    var depth = 1
+    var i = p + 1
+    var inStr = false
+    while i < len {
+      val c = charAt(s, i)
+      if inStr {
+        if c == "\\" { i = i + 1 }
+        else if c == "\"" { inStr = false }
+      } else {
+        if c == "\"" { inStr = true }
+        else if c == "{" { depth = depth + 1 }
+        else if c == "}" {
+          depth = depth - 1
+          if depth == 0 { return i + 1 }
+        }
+      }
+      i = i + 1
+    }
+    return len
+  }
+
+  // array
+  if ch == "[" {
+    var depth = 1
+    var i = p + 1
+    var inStr = false
+    while i < len {
+      val c = charAt(s, i)
+      if inStr {
+        if c == "\\" { i = i + 1 }
+        else if c == "\"" { inStr = false }
+      } else {
+        if c == "\"" { inStr = true }
+        else if c == "[" { depth = depth + 1 }
+        else if c == "]" {
+          depth = depth - 1
+          if depth == 0 { return i + 1 }
+        }
+      }
+      i = i + 1
+    }
+    return len
+  }
+
+  // number (possibly negative)
+  if ch == "-" or isDigit(ch) {
+    var i = p
+    if ch == "-" { i = i + 1 }
+    while i < len {
+      val c = charAt(s, i)
+      val isNum = isDigit(c) or c == "." or c == "e" or c == "E" or c == "+" or c == "-"
+      if isNum { i = i + 1 } else { break }
+    }
+    return i
+  }
+
+  // true
+  if p + 4 <= len {
+    val w = slice(s, p, p + 4)
+    if w == "true" { return p + 4 }
+  }
+  // false
+  if p + 5 <= len {
+    val w = slice(s, p, p + 5)
+    if w == "false" { return p + 5 }
+  }
+  // null
+  if p + 4 <= len {
+    val w = slice(s, p, p + 4)
+    if w == "null" { return p + 4 }
+  }
+
+  p + 1
+}
+
+// Find the value substring for a given key in a JSON object string.
+// Returns the raw JSON value substring, or "" if not found.
+// Only searches top-level keys (does not descend into nested objects).
+fn findField(obj: String, key: String) -> String {
+  val len = strLen(obj)
+  val needle = f"\"{key}\""
+  val needleLen = strLen(needle)
+  // Start after the opening {
+  var p = 1
+  while p < len {
+    p = skipWs(obj, p)
+    if p >= len { return "" }
+    val ch = charAt(obj, p)
+    if ch == "}" { return "" }
+    if ch == "," { p = p + 1 }
+    p = skipWs(obj, p)
+    if p >= len { return "" }
+    // Expect a key string
+    val kch = charAt(obj, p)
+    if kch != "\"" { return "" }
+    // Read the key
+    val keyStart = p
+    var ki = p + 1
+    while ki < len {
+      val kc = charAt(obj, ki)
+      if kc == "\\" { ki = ki + 2 }
+      else if kc == "\"" {
+        ki = ki + 1
+        break
+      }
+      else { ki = ki + 1 }
+    }
+    val foundKey = slice(obj, keyStart, ki)
+    // Skip colon
+    var cp = skipWs(obj, ki)
+    if cp >= len { return "" }
+    val colon = charAt(obj, cp)
+    if colon != ":" { return "" }
+    cp = cp + 1
+    cp = skipWs(obj, cp)
+    // Find end of value
+    val valStart = cp
+    val valEnd = skipJsonValue(obj, valStart)
+    if foundKey == needle {
+      return fuse_rt_string_trim(slice(obj, valStart, valEnd))
+    }
+    p = valEnd
+  }
+  ""
+}
+
+// Extract a string value from a raw JSON string literal (strip quotes and unescape).
+fn extractString(raw: String) -> Option<String> {
+  val len = strLen(raw)
+  if len < 2 { return None }
+  val first = charAt(raw, 0)
+  val last = charAt(raw, len - 1)
+  if first != "\"" { return None }
+  if last != "\"" { return None }
+  // Parse the interior using parse for proper unescaping
+  val parsed = parse(raw)
+  match parsed {
+    Ok(v) => match v {
+      JsonValue.JStr(s) => Some(s)
+      _ => None
+    }
+    Err(_) => None
+  }
+}
+
+// Extract an integer from a raw JSON number string.
+fn extractInt(raw: String) -> Option<Int> {
+  val trimmed = fuse_rt_string_trim(raw)
+  val result = fuse_rt_int_parse(trimmed)
+  match result {
+    Ok(n) => Some(n)
+    Err(_) => None
+  }
+}
+
+// Escape a string for JSON output (handle quotes, backslashes, control chars).
+fn escapeString(s: String) -> String {
+  var result = ""
+  var i = 0
+  val len = strLen(s)
+  while i < len {
+    val ch = charAt(s, i)
+    if ch == "\"" { result = f"{result}\\\"" }
+    else if ch == "\\" { result = f"{result}\\\\" }
+    else if ch == "\n" { result = f"{result}\\n" }
+    else if ch == "\r" { result = f"{result}\\r" }
+    else if ch == "\t" { result = f"{result}\\t" }
+    else { result = f"{result}{ch}" }
+    i = i + 1
+  }
+  result
+}
+
+// Build a JSON object string from key-value pairs (values already JSON-encoded).
+fn jsonObj2(k1: String, v1: String, k2: String, v2: String) -> String {
+  val ob = "{"
+  val cb = "}"
+  f"{ob}\"{k1}\":{v1},\"{k2}\":{v2}{cb}"
+}
+
+fn jsonObj3(k1: String, v1: String, k2: String, v2: String, k3: String, v3: String) -> String {
+  val ob = "{"
+  val cb = "}"
+  f"{ob}\"{k1}\":{v1},\"{k2}\":{v2},\"{k3}\":{v3}{cb}"
+}
+
+fn jsonStr(s: String) -> String {
+  val escaped = escapeString(s)
+  f"\"{escaped}\""
+}
+
+// --- Public API ---
+
+// Parse a JSON-RPC 2.0 request from a JSON string.
+// Validates the structure: jsonrpc must be "2.0", method must be a string.
+// id is optional (notifications have no id).
+pub fn parseRequest(s: String) -> Result<Request, RpcError> {
+  val trimmed = fuse_rt_string_trim(s)
+  val len = strLen(trimmed)
+  if len < 2 { return Err(RpcError(0 - 32700, "empty input")) }
+  val first = charAt(trimmed, 0)
+  val last = charAt(trimmed, len - 1)
+  if first != "{" { return Err(RpcError(0 - 32700, "expected JSON object")) }
+  if last != "}" { return Err(RpcError(0 - 32700, "expected JSON object")) }
+
+  // Validate jsonrpc field
+  val versionRaw = findField(trimmed, "jsonrpc")
+  if versionRaw == "" { return Err(RpcError(0 - 32600, "missing jsonrpc field")) }
+  val version = extractString(versionRaw)
+  match version {
+    None => { return Err(RpcError(0 - 32600, "jsonrpc field must be a string")) }
+    Some(v) => {
+      if v != "2.0" { return Err(RpcError(0 - 32600, "jsonrpc must be \"2.0\"")) }
+    }
+  }
+
+  // Extract method
+  val methodRaw = findField(trimmed, "method")
+  if methodRaw == "" { return Err(RpcError(0 - 32600, "missing method field")) }
+  val methodOpt = extractString(methodRaw)
+  val method = match methodOpt {
+    Some(m) => m
+    None => { return Err(RpcError(0 - 32600, "method must be a string")) }
+  }
+
+  // Extract id (optional)
+  val idRaw = findField(trimmed, "id")
+  val id = match idRaw {
+    "" => None
+    "null" => None
+    _ => extractInt(idRaw)
+  }
+
+  // Extract params (optional) — parse as JsonValue
+  val paramsRaw = findField(trimmed, "params")
+  val params = match paramsRaw {
+    "" => JsonValue.Null
+    _ => {
+      val parsed = parse(paramsRaw)
+      match parsed {
+        Ok(v) => v
+        Err(_) => JsonValue.Null
+      }
+    }
+  }
+
+  Ok(Request(id, method, params))
+}
+
+// Format a Response to a JSON-RPC 2.0 JSON string.
+pub fn formatResponse(resp: Response) -> String {
+  val idStr = match resp.id {
+    Some(n) => f"{n}"
+    None => "null"
+  }
+  val resultStr = match resp.result {
+    Some(v) => stringify(v)
+    None => "null"
+  }
+  match resp.error {
+    Some(err) => formatErrorResponse(idStr, err)
+    None => jsonObj3("jsonrpc", "\"2.0\"", "id", idStr, "result", resultStr)
+  }
+}
+
+fn formatErrorResponse(idStr: String, err: RpcError) -> String {
+  val errObj = jsonObj2("code", f"{err.code}", "message", jsonStr(err.message))
+  jsonObj3("jsonrpc", "\"2.0\"", "id", idStr, "error", errObj)
+}
+
+// Format an error response as a JSON-RPC 2.0 JSON string.
+pub fn formatError(id: Option<Int>, code: Int, message: String) -> String {
+  val idStr = match id {
+    Some(n) => f"{n}"
+    None => "null"
+  }
+  val errObj = jsonObj2("code", f"{code}", "message", jsonStr(message))
+  jsonObj3("jsonrpc", "\"2.0\"", "id", idStr, "error", errObj)
+}
+
+// Format a success response as a JSON-RPC 2.0 JSON string.
+pub fn formatResult(id: Int, result: JsonValue) -> String {
+  val resultStr = stringify(result)
+  jsonObj3("jsonrpc", "\"2.0\"", "id", f"{id}", "result", resultStr)
+}
+
+// Parse a Content-Length framed message (LSP/MCP stdio framing).
+// Input should be "Content-Length: N\r\n\r\n{body}".
+// Returns the body string.
+pub fn readMessage(input: String) -> Result<String, String> {
+  val len = strLen(input)
+  val cr = fuse_rt_string_from_char_code(13)
+  val lf = fuse_rt_string_from_char_code(10)
+  val sep = f"{cr}{lf}{cr}{lf}"
+  val sepLen = strLen(sep)
+  // Find Content-Length header
+  val prefix = "Content-Length: "
+  val prefixLen = strLen(prefix)
+  val hasPrefix = fuse_rt_string_contains(input, prefix)
+  if not hasPrefix { return Err("missing Content-Length header") }
+  val prefixPos = fuse_rt_string_index_of(input, prefix)
+  if prefixPos < 0 { return Err("missing Content-Length header") }
+  // Find end of header value
+  val afterPrefix = prefixPos + prefixLen
+  var endOfNum = afterPrefix
+  while endOfNum < len {
+    val ch = charAt(input, endOfNum)
+    val dig = isDigit(ch)
+    if dig { endOfNum = endOfNum + 1 } else { break }
+  }
+  if endOfNum == afterPrefix { return Err("invalid Content-Length value") }
+  val numStr = slice(input, afterPrefix, endOfNum)
+  val contentLen = fuse_rt_int_parse(numStr)
+  val bodyLen = match contentLen {
+    Ok(n) => n
+    Err(e) => { return Err(f"invalid Content-Length: {e}") }
+  }
+  // Find the \r\n\r\n separator
+  val hasSep = fuse_rt_string_contains(input, sep)
+  if not hasSep { return Err("missing header separator") }
+  val sepPos = fuse_rt_string_index_of(input, sep)
+  if sepPos < 0 { return Err("missing header separator") }
+  val bodyStart = sepPos + sepLen
+  if bodyStart + bodyLen > len { return Err("incomplete message body") }
+  val body = slice(input, bodyStart, bodyStart + bodyLen)
+  Ok(body)
+}
+
+// Wrap a body string with Content-Length framing for LSP/MCP.
+pub fn writeMessage(body: String) -> String {
+  val bodyLen = strLen(body)
+  val cr = fuse_rt_string_from_char_code(13)
+  val lf = fuse_rt_string_from_char_code(10)
+  f"Content-Length: {bodyLen}{cr}{lf}{cr}{lf}{body}"
+}

@@ -1,0 +1,199 @@
+// EXPECTED OUTPUT:
+// --- parse http ---
+// parsed: true
+// scheme: https
+// authority: example.com
+// path: /foo/bar
+// query: key=val
+// fragment: section
+// --- parse file ---
+// parsed: true
+// scheme: file
+// authority:
+// path: /home/user/test.fuse
+// --- parse minimal ---
+// parsed: true
+// scheme: http
+// authority: localhost
+// --- parse bad ---
+// error: true
+// --- toString ---
+// full: https://example.com/foo/bar?key=val#section
+// simple: http://localhost
+// --- fromFilePath unix ---
+// uri: file:///home/user/test.fuse
+// --- fromFilePath windows ---
+// uri: file:///C:/Users/test.fuse
+// --- toFilePath unix ---
+// ok: true
+// path: /home/user/test.fuse
+// --- toFilePath windows ---
+// ok: true
+// path: C:/Users/test.fuse
+// --- toFilePath bad ---
+// err: true
+// --- encode ---
+// encoded: hello%20world
+// --- encode safe ---
+// encoded: hello-world_123
+// --- decode ---
+// decoded: hello world
+// --- decode safe ---
+// decoded: already-safe
+// --- decode bad ---
+// err: true
+// --- roundtrip ---
+// match: true
+// --- done ---
+// done
+
+import stdlib.ext.uri
+import stdlib.core.string
+
+@entrypoint
+fn main() {
+  // --- parse http ---
+  println("--- parse http ---")
+  val r1 = parse("https://example.com/foo/bar?key=val#section")
+  match r1 {
+    Ok(u) => {
+      println("parsed: true")
+      println(f"scheme: {u.scheme}")
+      println(f"authority: {u.authority}")
+      println(f"path: {u.path}")
+      println(f"query: {u.query}")
+      println(f"fragment: {u.fragment}")
+    }
+    Err(e) => println(f"parsed: false error: {e}")
+  }
+
+  // --- parse file ---
+  println("--- parse file ---")
+  val r2 = parse("file:///home/user/test.fuse")
+  match r2 {
+    Ok(u) => {
+      println("parsed: true")
+      println(f"scheme: {u.scheme}")
+      println(f"authority: {u.authority}")
+      println(f"path: {u.path}")
+    }
+    Err(e) => println(f"parsed: false error: {e}")
+  }
+
+  // --- parse minimal ---
+  println("--- parse minimal ---")
+  val r3 = parse("http://localhost")
+  match r3 {
+    Ok(u) => {
+      println("parsed: true")
+      println(f"scheme: {u.scheme}")
+      println(f"authority: {u.authority}")
+    }
+    Err(e) => println(f"parsed: false error: {e}")
+  }
+
+  // --- parse bad ---
+  println("--- parse bad ---")
+  val r4 = parse("not-a-uri")
+  match r4 {
+    Ok(_) => println("error: false")
+    Err(_) => println("error: true")
+  }
+
+  // --- toString ---
+  println("--- toString ---")
+  val u1 = Uri("https", "example.com", "/foo/bar", "key=val", "section")
+  println(f"full: {u1.toString()}")
+  val u2 = Uri("http", "localhost", "", "", "")
+  println(f"simple: {u2.toString()}")
+
+  // --- fromFilePath unix ---
+  println("--- fromFilePath unix ---")
+  val fp1 = fromFilePath("/home/user/test.fuse")
+  println(f"uri: {fp1}")
+
+  // --- fromFilePath windows ---
+  println("--- fromFilePath windows ---")
+  val fp2 = fromFilePath("C:\\Users\\test.fuse")
+  println(f"uri: {fp2}")
+
+  // --- toFilePath unix ---
+  println("--- toFilePath unix ---")
+  val tp1 = toFilePath("file:///home/user/test.fuse")
+  match tp1 {
+    Ok(p) => {
+      println("ok: true")
+      println(f"path: {p}")
+    }
+    Err(e) => println(f"ok: false error: {e}")
+  }
+
+  // --- toFilePath windows ---
+  println("--- toFilePath windows ---")
+  val tp2 = toFilePath("file:///C:/Users/test.fuse")
+  match tp2 {
+    Ok(p) => {
+      println("ok: true")
+      println(f"path: {p}")
+    }
+    Err(e) => println(f"ok: false error: {e}")
+  }
+
+  // --- toFilePath bad ---
+  println("--- toFilePath bad ---")
+  val tp3 = toFilePath("http://example.com")
+  match tp3 {
+    Ok(_) => println("err: false")
+    Err(_) => println("err: true")
+  }
+
+  // --- encode ---
+  println("--- encode ---")
+  val enc1 = encode("hello world")
+  println(f"encoded: {enc1}")
+
+  // --- encode safe ---
+  println("--- encode safe ---")
+  val enc2 = encode("hello-world_123")
+  println(f"encoded: {enc2}")
+
+  // --- decode ---
+  println("--- decode ---")
+  val dec1 = decode("hello%20world")
+  match dec1 {
+    Ok(s) => println(f"decoded: {s}")
+    Err(e) => println(f"error: {e}")
+  }
+
+  // --- decode safe ---
+  println("--- decode safe ---")
+  val dec2 = decode("already-safe")
+  match dec2 {
+    Ok(s) => println(f"decoded: {s}")
+    Err(e) => println(f"error: {e}")
+  }
+
+  // --- decode bad ---
+  println("--- decode bad ---")
+  val dec3 = decode("bad%G1")
+  match dec3 {
+    Ok(_) => println("err: false")
+    Err(_) => println("err: true")
+  }
+
+  // --- roundtrip ---
+  println("--- roundtrip ---")
+  val original = "hello world/foo"
+  val encoded = encode(original)
+  val decoded = decode(encoded)
+  match decoded {
+    Ok(s) => {
+      val eq = s == original
+      println(f"match: {eq}")
+    }
+    Err(e) => println(f"error: {e}")
+  }
+
+  println("--- done ---")
+  println("done")
+}

@@ -1,0 +1,253 @@
+// EXPECTED OUTPUT:
+// --- parseRequest valid ---
+// parsed: true
+// method: initialize
+// has id: true
+// id: 1
+// --- parseRequest notification ---
+// parsed: true
+// method: initialized
+// has id: false
+// --- parseRequest with params ---
+// parsed: true
+// method: textDocument/didOpen
+// --- parseRequest missing jsonrpc ---
+// error: true
+// msg: missing jsonrpc field
+// --- parseRequest wrong version ---
+// error: true
+// msg: jsonrpc must be "2.0"
+// --- parseRequest missing method ---
+// error: true
+// msg: missing method field
+// --- parseRequest bad json ---
+// error: true
+// --- formatError ---
+// has jsonrpc: true
+// has code: true
+// has message: true
+// --- formatResult ---
+// has jsonrpc: true
+// has id: true
+// has result: true
+// --- formatResponse success ---
+// has jsonrpc: true
+// has result: true
+// --- formatResponse error ---
+// has error: true
+// has code: true
+// --- readMessage ---
+// read ok: true
+// body: {"jsonrpc":"2.0"}
+// --- readMessage missing header ---
+// read err: true
+// --- readMessage incomplete ---
+// read err: true
+// --- writeMessage ---
+// has header: true
+// has body: true
+// --- error codes ---
+// parse error: -32700
+// invalid request: -32600
+// method not found: -32601
+// invalid params: -32602
+// internal error: -32603
+// --- done ---
+// done
+
+import stdlib.ext.jsonrpc
+import stdlib.full.json
+import stdlib.core.string
+
+extern fn fuse_rt_string_from_char_code(code: Int) -> String
+
+@entrypoint
+fn main() {
+  // --- parseRequest valid ---
+  println("--- parseRequest valid ---")
+  val req1 = parseRequest("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":null}")
+  val parsed1 = match req1 {
+    Ok(_) => true
+    Err(_) => false
+  }
+  println(f"parsed: {parsed1}")
+  match req1 {
+    Ok(r) => {
+      println(f"method: {r.method}")
+      val hasId = match r.id {
+        Some(_) => true
+        None => false
+      }
+      println(f"has id: {hasId}")
+      match r.id {
+        Some(n) => println(f"id: {n}")
+        None => println("id: none")
+      }
+    }
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // --- parseRequest notification (no id) ---
+  println("--- parseRequest notification ---")
+  val req2 = parseRequest("{\"jsonrpc\":\"2.0\",\"method\":\"initialized\"}")
+  match req2 {
+    Ok(r) => {
+      println("parsed: true")
+      println(f"method: {r.method}")
+      val hasId = match r.id {
+        Some(_) => true
+        None => false
+      }
+      println(f"has id: {hasId}")
+    }
+    Err(e) => println(f"parsed: false error: {e.message}")
+  }
+
+  // --- parseRequest with params ---
+  println("--- parseRequest with params ---")
+  val req3 = parseRequest("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///test.fuse\"}}}")
+  match req3 {
+    Ok(r) => {
+      println("parsed: true")
+      println(f"method: {r.method}")
+    }
+    Err(e) => println(f"parsed: false error: {e.message}")
+  }
+
+  // --- parseRequest missing jsonrpc ---
+  println("--- parseRequest missing jsonrpc ---")
+  val req4 = parseRequest("{\"method\":\"foo\"}")
+  match req4 {
+    Ok(_) => println("error: false")
+    Err(e) => {
+      println("error: true")
+      println(f"msg: {e.message}")
+    }
+  }
+
+  // --- parseRequest wrong version ---
+  println("--- parseRequest wrong version ---")
+  val req5 = parseRequest("{\"jsonrpc\":\"1.0\",\"method\":\"foo\"}")
+  match req5 {
+    Ok(_) => println("error: false")
+    Err(e) => {
+      println("error: true")
+      println(f"msg: {e.message}")
+    }
+  }
+
+  // --- parseRequest missing method ---
+  println("--- parseRequest missing method ---")
+  val req6 = parseRequest("{\"jsonrpc\":\"2.0\"}")
+  match req6 {
+    Ok(_) => println("error: false")
+    Err(e) => {
+      println("error: true")
+      println(f"msg: {e.message}")
+    }
+  }
+
+  // --- parseRequest bad json ---
+  println("--- parseRequest bad json ---")
+  val req7 = parseRequest("not json")
+  match req7 {
+    Ok(_) => println("error: false")
+    Err(_) => println("error: true")
+  }
+
+  // --- formatError ---
+  println("--- formatError ---")
+  val errStr = formatError(Some(1), 0 - 32601, "Method not found")
+  val hasJsonrpc = errStr.contains("\"jsonrpc\":\"2.0\"")
+  println(f"has jsonrpc: {hasJsonrpc}")
+  val hasCode = errStr.contains("-32601")
+  println(f"has code: {hasCode}")
+  val hasMsg = errStr.contains("Method not found")
+  println(f"has message: {hasMsg}")
+
+  // --- formatResult ---
+  println("--- formatResult ---")
+  val resStr = formatResult(1, JsonValue.JStr("ok"))
+  val hasJsonrpc2 = resStr.contains("\"jsonrpc\":\"2.0\"")
+  println(f"has jsonrpc: {hasJsonrpc2}")
+  val hasId2 = resStr.contains("\"id\":1")
+  println(f"has id: {hasId2}")
+  val hasResult2 = resStr.contains("\"result\":")
+  println(f"has result: {hasResult2}")
+
+  // --- formatResponse success ---
+  println("--- formatResponse success ---")
+  val resp1 = Response(Some(1), Some(JsonValue.JStr("ok")), None)
+  val resp1Str = formatResponse(resp1)
+  val hasJ3 = resp1Str.contains("\"jsonrpc\":\"2.0\"")
+  println(f"has jsonrpc: {hasJ3}")
+  val hasR3 = resp1Str.contains("\"result\":")
+  println(f"has result: {hasR3}")
+
+  // --- formatResponse error ---
+  println("--- formatResponse error ---")
+  val resp2 = Response(Some(1), None, Some(RpcError(0 - 32600, "Invalid Request")))
+  val resp2Str = formatResponse(resp2)
+  val hasE4 = resp2Str.contains("\"error\":")
+  println(f"has error: {hasE4}")
+  val hasC4 = resp2Str.contains("-32600")
+  println(f"has code: {hasC4}")
+
+  // --- readMessage ---
+  println("--- readMessage ---")
+  val cr = fuse_rt_string_from_char_code(13)
+  val lf = fuse_rt_string_from_char_code(10)
+  val ob = "{"
+  val cb = "}"
+  val msgBody = f"{ob}\"jsonrpc\":\"2.0\"{cb}"
+  val msg = f"Content-Length: 17{cr}{lf}{cr}{lf}{msgBody}"
+  val readResult = readMessage(msg)
+  match readResult {
+    Ok(body) => {
+      println("read ok: true")
+      println(f"body: {body}")
+    }
+    Err(e) => println(f"read ok: false error: {e}")
+  }
+
+  // --- readMessage missing header ---
+  println("--- readMessage missing header ---")
+  val bad1 = readMessage("no header here")
+  match bad1 {
+    Ok(_) => println("read err: false")
+    Err(_) => println("read err: true")
+  }
+
+  // --- readMessage incomplete ---
+  println("--- readMessage incomplete ---")
+  val bad2 = readMessage(f"Content-Length: 100{cr}{lf}{cr}{lf}short")
+  match bad2 {
+    Ok(_) => println("read err: false")
+    Err(_) => println("read err: true")
+  }
+
+  // --- writeMessage ---
+  println("--- writeMessage ---")
+  val writeBody = f"{ob}\"jsonrpc\":\"2.0\"{cb}"
+  val written = writeMessage(writeBody)
+  val hasHeader = written.contains("Content-Length:")
+  println(f"has header: {hasHeader}")
+  val hasBody = written.contains("jsonrpc")
+  println(f"has body: {hasBody}")
+
+  // --- error codes ---
+  println("--- error codes ---")
+  val pe = PARSE_ERROR()
+  println(f"parse error: {pe}")
+  val ir = INVALID_REQUEST()
+  println(f"invalid request: {ir}")
+  val mnf = METHOD_NOT_FOUND()
+  println(f"method not found: {mnf}")
+  val ip = INVALID_PARAMS()
+  println(f"invalid params: {ip}")
+  val ie = INTERNAL_ERROR()
+  println(f"internal error: {ie}")
+
+  println("--- done ---")
+  println("done")
+}
