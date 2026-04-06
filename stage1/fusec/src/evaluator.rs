@@ -1849,6 +1849,44 @@ impl Evaluator {
                     }
                     return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("regex: expected pattern".into())) });
                 }
+                // --- toml FFI ---
+                "fuse_rt_toml_parse" => {
+                    if let Some(Value::String(s)) = args.first() {
+                        return match s.parse::<toml::Table>() {
+                            Ok(table) => {
+                                let tv = Self::toml_to_value(&toml::Value::Table(table));
+                                Ok(Value::Result { is_ok: true, value: Box::new(tv) })
+                            }
+                            Err(e) => {
+                                let err = Value::Data(std::rc::Rc::new(std::cell::RefCell::new(
+                                    DataInstance {
+                                        module_path: std::path::PathBuf::new(),
+                                        type_name: "TomlError".to_string(),
+                                        fields: {
+                                            let mut f = std::collections::HashMap::new();
+                                            f.insert("message".to_string(), Value::String(format!("{e}")));
+                                            f.insert("line".to_string(), Value::Int(0));
+                                            f.insert("col".to_string(), Value::Int(0));
+                                            f
+                                        },
+                                        field_order: vec!["message".to_string(), "line".to_string(), "col".to_string()],
+                                        methods: std::collections::HashMap::new(),
+                                        destroyed: false,
+                                    },
+                                )));
+                                Ok(Value::Result { is_ok: false, value: Box::new(err) })
+                            }
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("toml: expected string".into())) });
+                }
+                "fuse_rt_toml_stringify" => {
+                    // Stub: convert enum to string representation.
+                    if let Some(v) = args.first() {
+                        return Ok(Value::String(self.stringify(v)));
+                    }
+                    return Ok(Value::String(String::new()));
+                }
                 "fuse_rt_regex_is_match" | "fuse_rt_regex_find" | "fuse_rt_regex_find_all"
                 | "fuse_rt_regex_replace" | "fuse_rt_regex_replace_all"
                 | "fuse_rt_regex_split" | "fuse_rt_regex_captures" => {
@@ -2438,6 +2476,18 @@ impl Evaluator {
             Some(Value::Float(v)) => *v,
             Some(Value::Int(v)) => *v as f64,
             _ => 0.0,
+        }
+    }
+
+    fn toml_to_value(tv: &toml::Value) -> Value {
+        match tv {
+            toml::Value::Boolean(b) => Value::Enum { type_name: "TomlValue".into(), variant: "Bool".into(), payloads: vec![Value::Bool(*b)] },
+            toml::Value::Integer(n) => Value::Enum { type_name: "TomlValue".into(), variant: "Int".into(), payloads: vec![Value::Int(*n)] },
+            toml::Value::Float(f) => Value::Enum { type_name: "TomlValue".into(), variant: "Float".into(), payloads: vec![Value::Float(*f)] },
+            toml::Value::String(s) => Value::Enum { type_name: "TomlValue".into(), variant: "Str".into(), payloads: vec![Value::String(s.clone())] },
+            toml::Value::Datetime(dt) => Value::Enum { type_name: "TomlValue".into(), variant: "DateTime".into(), payloads: vec![Value::String(dt.to_string())] },
+            toml::Value::Array(arr) => Value::Enum { type_name: "TomlValue".into(), variant: "Array".into(), payloads: vec![Value::List(arr.iter().map(Self::toml_to_value).collect())] },
+            toml::Value::Table(tbl) => Value::Enum { type_name: "TomlValue".into(), variant: "Table".into(), payloads: vec![Value::Map(tbl.iter().map(|(k, v)| (Value::String(k.clone()), Self::toml_to_value(v))).collect())] },
         }
     }
 

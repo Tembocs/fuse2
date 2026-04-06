@@ -1,0 +1,71 @@
+// EXPECTED OUTPUT:
+// --- parse ---
+// parsed: true
+// --- table access ---
+// is table: true
+// --- invalid ---
+// invalid: true
+// --- stringify ---
+// has content: true
+// --- type checks ---
+// is bool: true
+// is int: true
+// is str: true
+// --- done ---
+// done
+
+import stdlib.ext.toml
+
+extern fn fuse_rt_io_write_file(path: String, content: String) -> Result<Int, String>
+
+@entrypoint
+fn main() {
+  // --- parse ---
+  println("--- parse ---")
+  val input = "[package]\nname = \"hello\"\nversion = 1\n\n[options]\ndebug = true\n"
+  val result = parse(input)
+  val parsed = match result {
+    Ok(v) => true
+    Err(e) => false
+  }
+  println(f"parsed: {parsed}")
+
+  // --- table access ---
+  println("--- table access ---")
+  val v = match parse(input) {
+    Ok(v) => v
+    Err(e) => TomlValue.Bool(false)
+  }
+  val tableCheck = isTable(v)
+  println(f"is table: {tableCheck}")
+
+  // --- invalid ---
+  println("--- invalid ---")
+  val bad = parse("[bad\nkey = ")
+  val invalid = match bad {
+    Ok(v) => false
+    Err(e) => true
+  }
+  println(f"invalid: {invalid}")
+
+  // --- stringify ---
+  println("--- stringify ---")
+  val s = stringify(v)
+  val hasContent = s != ""
+  println(f"has content: {hasContent}")
+
+  // --- type checks ---
+  println("--- type checks ---")
+  val boolVal = TomlValue.Bool(true)
+  val boolCheck = isBool(boolVal)
+  println(f"is bool: {boolCheck}")
+  val intVal = TomlValue.Int(42)
+  val intCheck = isInt(intVal)
+  println(f"is int: {intCheck}")
+  val strVal = TomlValue.Str("hello")
+  val strCheck = isStr(strVal)
+  println(f"is str: {strCheck}")
+
+  println("--- done ---")
+  println("done")
+}

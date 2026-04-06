@@ -1296,14 +1296,27 @@ Regular expressions backed by Rust's `regex` crate.
 
 TOML parsing backed by Rust's `toml` crate.
 
-- [ ] **5.4.1** Add `toml` dependency to `fuse-runtime/Cargo.toml`.
-- [ ] **5.4.2** Add FFI: `fuse_rt_toml_parse`, `fuse_rt_toml_stringify`.
-- [ ] **5.4.3** Create `stdlib/ext/toml.fuse`.
-- [ ] **5.4.4** Define `TomlError` data class and `TomlValue` enum.
-- [ ] **5.4.5** Implement `toml.parse`, `toml.parseFile`,
+- [x] **5.4.1** Add `toml` dependency to `fuse-runtime/Cargo.toml`.
+- [x] **5.4.2** Add FFI: `fuse_rt_toml_parse`, `fuse_rt_toml_stringify`.
+- [x] **5.4.3** Create `stdlib/ext/toml.fuse`.
+- [x] **5.4.4** Define `TomlError` data class and `TomlValue` enum.
+- [x] **5.4.5** Implement `toml.parse`, `toml.parseFile`,
       `toml.stringify`.
-- [ ] **5.4.6** Create `tests/fuse/stdlib/ext/toml_test.fuse`.
-- [ ] **5.4.7** Run tests. Fix any compiler bugs found.
+- [x] **5.4.6** Create `tests/fuse/stdlib/ext/toml_test.fuse`.
+- [x] **5.4.7** Run tests. Fix any compiler bugs found.
+
+**Notes:**
+- `TomlValue` enum has 7 variants: `Bool`, `Int`, `Float`, `Str`,
+  `DateTime`, `Array`, `Table`. Array and Table use `List<Int>` as
+  placeholder generic parameters (same pattern as JsonValue).
+- Runtime converts between `toml::Value` and Fuse enum variants using
+  `fuse_enum_new`/`fuse_enum_tag`/`fuse_enum_payload` for construction
+  and extraction. Tables are converted to/from Fuse Maps.
+- `parseFile` is pure Fuse: reads the file via `fuse_rt_io_read_file`
+  then delegates to `fuse_rt_toml_parse`.
+- Added 7 type-check helpers: `isBool`, `isInt`, `isFloat`, `isStr`,
+  `isDateTime`, `isArray`, `isTable` — all via pattern matching.
+- No new compiler bugs found. All 89 tests pass, 0 regressions.
 
 ---
 

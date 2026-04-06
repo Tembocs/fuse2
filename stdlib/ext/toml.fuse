@@ -1,0 +1,105 @@
+// Fuse Ext stdlib — TOML parsing and serialisation.
+//
+// Backed by Rust's toml crate. TomlValue is an enum mirroring the
+// TOML data model.
+//
+// import stdlib.ext.toml
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_toml_parse(input: String) -> Result<TomlValue, TomlError>
+extern fn fuse_rt_toml_stringify(value: Int) -> String
+extern fn fuse_rt_io_read_file(path: String) -> Result<String, String>
+
+// --- Type definitions ---
+
+pub data class TomlError(val message: String, val line: Int, val col: Int)
+
+pub enum TomlValue {
+  Bool(Bool)
+  Int(Int)
+  Float(Float)
+  Str(String)
+  DateTime(String)
+  Array(List<Int>)
+  Table(List<Int>)
+}
+
+// --- Public API ---
+
+// Parse a TOML string into a TomlValue.
+pub fn parse(input: String) -> Result<TomlValue, TomlError> {
+  fuse_rt_toml_parse(input)
+}
+
+// Parse a TOML file into a TomlValue.
+pub fn parseFile(path: String) -> Result<TomlValue, TomlError> {
+  val content = fuse_rt_io_read_file(path)
+  match content {
+    Ok(text) => fuse_rt_toml_parse(text)
+    Err(msg) => Err(TomlError(msg, 0, 0))
+  }
+}
+
+// Serialize a TomlValue to a TOML string.
+pub fn stringify(value: TomlValue) -> String {
+  fuse_rt_toml_stringify(value)
+}
+
+// --- Type check helpers ---
+
+// Check if a TomlValue is a Bool.
+pub fn isBool(value: TomlValue) -> Bool {
+  match value {
+    TomlValue.Bool(_) => true
+    _ => false
+  }
+}
+
+// Check if a TomlValue is an Int.
+pub fn isInt(value: TomlValue) -> Bool {
+  match value {
+    TomlValue.Int(_) => true
+    _ => false
+  }
+}
+
+// Check if a TomlValue is a Float.
+pub fn isFloat(value: TomlValue) -> Bool {
+  match value {
+    TomlValue.Float(_) => true
+    _ => false
+  }
+}
+
+// Check if a TomlValue is a Str.
+pub fn isStr(value: TomlValue) -> Bool {
+  match value {
+    TomlValue.Str(_) => true
+    _ => false
+  }
+}
+
+// Check if a TomlValue is a DateTime.
+pub fn isDateTime(value: TomlValue) -> Bool {
+  match value {
+    TomlValue.DateTime(_) => true
+    _ => false
+  }
+}
+
+// Check if a TomlValue is an Array.
+pub fn isArray(value: TomlValue) -> Bool {
+  match value {
+    TomlValue.Array(_) => true
+    _ => false
+  }
+}
+
+// Check if a TomlValue is a Table.
+pub fn isTable(value: TomlValue) -> Bool {
+  match value {
+    TomlValue.Table(_) => true
+    _ => false
+  }
+}

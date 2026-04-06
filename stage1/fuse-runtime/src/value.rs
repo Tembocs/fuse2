@@ -3509,3 +3509,153 @@ pub unsafe extern "C" fn fuse_rt_regex_captures(
         None => unsafe { fuse_none() },
     }
 }
+
+// ---------------------------------------------------------------------------
+// TOML runtime support
+// ---------------------------------------------------------------------------
+
+/// Convert a toml::Value into a FuseHandle representing a TomlValue enum.
+unsafe fn toml_value_to_fuse(val: &toml::Value) -> FuseHandle {
+    let tn = b"TomlValue";
+    match val {
+        toml::Value::Boolean(b) => {
+            let vn = b"Bool";
+            fuse_enum_new(tn.as_ptr(), tn.len(), 0, vn.as_ptr(), vn.len(), fuse_bool(*b))
+        }
+        toml::Value::Integer(n) => {
+            let vn = b"Int";
+            fuse_enum_new(tn.as_ptr(), tn.len(), 1, vn.as_ptr(), vn.len(), fuse_int(*n))
+        }
+        toml::Value::Float(f) => {
+            let vn = b"Float";
+            fuse_enum_new(tn.as_ptr(), tn.len(), 2, vn.as_ptr(), vn.len(), fuse_float(*f))
+        }
+        toml::Value::String(s) => {
+            let vn = b"Str";
+            fuse_enum_new(tn.as_ptr(), tn.len(), 3, vn.as_ptr(), vn.len(),
+                fuse_string_new_utf8(s.as_ptr(), s.len()))
+        }
+        toml::Value::Datetime(dt) => {
+            let vn = b"DateTime";
+            let s = dt.to_string();
+            fuse_enum_new(tn.as_ptr(), tn.len(), 4, vn.as_ptr(), vn.len(),
+                fuse_string_new_utf8(s.as_ptr(), s.len()))
+        }
+        toml::Value::Array(arr) => {
+            let vn = b"Array";
+            let list = fuse_list_new();
+            for item in arr {
+                fuse_list_push(list, toml_value_to_fuse(item));
+            }
+            fuse_enum_new(tn.as_ptr(), tn.len(), 5, vn.as_ptr(), vn.len(), list)
+        }
+        toml::Value::Table(tbl) => {
+            let vn = b"Table";
+            let map = fuse_map_new();
+            for (k, v) in tbl {
+                let key = fuse_string_new_utf8(k.as_ptr(), k.len());
+                fuse_map_set(map, key, toml_value_to_fuse(v));
+            }
+            fuse_enum_new(tn.as_ptr(), tn.len(), 6, vn.as_ptr(), vn.len(), map)
+        }
+    }
+}
+
+/// Convert a FuseHandle (TomlValue enum) back to a toml::Value.
+unsafe fn fuse_to_toml_value(handle: FuseHandle) -> toml::Value {
+    let val = value_ref(handle);
+    match &val.kind {
+        ValueKind::Enum(e) => match e.variant_tag {
+            0 => { // Bool
+                let payload = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                match &value_ref(payload).kind {
+                    ValueKind::Bool(b) => toml::Value::Boolean(*b),
+                    _ => toml::Value::Boolean(false),
+                }
+            }
+            1 => { // Int
+                let payload = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                toml::Value::Integer(extract_int(payload))
+            }
+            2 => { // Float
+                let payload = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                match &value_ref(payload).kind {
+                    ValueKind::Float(f) => toml::Value::Float(*f),
+                    ValueKind::Int(n) => toml::Value::Float(*n as f64),
+                    _ => toml::Value::Float(0.0),
+                }
+            }
+            3 => { // Str
+                let payload = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                toml::Value::String(clone_to_string(payload))
+            }
+            4 => { // DateTime
+                let payload = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                let s = clone_to_string(payload);
+                s.parse::<toml::value::Datetime>()
+                    .map(toml::Value::Datetime)
+                    .unwrap_or_else(|_| toml::Value::String(s))
+            }
+            5 => { // Array
+                let payload = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                let mut arr = Vec::new();
+                if let ValueKind::List(items) = &value_ref(payload).kind {
+                    for item in items {
+                        arr.push(fuse_to_toml_value(*item));
+                    }
+                }
+                toml::Value::Array(arr)
+            }
+            6 => { // Table
+                let payload = e.payloads.first().copied().unwrap_or(ptr::null_mut());
+                let mut tbl = toml::map::Map::new();
+                if let ValueKind::Map(map) = &value_ref(payload).kind {
+                    for (k, v) in &map.entries {
+                        tbl.insert(clone_to_string(*k), fuse_to_toml_value(*v));
+                    }
+                }
+                toml::Value::Table(tbl)
+            }
+            _ => toml::Value::String(clone_to_string(handle)),
+        }
+        _ => toml::Value::String(clone_to_string(handle)),
+    }
+}
+
+/// Helper: construct a TomlError data class.
+unsafe fn make_toml_error(msg: &str, line: i64, col: i64) -> FuseHandle {
+    let tn = b"TomlError";
+    let data = fuse_data_new(tn.as_ptr(), tn.len(), 3, None);
+    fuse_data_set_field(data, 0, fuse_string_new_utf8(msg.as_ptr(), msg.len()));
+    fuse_data_set_field(data, 1, fuse_int(line));
+    fuse_data_set_field(data, 2, fuse_int(col));
+    data
+}
+
+/// Parse a TOML string. Returns Result<TomlValue, TomlError>.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_toml_parse(input: FuseHandle) -> FuseHandle {
+    let s = unsafe { clone_to_string(input) };
+    match s.parse::<toml::Table>() {
+        Ok(table) => {
+            let val = toml::Value::Table(table);
+            unsafe { fuse_ok(toml_value_to_fuse(&val)) }
+        }
+        Err(e) => {
+            let msg = format!("{e}");
+            // toml crate doesn't expose line/col directly; use 0.
+            unsafe { fuse_err(make_toml_error(&msg, 0, 0)) }
+        }
+    }
+}
+
+/// Serialize a TomlValue to a TOML string. Returns String.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_toml_stringify(value: FuseHandle) -> FuseHandle {
+    let tv = unsafe { fuse_to_toml_value(value) };
+    let s = match &tv {
+        toml::Value::Table(t) => toml::to_string(t).unwrap_or_default(),
+        _ => toml::to_string(&tv).unwrap_or_default(),
+    };
+    unsafe { fuse_string_new_utf8(s.as_ptr(), s.len()) }
+}
