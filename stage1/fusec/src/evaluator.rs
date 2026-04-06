@@ -1099,6 +1099,42 @@ impl Evaluator {
                     }
                     return Ok(Value::Bool(false));
                 }
+                "fuse_rt_sys_args" => {
+                    let items: Vec<Value> = std::env::args().map(Value::String).collect();
+                    return Ok(Value::List(items));
+                }
+                "fuse_rt_sys_exit" => {
+                    let code = if let Some(Value::Int(n)) = args.first() { *n as i32 } else { 1 };
+                    std::process::exit(code);
+                }
+                "fuse_rt_sys_cwd" => {
+                    return match std::env::current_dir() {
+                        Ok(p) => Ok(Value::Result { is_ok: true, value: Box::new(Value::String(p.to_string_lossy().to_string())) }),
+                        Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("sys: {e}"))) }),
+                    };
+                }
+                "fuse_rt_sys_set_cwd" => {
+                    if let Some(Value::String(p)) = args.first() {
+                        return match std::env::set_current_dir(p.as_str()) {
+                            Ok(()) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("sys: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("sys: expected path".to_string())) });
+                }
+                "fuse_rt_sys_pid" => { return Ok(Value::Int(std::process::id() as i64)); }
+                "fuse_rt_sys_platform" => {
+                    let p = if cfg!(target_os = "windows") { "windows" } else if cfg!(target_os = "macos") { "macos" } else if cfg!(target_os = "linux") { "linux" } else { "unknown" };
+                    return Ok(Value::String(p.to_string()));
+                }
+                "fuse_rt_sys_arch" => {
+                    let a = if cfg!(target_arch = "x86_64") { "x86_64" } else if cfg!(target_arch = "aarch64") { "aarch64" } else { "unknown" };
+                    return Ok(Value::String(a.to_string()));
+                }
+                "fuse_rt_sys_num_cpus" => {
+                    return Ok(Value::Int(std::thread::available_parallelism().map(|n| n.get() as i64).unwrap_or(1)));
+                }
+                "fuse_rt_sys_mem_total" => { return Ok(Value::Int(0)); }
                 "fuse_rt_os_create_symlink" | "fuse_rt_os_read_symlink" | "fuse_rt_os_set_read_only" => {
                     // Symlinks and permissions: minimal evaluator support
                     return Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) });

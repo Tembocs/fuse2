@@ -1410,6 +1410,83 @@ pub unsafe extern "C" fn fuse_rt_env_has(name: FuseHandle) -> FuseHandle {
     fuse_bool(std::env::var(key).is_ok())
 }
 
+// --- Sys FFI ---
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_sys_args() -> FuseHandle {
+    let list = fuse_list_new();
+    for arg in std::env::args() {
+        fuse_list_push(list, fuse_string_new_utf8(arg.as_ptr(), arg.len()));
+    }
+    list
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_sys_exit(code: FuseHandle) -> FuseHandle {
+    let c = match &(*code).kind { ValueKind::Int(n) => *n as i32, _ => 1 };
+    std::process::exit(c);
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_sys_cwd() -> FuseHandle {
+    match std::env::current_dir() {
+        Ok(p) => {
+            let s = p.to_string_lossy().to_string();
+            fuse_ok(fuse_string_new_utf8(s.as_ptr(), s.len()))
+        }
+        Err(e) => {
+            let msg = format!("sys: {e}");
+            fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()))
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_sys_set_cwd(path: FuseHandle) -> FuseHandle {
+    let p = extract_string(path);
+    match std::env::set_current_dir(p) {
+        Ok(()) => fuse_ok(fuse_unit()),
+        Err(e) => {
+            let msg = format!("sys: {e}");
+            fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()))
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_sys_pid() -> FuseHandle {
+    fuse_int(std::process::id() as i64)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_sys_platform() -> FuseHandle {
+    let p = if cfg!(target_os = "windows") { "windows" }
+        else if cfg!(target_os = "macos") { "macos" }
+        else if cfg!(target_os = "linux") { "linux" }
+        else { "unknown" };
+    fuse_string_new_utf8(p.as_ptr(), p.len())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_sys_arch() -> FuseHandle {
+    let a = if cfg!(target_arch = "x86_64") { "x86_64" }
+        else if cfg!(target_arch = "aarch64") { "aarch64" }
+        else if cfg!(target_arch = "x86") { "x86" }
+        else { "unknown" };
+    fuse_string_new_utf8(a.as_ptr(), a.len())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_sys_num_cpus() -> FuseHandle {
+    fuse_int(std::thread::available_parallelism().map(|n| n.get() as i64).unwrap_or(1))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_sys_mem_total() -> FuseHandle {
+    // No portable Rust API for total RAM. Return 0 as "unknown".
+    fuse_int(0)
+}
+
 // --- List FFI helpers ---
 
 #[unsafe(no_mangle)]

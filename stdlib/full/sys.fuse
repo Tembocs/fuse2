@@ -1,0 +1,55 @@
+// Fuse Full stdlib — sys module.
+//
+// Process-level information: arguments, exit, cwd, platform detection.
+//
+// import stdlib.full.sys
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_sys_args() -> List<String>
+extern fn fuse_rt_sys_exit(code: Int) -> Int
+extern fn fuse_rt_sys_cwd() -> Result<String, String>
+extern fn fuse_rt_sys_set_cwd(path: String) -> Result<Int, String>
+extern fn fuse_rt_sys_pid() -> Int
+extern fn fuse_rt_sys_platform() -> String
+extern fn fuse_rt_sys_arch() -> String
+extern fn fuse_rt_sys_num_cpus() -> Int
+extern fn fuse_rt_sys_mem_total() -> Int
+
+// --- API ---
+
+pub fn args() -> List<String> {
+  fuse_rt_sys_args()
+}
+
+pub fn exit(code: Int) -> Int {
+  fuse_rt_sys_exit(code)
+}
+
+pub fn cwd() -> Result<String, String> {
+  fuse_rt_sys_cwd()
+}
+
+pub fn setCwd(path: String) -> Result<Int, String> {
+  fuse_rt_sys_set_cwd(path)
+}
+
+pub fn pid() -> Int {
+  fuse_rt_sys_pid()
+}
+
+pub fn platform() -> String {
+  fuse_rt_sys_platform()
+}
+
+pub fn arch() -> String {
+  fuse_rt_sys_arch()
+}
+
+pub fn numCpus() -> Int {
+  fuse_rt_sys_num_cpus()
+}
+
+pub fn memTotal() -> Int {
+  fuse_rt_sys_mem_total()
+}

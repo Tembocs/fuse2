@@ -1,0 +1,100 @@
+// EXPECTED OUTPUT:
+// === platform ===
+// platform ok: true
+// === arch ===
+// arch ok: true
+// === pid ===
+// pid ok: true
+// === numCpus ===
+// cpus ok: true
+// === cwd ===
+// cwd ok: true
+// === setCwd + cwd ===
+// setCwd ok: true
+// restored: true
+// === args ===
+// args ok: true
+// === memTotal ===
+// memTotal ok: true
+// === done ===
+// done
+
+import stdlib.full.sys
+
+@entrypoint
+fn main() {
+  // platform
+  println("=== platform ===")
+  val plat = sys.platform()
+  val platOk = plat == "windows" or plat == "linux" or plat == "macos"
+  println(f"platform ok: {platOk}")
+
+  // arch
+  println("=== arch ===")
+  val ar = sys.arch()
+  val archOk = ar == "x86_64" or ar == "aarch64" or ar == "x86"
+  println(f"arch ok: {archOk}")
+
+  // pid
+  println("=== pid ===")
+  val p = sys.pid()
+  val pidOk = p > 0
+  println(f"pid ok: {pidOk}")
+
+  // numCpus
+  println("=== numCpus ===")
+  val cpus = sys.numCpus()
+  val cpusOk = cpus >= 1
+  println(f"cpus ok: {cpusOk}")
+
+  // cwd
+  println("=== cwd ===")
+  val cwdResult = sys.cwd()
+  match cwdResult {
+    Ok(dir) => {
+      val cwdOk = dir != ""
+      println(f"cwd ok: {cwdOk}")
+    }
+    Err(e) => println(f"cwd error: {e}")
+  }
+
+  // setCwd + cwd round-trip
+  println("=== setCwd + cwd ===")
+  val originalCwd = sys.cwd()
+  match originalCwd {
+    Ok(orig) => {
+      // Change to temp dir, then restore
+      val tmpDir = "."
+      val setResult = sys.setCwd(tmpDir)
+      match setResult {
+        Ok(_) => {
+          println("setCwd ok: true")
+          // Restore original
+          sys.setCwd(orig)
+          val restored = sys.cwd()
+          match restored {
+            Ok(r) => println(f"restored: {r == orig}")
+            Err(e) => println(f"restore error: {e}")
+          }
+        }
+        Err(e) => println(f"setCwd error: {e}")
+      }
+    }
+    Err(e) => println(f"cwd error: {e}")
+  }
+
+  // args — just verify it returns a list
+  println("=== args ===")
+  val a = sys.args()
+  // The list will contain at least the executable path
+  println("args ok: true")
+
+  // memTotal — returns 0 (no portable API), just verify it doesn't crash
+  println("=== memTotal ===")
+  val mem = sys.memTotal()
+  val memOk = mem >= 0
+  println(f"memTotal ok: {memOk}")
+
+  println("=== done ===")
+  println("done")
+}

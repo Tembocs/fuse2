@@ -851,14 +851,17 @@ Environment variable access.
 
 Process-level information.
 
-- [ ] **2.5.1** Add FFI: `fuse_rt_sys_args`, `fuse_rt_sys_exit`,
+- [x] **2.5.1** Add FFI: `fuse_rt_sys_args`, `fuse_rt_sys_exit`,
       `fuse_rt_sys_cwd`, `fuse_rt_sys_set_cwd`, `fuse_rt_sys_pid`,
       `fuse_rt_sys_platform`, `fuse_rt_sys_arch`, `fuse_rt_sys_num_cpus`,
       `fuse_rt_sys_mem_total`.
-- [ ] **2.5.2** Create `stdlib/full/sys.fuse`.
-- [ ] **2.5.3** Implement all functions. `sys.exit` returns `!`.
-- [ ] **2.5.4** Create `tests/fuse/stdlib/full/sys_test.fuse`.
-- [ ] **2.5.5** Run tests. Fix any compiler bugs found.
+- [x] **2.5.2** Create `stdlib/full/sys.fuse`.
+- [x] **2.5.3** Implement all functions. `sys.exit` calls
+      `std::process::exit`; return type `!` not expressible yet in
+      extern declarations so typed as `-> Int`. `memTotal` returns 0
+      (no portable Rust API).
+- [x] **2.5.4** Create `tests/fuse/stdlib/full/sys_test.fuse`.
+- [x] **2.5.5** Run tests. No compiler bugs found.
 
 ---
 
