@@ -263,6 +263,13 @@ fn dispatch(args: Args) -> ExitCode {
 // ---------------------------------------------------------------------------
 
 fn main() -> ExitCode {
+    // Use a larger stack (8 MB) for the evaluator's deep call chains.
+    let builder = std::thread::Builder::new().stack_size(8 * 1024 * 1024);
+    let handler = builder.spawn(main_inner).expect("failed to spawn main thread");
+    handler.join().unwrap_or(ExitCode::FAILURE)
+}
+
+fn main_inner() -> ExitCode {
     let raw: Vec<String> = std::env::args().skip(1).collect();
     match parse_args(&raw) {
         Ok(args) => dispatch(args),

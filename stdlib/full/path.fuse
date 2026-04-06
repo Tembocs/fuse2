@@ -1,0 +1,306 @@
+// Fuse Full stdlib — path module.
+//
+// Path construction, inspection, and normalisation. Pure string
+// manipulation — no filesystem access. Platform-aware: uses "\" on
+// Windows, "/" everywhere else.
+//
+// import stdlib.full.path
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_path_separator() -> String
+extern fn fuse_rt_path_cwd() -> Result<String, String>
+extern fn fuse_rt_string_len(s: String) -> Int
+extern fn fuse_rt_string_char_at(s: String, index: Int) -> String
+extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
+extern fn fuse_rt_string_replace(s: String, from: String, to: String) -> String
+extern fn fuse_rt_string_split(s: String, sep: String) -> List<String>
+
+// --- Public API ---
+
+pub fn separator() -> String {
+  fuse_rt_path_separator()
+}
+
+// --- Internal helpers ---
+
+fn isSep(ch: String) -> Bool {
+  ch == "/" or ch == "\\"
+}
+
+fn strLen(s: String) -> Int {
+  fuse_rt_string_len(s)
+}
+
+fn charAt(s: String, i: Int) -> String {
+  fuse_rt_string_char_at(s, i)
+}
+
+fn slice(s: String, start: Int, end: Int) -> String {
+  fuse_rt_string_slice(s, start, end)
+}
+
+fn joinTwo(base: String, part: String) -> String {
+  val partAbs = isAbsolute(part)
+  if partAbs { return part }
+  val rlen = strLen(base)
+  if rlen == 0 { return part }
+  val plen = strLen(part)
+  if plen == 0 { return base }
+  val last = charAt(base, rlen - 1)
+  val lastIsSep = isSep(last)
+  if lastIsSep {
+    f"{base}{part}"
+  } else {
+    val sep = separator()
+    f"{base}{sep}{part}"
+  }
+}
+
+// --- Construction ---
+
+pub fn join(base: String, parts: String...) -> String {
+  var result = base
+  for part in parts {
+    result = joinTwo(result, part)
+  }
+  result
+}
+
+pub fn fromParts(parts: List<String>) -> String {
+  var result = ""
+  var first = true
+  for part in parts {
+    if first {
+      result = part
+      first = false
+    } else {
+      val sep = separator()
+      result = f"{result}{sep}{part}"
+    }
+  }
+  result
+}
+
+// --- Inspection ---
+
+pub fn basename(p: String) -> String {
+  val len = strLen(p)
+  if len == 0 { return "" }
+  // Strip trailing separators
+  var end = len
+  while end > 0 {
+    val ch = charAt(p, end - 1)
+    val chIsSep = isSep(ch)
+    if chIsSep { end = end - 1 } else { break }
+  }
+  if end == 0 { return "" }
+  // Walk backwards to find start of last component
+  var start = end - 1
+  while start > 0 {
+    val ch = charAt(p, start - 1)
+    val chIsSep = isSep(ch)
+    if chIsSep { break }
+    start = start - 1
+  }
+  slice(p, start, end)
+}
+
+pub fn stem(p: String) -> String {
+  val base = basename(p)
+  val len = strLen(base)
+  if len == 0 { return "" }
+  var dotPos = -1
+  var i = len - 1
+  while i > 0 {
+    if charAt(base, i) == "." {
+      dotPos = i
+      break
+    }
+    i = i - 1
+  }
+  if dotPos <= 0 { return base }
+  slice(base, 0, dotPos)
+}
+
+pub fn extension(p: String) -> Option<String> {
+  val base = basename(p)
+  val len = strLen(base)
+  if len == 0 { return None }
+  var dotPos = -1
+  var i = len - 1
+  while i > 0 {
+    if charAt(base, i) == "." {
+      dotPos = i
+      break
+    }
+    i = i - 1
+  }
+  if dotPos <= 0 { return None }
+  Some(slice(base, dotPos + 1, len))
+}
+
+pub fn parent(p: String) -> Option<String> {
+  val len = strLen(p)
+  if len == 0 { return None }
+  // Strip trailing separators
+  var end = len
+  while end > 0 {
+    val ch = charAt(p, end - 1)
+    val chIsSep = isSep(ch)
+    if chIsSep { end = end - 1 } else { break }
+  }
+  if end == 0 { return None }
+  // Walk backwards past the basename
+  var i = end - 1
+  while i > 0 {
+    val ch = charAt(p, i - 1)
+    val chIsSep = isSep(ch)
+    if chIsSep { break }
+    i = i - 1
+  }
+  if i == 0 { return None }
+  // Strip trailing separators from parent, but keep at least one char
+  var pend = i
+  while pend > 1 {
+    val ch = charAt(p, pend - 1)
+    val chIsSep = isSep(ch)
+    if chIsSep { pend = pend - 1 } else { break }
+  }
+  // Handle Windows drive root like "C:\"
+  if pend >= 2 {
+    if charAt(p, pend - 1) == ":" {
+      pend = i
+    }
+  }
+  Some(slice(p, 0, pend))
+}
+
+pub fn components(p: String) -> List<String> {
+  val normalized = fuse_rt_string_replace(p, "\\", "/")
+  fuse_rt_string_split(normalized, "/")
+}
+
+pub fn isAbsolute(p: String) -> Bool {
+  val len = strLen(p)
+  if len == 0 { return false }
+  val first = charAt(p, 0)
+  if first == "/" { return true }
+  if len >= 3 {
+    val second = charAt(p, 1)
+    val third = charAt(p, 2)
+    val thirdIsSep = isSep(third)
+    if second == ":" and thirdIsSep { return true }
+  }
+  false
+}
+
+pub fn isRelative(p: String) -> Bool {
+  val abs = isAbsolute(p)
+  not abs
+}
+
+// --- Transformation ---
+
+pub fn normalize(p: String) -> String {
+  val len = strLen(p)
+  if len == 0 { return "." }
+  val abs = isAbsolute(p)
+  val normalized = fuse_rt_string_replace(p, "\\", "/")
+  // Walk through the normalized string char by char, building segments
+  // and resolving "." and ".." using a string-based stack.
+  var stackStr = ""
+  var stackCount = 0
+  var seg = ""
+  var ci = 0
+  val nlen = strLen(normalized)
+  while ci <= nlen {
+    val ch = if ci < nlen { charAt(normalized, ci) } else { "/" }
+    if ch == "/" {
+      if seg == "." or seg == "" {
+        // skip empty and current-dir segments
+      } else if seg == ".." {
+        if stackCount > 0 {
+          // Pop last segment from stackStr
+          val slen = strLen(stackStr)
+          var lastSlash = -1
+          var si = slen - 1
+          while si >= 0 {
+            if charAt(stackStr, si) == "/" {
+              lastSlash = si
+              break
+            }
+            si = si - 1
+          }
+          if lastSlash >= 0 {
+            stackStr = slice(stackStr, 0, lastSlash)
+          } else {
+            stackStr = ""
+          }
+          stackCount = stackCount - 1
+        } else if not abs {
+          if stackCount > 0 {
+            stackStr = f"{stackStr}/{seg}"
+          } else {
+            stackStr = seg
+          }
+          stackCount = stackCount + 1
+        }
+      } else {
+        if stackCount > 0 {
+          stackStr = f"{stackStr}/{seg}"
+        } else {
+          stackStr = seg
+        }
+        stackCount = stackCount + 1
+      }
+      seg = ""
+    } else {
+      seg = f"{seg}{ch}"
+    }
+    ci = ci + 1
+  }
+  if stackCount == 0 {
+    if abs { return "/" }
+    return "."
+  }
+  if abs { return f"/{stackStr}" }
+  stackStr
+}
+
+pub fn withExtension(p: String, ext: String) -> String {
+  val s = stem(p)
+  val par = parent(p)
+  val extLen = strLen(ext)
+  var newBase = ""
+  if extLen == 0 {
+    newBase = s
+  } else {
+    newBase = f"{s}.{ext}"
+  }
+  match par {
+    Some(dir) => joinTwo(dir, newBase)
+    None => newBase
+  }
+}
+
+pub fn withBasename(p: String, name: String) -> String {
+  val par = parent(p)
+  match par {
+    Some(dir) => joinTwo(dir, name)
+    None => name
+  }
+}
+
+pub fn toAbsolute(p: String) -> Result<String, String> {
+  val abs = isAbsolute(p)
+  if abs { return Ok(normalize(p)) }
+  val cwdResult = fuse_rt_path_cwd()
+  match cwdResult {
+    Ok(cwd) => {
+      val joined = joinTwo(cwd, p)
+      Ok(normalize(joined))
+    }
+    Err(e) => Err(e)
+  }
+}

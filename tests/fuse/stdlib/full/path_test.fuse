@@ -1,0 +1,155 @@
+// EXPECTED OUTPUT:
+// === basename ===
+// baz.txt
+// baz
+//
+// === stem ===
+// baz
+// baz
+// .hidden
+// === extension ===
+// Some(txt)
+// None
+// None
+// Some(gz)
+// === parent ===
+// Some(foo/bar)
+// None
+// Some(foo)
+// None
+// === components ===
+// foo
+// bar
+// baz
+// === isAbsolute ===
+// true
+// false
+// true
+// === isRelative ===
+// false
+// true
+// === join ===
+// foo\bar\baz
+// /usr\bin
+// === fromParts ===
+// a\b\c
+// === normalize ===
+// a/c/d
+// .
+// /a/b
+// foo
+// === withExtension ===
+// foo\bar.md
+// foo\bar.md
+// foo\bar
+// === withBasename ===
+// foo\new.txt
+// other.txt
+// === toAbsolute ===
+// already absolute: true
+// relative resolved: true
+// === separator ===
+// sep ok: true
+
+import stdlib.full.path
+
+@entrypoint
+fn main() {
+  // basename
+  println("=== basename ===")
+  println(path.basename("foo/bar/baz.txt"))
+  println(path.basename("foo/bar/baz/"))
+  println(path.basename(""))
+
+  // stem
+  println("=== stem ===")
+  println(path.stem("foo/bar/baz.txt"))
+  println(path.stem("foo/bar/baz"))
+  println(path.stem(".hidden"))
+
+  // extension
+  println("=== extension ===")
+  println(path.extension("baz.txt"))
+  println(path.extension("baz"))
+  println(path.extension(".hidden"))
+  println(path.extension("archive.tar.gz"))
+
+  // parent
+  println("=== parent ===")
+  println(path.parent("foo/bar/baz"))
+  println(path.parent("/"))
+  println(path.parent("foo/bar"))
+  println(path.parent("foo"))
+
+  // components
+  println("=== components ===")
+  for part in path.components("foo/bar/baz") {
+    println(part)
+  }
+
+  // isAbsolute
+  println("=== isAbsolute ===")
+  println(path.isAbsolute("/usr/bin"))
+  println(path.isAbsolute("relative/path"))
+  println(path.isAbsolute("C:\\Users"))
+
+  // isRelative
+  println("=== isRelative ===")
+  println(path.isRelative("/absolute"))
+  println(path.isRelative("relative"))
+
+  // join
+  println("=== join ===")
+  println(path.join("foo", "bar", "baz"))
+  println(path.join("foo", "/usr", "bin"))
+
+  // fromParts
+  println("=== fromParts ===")
+  println(path.fromParts(["a", "b", "c"]))
+
+  // normalize
+  println("=== normalize ===")
+  println(path.normalize("a/b/../c/./d"))
+  println(path.normalize(""))
+  println(path.normalize("/a/b/c/../../b"))
+  println(path.normalize("./foo"))
+
+  // withExtension
+  println("=== withExtension ===")
+  println(path.withExtension("foo/bar.txt", "md"))
+  println(path.withExtension("foo/bar", "md"))
+  println(path.withExtension("foo/bar.txt", ""))
+
+  // withBasename
+  println("=== withBasename ===")
+  println(path.withBasename("foo/bar.txt", "new.txt"))
+  println(path.withBasename("bar.txt", "other.txt"))
+
+  // toAbsolute
+  println("=== toAbsolute ===")
+  val absResult = path.toAbsolute("/already/absolute")
+  match absResult {
+    Ok(v) => {
+      val isAbs = path.isAbsolute(v)
+      println(f"already absolute: {isAbs}")
+    }
+    Err(e) => println(f"error: {e}")
+  }
+  val relResult = path.toAbsolute("some/relative")
+  match relResult {
+    Ok(v) => {
+      val isAbs = path.isAbsolute(v)
+      println(f"relative resolved: {isAbs}")
+    }
+    Err(e) => println(f"error: {e}")
+  }
+
+  // separator
+  println("=== separator ===")
+  val sep = path.separator()
+  val backslash = "\\"
+  val isFwd = sep == "/"
+  val isBack = sep == backslash
+  val sepOk = isFwd or isBack
+  println(f"sep ok: {sepOk}")
+}

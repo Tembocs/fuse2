@@ -372,6 +372,7 @@ struct Evaluator {
     root_path: PathBuf,
     root_source: String,
     modules: HashMap<PathBuf, ModuleRuntime>,
+    module_envs: HashMap<PathBuf, Environment>,
     stdout: Vec<String>,
 }
 
@@ -381,6 +382,7 @@ impl Evaluator {
             root_path: root_path.canonicalize().unwrap_or(root_path),
             root_source,
             modules: HashMap::new(),
+            module_envs: HashMap::new(),
             stdout: Vec::new(),
         }
     }
@@ -848,6 +850,16 @@ impl Evaluator {
                     };
                 }
                 "fuse_rt_file_open" | "fuse_rt_file_close" => { return Ok(Value::Unit); }
+                "fuse_rt_path_separator" => {
+                    let sep = if cfg!(windows) { "\\" } else { "/" };
+                    return Ok(Value::String(sep.to_string()));
+                }
+                "fuse_rt_path_cwd" => {
+                    return match std::env::current_dir() {
+                        Ok(p) => Ok(Value::Result { is_ok: true, value: Box::new(Value::String(p.to_string_lossy().to_string())) }),
+                        Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("path: {e}"))) }),
+                    };
+                }
                 "fuse_map_new" => { return Ok(Value::Map(Vec::new())); }
                 "fuse_map_set" => {
                     // Mutation limited in evaluator (value semantics)
@@ -1091,7 +1103,18 @@ impl Evaluator {
             }
         }
         let module = self.load_module(module_path)?;
-        let base = caller_env.unwrap_or(self.module_env(&module)?);
+        let base = if let Some(ce) = caller_env {
+            ce
+        } else {
+            let canonical = module.path.clone();
+            if let Some(cached) = self.module_envs.get(&canonical) {
+                cached.clone()
+            } else {
+                let env = self.module_env(&module)?;
+                self.module_envs.insert(canonical, env.clone());
+                env
+            }
+        };
         let env = Environment::new(Some(base));
         let mut deferred = Vec::new();
         let has_variadic = function.params.last().is_some_and(|p| p.variadic);

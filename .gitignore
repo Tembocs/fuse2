@@ -28,6 +28,10 @@ dist/
 # Windows reserved-name artifacts
 CON
 
+# Python bytecode
+__pycache__/
+*.pyc
+
 # OS junk
 Thumbs.db
 .DS_Store

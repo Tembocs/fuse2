@@ -1031,6 +1031,28 @@ pub unsafe extern "C" fn fuse_rt_file_close(_file: FuseHandle) -> FuseHandle {
     fuse_ok(fuse_unit())
 }
 
+// --- Path FFI ---
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_path_separator() -> FuseHandle {
+    let sep = if cfg!(windows) { "\\" } else { "/" };
+    fuse_string_new_utf8(sep.as_ptr(), sep.len())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_path_cwd() -> FuseHandle {
+    match std::env::current_dir() {
+        Ok(p) => {
+            let s = p.to_string_lossy().to_string();
+            fuse_ok(fuse_string_new_utf8(s.as_ptr(), s.len()))
+        }
+        Err(e) => {
+            let msg = format!("path: {e}");
+            fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()))
+        }
+    }
+}
+
 // --- List FFI helpers ---
 
 #[unsafe(no_mangle)]

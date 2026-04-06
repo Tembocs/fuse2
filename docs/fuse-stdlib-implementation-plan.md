@@ -782,15 +782,18 @@ File I/O and stdin/stdout access.
 
 Path manipulation. Mostly pure Fuse string ops.
 
-- [ ] **2.2.1** Create `stdlib/full/path.fuse`.
-- [ ] **2.2.2** Add FFI: `fuse_rt_path_separator` (returns platform sep).
-- [ ] **2.2.3** Define `val path.SEPARATOR`.
-- [ ] **2.2.4** Implement pure-Fuse functions: `basename`, `stem`,
+- [x] **2.2.1** Create `stdlib/full/path.fuse`.
+- [x] **2.2.2** Add FFI: `fuse_rt_path_separator` (returns platform sep).
+- [x] **2.2.3** Implement `separator()` function (constant `val path.SEPARATOR`
+      deferred — evaluator does not yet support module-level constant access).
+- [x] **2.2.4** Implement pure-Fuse functions: `basename`, `stem`,
       `extension`, `parent`, `components`, `isAbsolute`, `isRelative`,
       `normalize`, `withExtension`, `withBasename`, `fromParts`, `join`.
-- [ ] **2.2.5** Implement `toAbsolute` — uses `sys.cwd()`.
-- [ ] **2.2.6** Create `tests/fuse/stdlib/full/path_test.fuse`.
-- [ ] **2.2.7** Run tests. Fix any compiler bugs found.
+- [x] **2.2.5** Implement `toAbsolute` — uses `fuse_rt_path_cwd` FFI.
+- [x] **2.2.6** Create `tests/fuse/stdlib/full/path_test.fuse`.
+- [x] **2.2.7** Run tests. Fix compiler bug: evaluator stack overflow due to
+      large `call_user_function` frames — fixed by increasing thread stack
+      size to 8 MB and adding module environment caching.
 
 ---
 
