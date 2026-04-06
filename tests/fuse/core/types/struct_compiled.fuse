@@ -1,0 +1,23 @@
+// EXPECTED OUTPUT:
+// Server at localhost:8080
+// Server at localhost:9090
+struct Server {
+  val host: String
+  var port: Int
+
+  fn address(ref self) -> String {
+    f"{self.host}:{self.port}"
+  }
+
+  fn withPort(mutref self, p: Int) {
+    self.port = p
+  }
+}
+
+@entrypoint
+fn main() {
+  var s = Server("localhost", 8080)
+  println(f"Server at {s.address()}")
+  s.withPort(9090)
+  println(f"Server at {s.address()}")
+}

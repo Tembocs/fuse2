@@ -1,0 +1,25 @@
+// EXPECTED OUTPUT:
+// created: db-conn
+// using: db-conn
+// [del] closed: db-conn
+// done
+@value
+struct Connection {
+  val dsn: String
+
+  fn use_it(ref self) {
+    println(f"using: {self.dsn}")
+  }
+
+  fn __del__(owned self) {
+    println(f"[del] closed: {self.dsn}")
+  }
+}
+
+@entrypoint
+fn main() {
+  val c = Connection("db-conn")
+  println(f"created: {c.dsn}")
+  c.use_it()
+  println("done")
+}

@@ -30,7 +30,10 @@ pub struct ConstDecl {
 #[derive(Clone, Debug)]
 pub struct StructDecl {
     pub name: String,
+    pub fields: Vec<FieldDecl>,
+    pub methods: Vec<FunctionDecl>,
     pub is_pub: bool,
+    pub decorators: Vec<String>,
     pub span: Span,
 }
 

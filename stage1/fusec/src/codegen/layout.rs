@@ -11,12 +11,20 @@ pub struct ProgramLayout {
 }
 
 impl ProgramLayout {
-    pub fn new(data_classes: impl IntoIterator<Item = fa::DataClassDecl>) -> Self {
+    pub fn new(
+        data_classes: impl IntoIterator<Item = fa::DataClassDecl>,
+        structs: impl IntoIterator<Item = fa::StructDecl>,
+    ) -> Self {
         let mut layout = Self::default();
         for data in data_classes {
             layout
                 .data
-                .insert(data.name.clone(), DataLayout::new(&data));
+                .insert(data.name.clone(), DataLayout::from_fields(&data.fields));
+        }
+        for s in structs {
+            layout
+                .data
+                .insert(s.name.clone(), DataLayout::from_fields(&s.fields));
         }
         layout
     }
@@ -33,16 +41,15 @@ pub struct DataLayout {
 }
 
 impl DataLayout {
-    fn new(data: &fa::DataClassDecl) -> Self {
-        let field_indices = data
-            .fields
+    fn from_fields(fields: &[fa::FieldDecl]) -> Self {
+        let field_indices = fields
             .iter()
             .enumerate()
             .map(|(index, field)| (field.name.clone(), index))
             .collect();
         Self {
             field_indices,
-            field_count: data.fields.len(),
+            field_count: fields.len(),
         }
     }
 

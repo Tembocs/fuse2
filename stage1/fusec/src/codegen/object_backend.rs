@@ -68,6 +68,7 @@ struct LoadedModule {
     extensions: HashMap<(String, String), fa::FunctionDecl>,
     statics: HashMap<(String, String), fa::FunctionDecl>,
     data_classes: HashMap<String, fa::DataClassDecl>,
+    structs: HashMap<String, fa::StructDecl>,
     enums: HashMap<String, fa::EnumDecl>,
     extern_fns: HashMap<String, fa::ExternFnDecl>,
     consts: HashMap<(String, String), fa::ConstDecl>,
@@ -87,6 +88,9 @@ impl BuildSession {
             modules
                 .values()
                 .flat_map(|module| module.data_classes.values().cloned()),
+            modules
+                .values()
+                .flat_map(|module| module.structs.values().cloned()),
         );
         Ok(Self {
             root_path: root_path.to_path_buf(),
@@ -158,6 +162,16 @@ impl BuildSession {
         })
     }
 
+    fn find_struct(&self, type_name: &str) -> Option<(&Path, &fa::StructDecl)> {
+        let key = layout::canonical_type_name(type_name);
+        self.modules.values().find_map(|module| {
+            module
+                .structs
+                .get(key)
+                .map(|s| (module.path.as_path(), s))
+        })
+    }
+
     fn find_const(&self, owner: &str, name: &str) -> Option<&fa::ConstDecl> {
         let key = (owner.to_string(), name.to_string());
         self.modules.values().find_map(|module| module.consts.get(&key))
@@ -173,12 +187,13 @@ impl BuildSession {
     }
 
     fn field_type(&self, type_name: &str, field: &str) -> Option<String> {
-        self.find_data(type_name)?
-            .1
-            .fields
-            .iter()
-            .find(|item| item.name == field)
-            .and_then(|item| item.type_name.clone())
+        if let Some((_, data)) = self.find_data(type_name) {
+            return data.fields.iter().find(|f| f.name == field).and_then(|f| f.type_name.clone());
+        }
+        if let Some((_, s)) = self.find_struct(type_name) {
+            return s.fields.iter().find(|f| f.name == field).and_then(|f| f.type_name.clone());
+        }
+        None
     }
 }
 
@@ -226,6 +241,42 @@ fn load_module_recursive(
             }
         }
     }
+    // Register struct methods as extensions/statics so member calls resolve.
+    for s in &module.structs {
+        for method in &s.methods {
+            let mut function = method.clone();
+            function.receiver_type = Some(s.name.clone());
+            if let Some(ref mut rt) = function.return_type {
+                if rt.contains("Self") {
+                    *rt = rt.replace("Self", &s.name);
+                }
+            }
+            let is_static = function.params.first().map_or(true, |p| p.name != "self");
+            let key = (s.name.clone(), method.name.clone());
+            if is_static {
+                statics.insert(key, function);
+            } else {
+                extensions.insert(key, function);
+            }
+        }
+    }
+    // Register data class methods as extensions so member calls resolve.
+    for data in &module.data_classes {
+        for method in &data.methods {
+            if method.name == "__del__" {
+                continue; // destructors are called through the bridge, not member calls
+            }
+            let mut function = method.clone();
+            function.receiver_type = Some(data.name.clone());
+            let is_static = function.params.first().map_or(true, |p| p.name != "self");
+            let key = (data.name.clone(), method.name.clone());
+            if is_static {
+                statics.insert(key, function);
+            } else {
+                extensions.insert(key, function);
+            }
+        }
+    }
     let loaded = LoadedModule {
         path: path.clone(),
         functions: module
@@ -236,6 +287,11 @@ fn load_module_recursive(
         extensions,
         statics,
         data_classes,
+        structs: module
+            .structs
+            .iter()
+            .map(|s| (s.name.clone(), s.clone()))
+            .collect(),
         enums: module
             .enums
             .iter()
@@ -470,6 +526,24 @@ impl<'a> BackendCompiler<'a> {
                     self.destructor_ids.insert(name, func_id);
                 }
             }
+            for s in loaded.structs.values() {
+                for method in &s.methods {
+                    let name = layout::function_symbol(loaded.path.as_path(), &method.name);
+                    let func_id = self
+                        .module
+                        .declare_function(&name, Linkage::Local, &self.handle_signature(method.params.len()))
+                        .map_err(|error| error.to_string())?;
+                    self.function_ids.insert(name, func_id);
+                }
+                if s.methods.iter().any(|method| method.name == "__del__") {
+                    let name = layout::destructor_symbol(loaded.path.as_path(), &s.name);
+                    let func_id = self
+                        .module
+                        .declare_function(&name, Linkage::Local, &self.destructor_signature())
+                        .map_err(|error| error.to_string())?;
+                    self.destructor_ids.insert(name, func_id);
+                }
+            }
             for extern_fn in loaded.extern_fns.values() {
                 // Skip if already declared (runtime functions or another module).
                 // Cranelift rejects duplicate declarations with incompatible
@@ -531,6 +605,20 @@ impl<'a> BackendCompiler<'a> {
                     self.compile_destructor(loaded.path.as_path(), data)?;
                 }
             }
+            for s in loaded.structs.values() {
+                for method in &s.methods {
+                    let mut method = method.clone();
+                    if let Some(param) = method.params.first_mut() {
+                        if param.name == "self" && param.type_name.is_none() {
+                            param.type_name = Some(s.name.clone());
+                        }
+                    }
+                    self.compile_function(loaded.path.as_path(), &method)?;
+                }
+                if s.methods.iter().any(|method| method.name == "__del__") {
+                    self.compile_struct_destructor(loaded.path.as_path(), s)?;
+                }
+            }
         }
         self.compile_entry()?;
         let product = self.module.finish();
@@ -569,6 +657,19 @@ impl<'a> BackendCompiler<'a> {
                     if let Some(param) = method.params.first_mut() {
                         if param.name == "self" && param.type_name.is_none() {
                             param.type_name = Some(data.name.clone());
+                        }
+                    }
+                    if let Some(ir) = self.compile_function_to_ir(loaded.path.as_path(), &method)? {
+                        ir_parts.push(ir);
+                    }
+                }
+            }
+            for s in loaded.structs.values() {
+                for method in &s.methods {
+                    let mut method = method.clone();
+                    if let Some(param) = method.params.first_mut() {
+                        if param.name == "self" && param.type_name.is_none() {
+                            param.type_name = Some(s.name.clone());
                         }
                     }
                     if let Some(ir) = self.compile_function_to_ir(loaded.path.as_path(), &method)? {
@@ -873,6 +974,44 @@ impl<'a> BackendCompiler<'a> {
             .find(|method| method.name == "__del__")
             .ok_or_else(|| format!("missing destructor method for `{}`", data.name))?;
         let bridge_name = layout::destructor_symbol(module_path, &data.name);
+        let bridge_id = *self
+            .destructor_ids
+            .get(&bridge_name)
+            .ok_or_else(|| format!("missing destructor bridge `{bridge_name}`"))?;
+        let target_name = layout::function_symbol(module_path, &destructor_method.name);
+        let target_id = *self
+            .function_ids
+            .get(&target_name)
+            .ok_or_else(|| format!("missing destructor impl `{target_name}`"))?;
+        let mut ctx = self.module.make_context();
+        ctx.func = Function::with_name_signature(
+            UserFuncName::user(0, bridge_id.as_u32()),
+            self.destructor_signature(),
+        );
+        let mut builder_ctx = FunctionBuilderContext::new();
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
+        let entry = builder.create_block();
+        builder.append_block_params_for_function_params(entry);
+        builder.switch_to_block(entry);
+        builder.seal_block(entry);
+        let arg = builder.block_params(entry)[0];
+        let local = self.module.declare_func_in_func(target_id, builder.func);
+        builder.ins().call(local, &[arg]);
+        builder.ins().return_(&[]);
+        builder.seal_all_blocks();
+        builder.finalize();
+        self.module
+            .define_function(bridge_id, &mut ctx)
+            .map_err(|error| error.to_string())
+    }
+
+    fn compile_struct_destructor(&mut self, module_path: &Path, s: &fa::StructDecl) -> Result<(), String> {
+        let destructor_method = s
+            .methods
+            .iter()
+            .find(|method| method.name == "__del__")
+            .ok_or_else(|| format!("missing destructor method for `{}`", s.name))?;
+        let bridge_name = layout::destructor_symbol(module_path, &s.name);
         let bridge_id = *self
             .destructor_ids
             .get(&bridge_name)
@@ -2198,6 +2337,10 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             return self.compile_data_constructor(builder, data_module, data, args);
         }
 
+        if let Some((struct_module, s)) = self.compiler.session.find_struct(name) {
+            return self.compile_struct_constructor(builder, struct_module, s, args);
+        }
+
         if let Some(extern_fn) = self.compiler.session.find_extern_fn(name) {
             let func_id = *self
                 .compiler
@@ -2952,6 +3095,57 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         Ok(TypedValue {
             value: handle,
             ty: Some(data.name.clone()),
+        })
+    }
+
+    fn compile_struct_constructor(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        module_path: &Path,
+        s: &fa::StructDecl,
+        args: &[fa::Expr],
+    ) -> Result<TypedValue, String> {
+        let full_name = layout::data_type_name(module_path, &s.name);
+        let data_id = self.compiler.string_data_id(&full_name)?;
+        let local = self.compiler.module.declare_data_in_func(data_id, builder.func);
+        let type_name_ptr = builder.ins().symbol_value(self.compiler.pointer_type, local);
+        let destructor_ptr = if s.methods.iter().any(|method| method.name == "__del__") {
+            let symbol = layout::destructor_symbol(module_path, &s.name);
+            let func_id = *self
+                .compiler
+                .destructor_ids
+                .get(&symbol)
+                .ok_or_else(|| format!("missing destructor bridge `{symbol}`"))?;
+            let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
+            builder.ins().func_addr(self.compiler.pointer_type, local)
+        } else {
+            builder.ins().iconst(self.compiler.pointer_type, 0)
+        };
+        let name_len = self.usize_const(builder, full_name.len() as i64);
+        let field_count = self.usize_const(builder, s.fields.len() as i64);
+        let handle = self.runtime(
+            builder,
+            self.compiler.runtime.data_new,
+            &[
+                type_name_ptr,
+                name_len,
+                field_count,
+                destructor_ptr,
+            ],
+            self.compiler.pointer_type,
+        );
+        for (index, arg) in args.iter().enumerate() {
+            let value = self.compile_expr(builder, arg)?;
+            let field_index = self.usize_const(builder, index as i64);
+            self.runtime_void(
+                builder,
+                self.compiler.runtime.data_set_field,
+                &[handle, field_index, value.value],
+            );
+        }
+        Ok(TypedValue {
+            value: handle,
+            ty: Some(s.name.clone()),
         })
     }
 
@@ -3900,7 +4094,9 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         .infer_expr_type(call.args.first()?)
                         .map(|inner| format!("Result<Unknown, {inner}>")),
                     data_name => {
-                        if self.compiler.session.find_data(data_name).is_some() {
+                        if self.compiler.session.find_data(data_name).is_some()
+                            || self.compiler.session.find_struct(data_name).is_some()
+                        {
                             Some(data_name.to_string())
                         } else if layout::canonical_type_name(data_name) == "Chan" {
                             Some(data_name.replace("::", ""))

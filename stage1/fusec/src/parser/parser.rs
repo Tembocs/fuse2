@@ -102,6 +102,7 @@ impl Parser {
             }
             TokenKind::Struct => {
                 let mut struct_decl = self.parse_struct()?;
+                struct_decl.decorators = decorators;
                 struct_decl.is_pub = is_pub;
                 Ok(Declaration::Struct(struct_decl))
             }
@@ -394,10 +395,57 @@ impl Parser {
             .expect(TokenKind::Identifier, "expected struct name")?
             .text;
         self.expect(TokenKind::LBrace, "expected `{` after struct name")?;
+        let mut fields = Vec::new();
+        let mut methods = Vec::new();
+        while self.peek(0).kind != TokenKind::RBrace {
+            match self.peek(0).kind {
+                TokenKind::Val | TokenKind::Var => {
+                    let field_token = self.take();
+                    let mutable = field_token.kind == TokenKind::Var;
+                    let field_name = self
+                        .expect(TokenKind::Identifier, "expected field name")?
+                        .text;
+                    let type_name = if self.match_kind(TokenKind::Colon).is_some() {
+                        Some(self.parse_type_name(&[TokenKind::Val, TokenKind::Var, TokenKind::Fn, TokenKind::At, TokenKind::Pub, TokenKind::RBrace]))
+                    } else {
+                        None
+                    };
+                    fields.push(FieldDecl {
+                        mutable,
+                        name: field_name,
+                        type_name,
+                        span: field_token.span,
+                    });
+                }
+                TokenKind::Fn | TokenKind::At | TokenKind::Pub => {
+                    let mut decorators = Vec::new();
+                    while self.match_kind(TokenKind::At).is_some() {
+                        decorators.push(
+                            self.expect(TokenKind::Identifier, "expected decorator name")?
+                                .text,
+                        );
+                    }
+                    let is_pub = self.match_kind(TokenKind::Pub).is_some();
+                    let mut function = self.parse_function()?;
+                    function.decorators = decorators;
+                    function.is_pub = is_pub;
+                    methods.push(function);
+                }
+                _ => {
+                    return Err(self.syntax_error(
+                        format!("expected field or method in struct, got `{}`", self.peek(0).text),
+                        self.peek(0).span,
+                    ));
+                }
+            }
+        }
         self.expect(TokenKind::RBrace, "expected `}` to close struct")?;
         Ok(StructDecl {
             name,
+            fields,
+            methods,
             is_pub: false,
+            decorators: Vec::new(),
             span: start.span,
         })
     }

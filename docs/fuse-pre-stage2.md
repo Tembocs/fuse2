@@ -369,7 +369,7 @@ to the next wave.** Do not silently continue.
 
 ---
 
-### Phase W1.1 — Struct Compilation
+### Phase W1.1 — Struct Compilation [DONE]
 
 **Root cause:** `declare_user_surface()` and `emit_object()` iterate
 over functions, data class methods, and extern functions — but have NO
@@ -380,18 +380,18 @@ and registered in the checker, but completely skipped during codegen.
 are compiled. Generate constructor and destructor. Do NOT generate
 public field accessors (structs are opaque).
 
-- [ ] **W1.1.1** Add struct iteration in `declare_user_surface` — declare
+- [x] **W1.1.1** Add struct iteration in `declare_user_surface` — declare
       struct method symbols (parallel to data class methods).
-- [ ] **W1.1.2** Add struct constructor (`__init__`) declaration.
-- [ ] **W1.1.3** Add struct destructor (`__del__`) declaration.
-- [ ] **W1.1.4** Add struct method compilation in `emit_object`.
-- [ ] **W1.1.5** Compile struct constructor body (allocate, set fields).
-- [ ] **W1.1.6** Compile struct destructor body (release fields).
-- [ ] **W1.1.7** Verify struct fields NOT accessible outside methods.
-- [ ] **W1.1.8** Test: `struct_compiled.fuse` — construct and call methods.
-- [ ] **W1.1.9** Test: `struct_destructor.fuse` — ASAP destruction fires.
-- [ ] **W1.1.10** Verify existing `struct_basic.fuse` passes.
-- [ ] **W1.1.11** Full test suite green.
+- [x] **W1.1.2** Add struct constructor (`__init__`) declaration.
+- [x] **W1.1.3** Add struct destructor (`__del__`) declaration.
+- [x] **W1.1.4** Add struct method compilation in `emit_object`.
+- [x] **W1.1.5** Compile struct constructor body (allocate, set fields).
+- [x] **W1.1.6** Compile struct destructor body (release fields).
+- [x] **W1.1.7** Verify struct fields NOT accessible outside methods.
+- [x] **W1.1.8** Test: `struct_compiled.fuse` — construct and call methods.
+- [x] **W1.1.9** Test: `struct_destructor.fuse` — ASAP destruction fires.
+- [x] **W1.1.10** Verify existing `struct_basic.fuse` passes.
+- [x] **W1.1.11** Full test suite green.
 
 ---
 
