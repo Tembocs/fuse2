@@ -125,5 +125,7 @@ These are known. See `docs/fuse-hardening-plan.md` for the fix plan:
 Before modifying any compiler code, read:
 - `docs/fuse-language-guide-2.md` — the authoritative language specification
 - `docs/fuse-hardening-plan.md` — current fix plan with root causes and solutions
+- `docs/fuse-interfaces-spec.md` — interface system and concurrency model specification
+- `docs/fuse-tooling-spec.md` — manifest file (fuel.toml), mobile support, project sequencing
 - `docs/stdlib_implementation_learning.md` — catalog of 15 bugs found and lessons learned
 - `docs/fuse-stdlib-implementation-plan.md` — complete stdlib implementation history
