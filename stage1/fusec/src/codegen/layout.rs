@@ -60,10 +60,20 @@ pub fn abi_name() -> &'static str {
 }
 
 pub fn canonical_type_name(type_name: &str) -> &str {
-    type_name
+    // Strip ownership qualifiers — the parser may or may not include a space
+    // (parse_type_name concatenates tokens without separators).
+    let base = type_name
+        .strip_prefix("mutref ")
+        .or_else(|| type_name.strip_prefix("mutref"))
+        .or_else(|| type_name.strip_prefix("ref "))
+        .or_else(|| type_name.strip_prefix("ref"))
+        .or_else(|| type_name.strip_prefix("owned "))
+        .or_else(|| type_name.strip_prefix("owned"))
+        .unwrap_or(type_name);
+    base
         .split('<')
         .next()
-        .unwrap_or(type_name)
+        .unwrap_or(base)
         .trim_end_matches("::")
 }
 

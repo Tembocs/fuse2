@@ -1,0 +1,26 @@
+// EXPECTED OUTPUT:
+// Request(GET, /api/users, application/json)
+
+data class Request(var method: String, var path: String, var contentType: String)
+
+fn Request.withMethod(mutref self, m: String) -> mutref Self {
+  self.method = m
+  self
+}
+
+fn Request.withPath(mutref self, p: String) -> mutref Self {
+  self.path = p
+  self
+}
+
+fn Request.withContentType(mutref self, ct: String) -> mutref Self {
+  self.contentType = ct
+  self
+}
+
+@entrypoint
+fn main() {
+  var req = Request("", "", "")
+  req.withMethod("GET").withPath("/api/users").withContentType("application/json")
+  println(req)
+}

@@ -181,6 +181,31 @@ fn load_module_recursive(
     let filename = display_name(&path);
     let parsed = parse_source(&source, &filename).map_err(|diag| diag.render())?;
     let module = lower_program(&parsed, path.clone());
+    // Resolve `Self` in return types of extension functions and data class methods
+    // so all downstream callers (emit_object, collect_ir_text, infer_expr_type)
+    // see the concrete type rather than the placeholder.
+    let mut extensions = module.extension_functions.clone();
+    for ((receiver_type, _), function) in extensions.iter_mut() {
+        if let Some(ref mut rt) = function.return_type {
+            if rt.contains("Self") {
+                *rt = rt.replace("Self", receiver_type);
+            }
+        }
+    }
+    let mut data_classes: HashMap<String, fa::DataClassDecl> = module
+        .data_classes
+        .iter()
+        .map(|data| (data.name.clone(), data.clone()))
+        .collect();
+    for (name, data) in data_classes.iter_mut() {
+        for method in data.methods.iter_mut() {
+            if let Some(ref mut rt) = method.return_type {
+                if rt.contains("Self") {
+                    *rt = rt.replace("Self", name);
+                }
+            }
+        }
+    }
     let loaded = LoadedModule {
         path: path.clone(),
         functions: module
@@ -188,12 +213,8 @@ fn load_module_recursive(
             .iter()
             .map(|function| (function.name.clone(), function.clone()))
             .collect(),
-        extensions: module.extension_functions.clone(),
-        data_classes: module
-            .data_classes
-            .iter()
-            .map(|data| (data.name.clone(), data.clone()))
-            .collect(),
+        extensions,
+        data_classes,
         enums: module
             .enums
             .iter()

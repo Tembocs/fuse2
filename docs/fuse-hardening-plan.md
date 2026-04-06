@@ -324,20 +324,20 @@ After the self-parameter resolution block, check if
 the receiver type. Apply the same fix in both `emit_object()` (line ~444)
 and `collect_ir_text()` (line ~483).
 
-- [ ] **H0.4.1** In `emit_object()` extension function loop: after
+- [x] **H0.4.1** In `emit_object()` extension function loop: after
       self-param resolution, add return type resolution — replace `"Self"`
       with `receiver_type` in `function.return_type`.
-- [ ] **H0.4.2** Handle both `"Self"` and `"mutref Self"` patterns:
+- [x] **H0.4.2** Handle both `"Self"` and `"mutref Self"` patterns:
       `"Self"` → `"{receiver_type}"`,
       `"mutref Self"` → `"mutref {receiver_type}"`.
-- [ ] **H0.4.3** Apply identical resolution in `collect_ir_text()`
+- [x] **H0.4.3** Apply identical resolution in `collect_ir_text()`
       extension function loop.
-- [ ] **H0.4.4** Add test: `builder_mutref_self.fuse` — data class with
+- [x] **H0.4.4** Add test: `builder_mutref_self.fuse` — data class with
       builder method returning `mutref Self`, verify method chaining:
       `builder.setA(1).setB(2)`.
-- [ ] **H0.4.5** Add test: `builder_chain_three.fuse` — three chained
+- [x] **H0.4.5** Add test: `builder_chain_three.fuse` — three chained
       builder calls returning `mutref Self`.
-- [ ] **H0.4.6** Run full test suite.
+- [x] **H0.4.6** Run full test suite.
 
 ---
 

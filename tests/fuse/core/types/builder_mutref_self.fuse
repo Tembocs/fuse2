@@ -1,0 +1,21 @@
+// EXPECTED OUTPUT:
+// Config(1, 2)
+
+data class Config(var a: Int, var b: Int)
+
+fn Config.setA(mutref self, v: Int) -> mutref Self {
+  self.a = v
+  self
+}
+
+fn Config.setB(mutref self, v: Int) -> mutref Self {
+  self.b = v
+  self
+}
+
+@entrypoint
+fn main() {
+  var c = Config(0, 0)
+  c.setA(1).setB(2)
+  println(c)
+}
