@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// 1
+// hello
+// true
+
+@entrypoint
+fn main() {
+  val x = if true { 1 } else { 2 }
+  println(x)
+
+  val s = if false { "world" } else { "hello" }
+  println(s)
+
+  val b = if 1 > 0 { true } else { false }
+  println(b)
+}

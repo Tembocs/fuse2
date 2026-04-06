@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// 2
+// three
+
+@entrypoint
+fn main() {
+  val x = if false { 1 } else if true { 2 } else { 3 }
+  println(x)
+
+  val s = if false { "one" } else if false { "two" } else { "three" }
+  println(s)
+}

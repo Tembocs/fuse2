@@ -33,6 +33,17 @@ fn symbol_for_function(module_path: &Path, function: &fa::FunctionDecl) -> Strin
     }
 }
 
+/// Split a block's statements into prefix statements and an optional trailing
+/// expression.  When the last statement is `Statement::Expr`, the expression is
+/// extracted so it can be compiled separately as a block's return value — the
+/// same pattern used for function body final-expression extraction (line ~547).
+fn split_block_final_expr(stmts: &[fa::Statement]) -> (&[fa::Statement], Option<&fa::Expr>) {
+    match stmts.split_last() {
+        Some((fa::Statement::Expr(expr_stmt), prefix)) => (prefix, Some(&expr_stmt.expr)),
+        _ => (stmts, None),
+    }
+}
+
 pub fn run_host_entry(entry: extern "C" fn() -> i32) -> Result<i32, String> {
     Ok(entry())
 }
@@ -3149,20 +3160,34 @@ impl<'a, 'b> LoweringState<'a, 'b> {
 
         let snapshot = self.locals.clone();
 
+        // --- then branch ---
         builder.switch_to_block(then_block);
-        self.compile_statements(builder, &if_expr.then_branch.statements)?;
+        let (then_prefix, then_final_expr) =
+            split_block_final_expr(&if_expr.then_branch.statements);
+        self.compile_statements(builder, then_prefix)?;
         if !self.current_block_is_terminated(builder) {
-            let value = self.runtime_nullary(builder, self.compiler.runtime.unit);
+            let value = if let Some(expr) = then_final_expr {
+                self.compile_expr(builder, expr)?.value
+            } else {
+                self.runtime_nullary(builder, self.compiler.runtime.unit)
+            };
             self.jump_value(builder, done, value);
         }
 
+        // --- else branch ---
         self.locals = snapshot.clone();
         builder.switch_to_block(else_block);
         match &if_expr.else_branch {
             Some(fa::ElseBranch::Block(block)) => {
-                self.compile_statements(builder, &block.statements)?;
+                let (else_prefix, else_final_expr) =
+                    split_block_final_expr(&block.statements);
+                self.compile_statements(builder, else_prefix)?;
                 if !self.current_block_is_terminated(builder) {
-                    let value = self.runtime_nullary(builder, self.compiler.runtime.unit);
+                    let value = if let Some(expr) = else_final_expr {
+                        self.compile_expr(builder, expr)?.value
+                    } else {
+                        self.runtime_nullary(builder, self.compiler.runtime.unit)
+                    };
                     self.jump_value(builder, done, value);
                 }
             }
@@ -3178,11 +3203,23 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             }
         }
 
+        // --- result type ---
+        // When both branches exist and the then-branch has a final expression,
+        // infer the type from that expression (same approach as compile_match).
+        // If no else branch or no final expression, the type is Unit.
+        let result_type = if if_expr.else_branch.is_some() {
+            then_final_expr
+                .and_then(|expr| self.infer_expr_type(expr))
+                .or_else(|| Some("Unit".to_string()))
+        } else {
+            Some("Unit".to_string())
+        };
+
         self.locals = snapshot;
         builder.switch_to_block(done);
         Ok(TypedValue {
             value: builder.block_params(done)[0],
-            ty: Some("Unit".to_string()),
+            ty: result_type,
         })
     }
 

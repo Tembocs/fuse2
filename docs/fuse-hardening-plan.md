@@ -220,29 +220,29 @@ and jump to `done` with that expression's value. On the final `TypedValue` retur
 use `self.infer_expr_type()` on the then-branch's last expression to determine
 the type. This is identical to how `compile_match` handles `ArmBody::Expr`.
 
-- [ ] **H0.1.1** Add helper function `split_block_final_expr(stmts) -> (prefix, Option<Expr>)`
+- [x] **H0.1.1** Add helper function `split_block_final_expr(stmts) -> (prefix, Option<Expr>)`
       that extracts the last expression from a block's statements — same
       pattern as function body `final_expr` extraction (line ~647).
-- [ ] **H0.1.2** Update then-branch in `compile_if`: if final expr exists,
+- [x] **H0.1.2** Update then-branch in `compile_if`: if final expr exists,
       compile prefix statements, compile final expr, jump to `done` with
       the expr's value instead of `runtime_nullary(unit)`.
-- [ ] **H0.1.3** Update `ElseBranch::Block` in `compile_if`: same treatment
+- [x] **H0.1.3** Update `ElseBranch::Block` in `compile_if`: same treatment
       as then-branch — extract and compile final expr.
-- [ ] **H0.1.4** Update `ElseBranch::IfExpr` recursive case: propagate
+- [x] **H0.1.4** Update `ElseBranch::IfExpr` recursive case: propagate
       the inner `compile_if` result value to `done` block (partially done,
       verify type propagation is correct).
-- [ ] **H0.1.5** Update return `TypedValue` type: use `self.infer_expr_type()`
+- [x] **H0.1.5** Update return `TypedValue` type: use `self.infer_expr_type()`
       on the then-branch's final expression. If no final expression or no
       else branch, type remains `"Unit"`.
-- [ ] **H0.1.6** Preserve existing behavior when no else branch (type = Unit,
+- [x] **H0.1.6** Preserve existing behavior when no else branch (type = Unit,
       value = unit). An if-without-else is a statement, not an expression.
-- [ ] **H0.1.7** Add test: `if_else_return_value.fuse` —
+- [x] **H0.1.7** Add test: `if_else_return_value.fuse` —
       `val x = if true { 1 } else { 2 }; println(x)` → `1`
-- [ ] **H0.1.8** Add test: `if_elif_else_value.fuse` — chained `else if`
+- [x] **H0.1.8** Add test: `if_elif_else_value.fuse` — chained `else if`
       returning values: `val x = if false { 1 } else if true { 2 } else { 3 }; println(x)` → `2`
-- [ ] **H0.1.9** Add test: `if_else_in_function.fuse` — function body
+- [x] **H0.1.9** Add test: `if_else_in_function.fuse` — function body
       ending with if/else as implicit return value.
-- [ ] **H0.1.10** Run full test suite — all existing tests green. Verify
+- [x] **H0.1.10** Run full test suite — all existing tests green. Verify
       stdlib tests that use `match` as if/else workaround still pass.
 
 ---
