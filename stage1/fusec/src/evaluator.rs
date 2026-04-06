@@ -1880,6 +1880,15 @@ impl Evaluator {
                     }
                     return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("toml: expected string".into())) });
                 }
+                // --- http_server FFI ---
+                "fuse_rt_http_server_route" => {
+                    // Stub: routes registered but no server runs in evaluator.
+                    return Ok(Value::Unit);
+                }
+                "fuse_rt_http_server_listen" => {
+                    // Stub: cannot start a server in evaluator mode.
+                    return Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) });
+                }
                 // --- crypto FFI ---
                 "fuse_rt_crypto_sha256" => {
                     use sha2::Digest;

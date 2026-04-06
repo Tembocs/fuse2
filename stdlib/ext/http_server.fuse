@@ -1,0 +1,114 @@
+// Fuse Ext stdlib — HTTP server.
+//
+// Backed by Rust's tiny_http crate. Provides a simple routing HTTP
+// server with Request/Response data classes.
+//
+// import stdlib.ext.http_server
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_http_server_route(method: String, path: String, handler: fn(Request) -> Response) -> Unit
+extern fn fuse_rt_http_server_listen(host: String, port: Int, threads: Int) -> Result<Unit, String>
+
+// --- Request ---
+
+pub data class Request(
+  val method: String,
+  val path: String,
+  val headers: Map<String, String>,
+  val query: Map<String, String>,
+  val body: String
+)
+
+// --- Response ---
+
+pub data class Response(val status: Int, val body: String, val contentType: String)
+
+// 200 OK with plain text body.
+pub fn Response.ok(body: String) -> Response {
+  Response(200, body, "text/plain")
+}
+
+// 200 OK with JSON body.
+pub fn Response.json(body: String) -> Response {
+  Response(200, body, "application/json")
+}
+
+// Response with custom status code.
+pub fn Response.withStatus(code: Int, body: String) -> Response {
+  Response(code, body, "text/plain")
+}
+
+// 302 redirect.
+pub fn Response.redirect(url: String) -> Response {
+  Response(302, "", url)
+}
+
+// --- Router ---
+
+pub data class Router(var routeCount: Int)
+
+// Create a new empty router.
+pub fn Router.new() -> Router {
+  Router(0)
+}
+
+// Register a GET handler.
+pub fn Router.get(mutref self, path: String, handler: fn(Request) -> Response) -> Int {
+  fuse_rt_http_server_route("GET", path, handler)
+  self.routeCount = self.routeCount + 1
+  0
+}
+
+// Register a POST handler.
+pub fn Router.post(mutref self, path: String, handler: fn(Request) -> Response) -> Int {
+  fuse_rt_http_server_route("POST", path, handler)
+  self.routeCount = self.routeCount + 1
+  0
+}
+
+// Register a PUT handler.
+pub fn Router.put(mutref self, path: String, handler: fn(Request) -> Response) -> Int {
+  fuse_rt_http_server_route("PUT", path, handler)
+  self.routeCount = self.routeCount + 1
+  0
+}
+
+// Register a DELETE handler.
+pub fn Router.delete(mutref self, path: String, handler: fn(Request) -> Response) -> Int {
+  fuse_rt_http_server_route("DELETE", path, handler)
+  self.routeCount = self.routeCount + 1
+  0
+}
+
+// --- Server ---
+
+pub data class Server(var port: Int, var host: String, var threads: Int)
+
+// Create a new server with the given router.
+pub fn Server.new(router: Router) -> Server {
+  Server(8080, "127.0.0.1", 1)
+}
+
+// Set the port.
+pub fn Server.withPort(mutref self, port: Int) -> Int {
+  self.port = port
+  0
+}
+
+// Set the host.
+pub fn Server.withHost(mutref self, host: String) -> Int {
+  self.host = host
+  0
+}
+
+// Set the number of threads.
+pub fn Server.withThreads(mutref self, n: Int) -> Int {
+  self.threads = n
+  0
+}
+
+// Start the server. Blocks until stopped.
+pub fn Server.listen(ref self) -> Result<Unit, String> {
+  fuse_rt_http_server_listen(self.host, self.port, self.threads)
+}

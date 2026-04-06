@@ -1,0 +1,62 @@
+// EXPECTED OUTPUT:
+// --- Response.ok ---
+// status: 200
+// body: hello
+// ct: text/plain
+// --- Response.json ---
+// json status: 200
+// json ct: application/json
+// --- Response.withStatus ---
+// custom status: 404
+// --- Router ---
+// route count: 2
+// --- Server ---
+// port: 3000
+// host: 0.0.0.0
+// --- done ---
+// done
+
+import stdlib.ext.http_server
+
+@entrypoint
+fn main() {
+  // --- Response.ok ---
+  println("--- Response.ok ---")
+  val r = Response.ok("hello")
+  println(f"status: {r.status}")
+  println(f"body: {r.body}")
+  println(f"ct: {r.contentType}")
+
+  // --- Response.json ---
+  println("--- Response.json ---")
+  val j = Response.json("{\"ok\":true}")
+  println(f"json status: {j.status}")
+  println(f"json ct: {j.contentType}")
+
+  // --- Response.withStatus ---
+  println("--- Response.withStatus ---")
+  val s = Response.withStatus(404, "not found")
+  println(f"custom status: {s.status}")
+
+  // --- Router ---
+  println("--- Router ---")
+  var router = Router.new()
+  router.get("/", fn(req: Request) -> Response {
+    Response.ok("index")
+  })
+  router.post("/api", fn(req: Request) -> Response {
+    Response.json("{}")
+  })
+  println(f"route count: {router.routeCount}")
+
+  // --- Server ---
+  println("--- Server ---")
+  var server = Server.new(router)
+  server.withPort(3000)
+  server.withHost("0.0.0.0")
+  println(f"port: {server.port}")
+  println(f"host: {server.host}")
+
+  println("--- done ---")
+  println("done")
+}

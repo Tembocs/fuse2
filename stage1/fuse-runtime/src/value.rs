@@ -4334,3 +4334,154 @@ pub unsafe extern "C" fn fuse_rt_crypto_random_hex(n: FuseHandle) -> FuseHandle 
     let hex = hex_encode(&buf);
     unsafe { fuse_string_new_utf8(hex.as_ptr(), hex.len()) }
 }
+
+// ---------------------------------------------------------------------------
+// HTTP Server runtime support
+// ---------------------------------------------------------------------------
+
+struct Route {
+    method: String,
+    path: String,
+    closure: FuseHandle, // Fuse closure list: [fn_ptr, captures...]
+}
+
+thread_local! {
+    static HTTP_ROUTES: RefCell<Vec<Route>> = RefCell::new(Vec::new());
+}
+
+/// Register a route.  `closure` is a Fuse closure (List handle).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_http_server_route(
+    method: FuseHandle,
+    path: FuseHandle,
+    closure: FuseHandle,
+) -> FuseHandle {
+    let m = unsafe { clone_to_string(method) };
+    let p = unsafe { clone_to_string(path) };
+    HTTP_ROUTES.with(|routes| {
+        routes.borrow_mut().push(Route { method: m, path: p, closure });
+    });
+    FuseValue::new(ValueKind::Unit)
+}
+
+/// Build a Request data class from tiny_http::Request parts.
+unsafe fn make_request(
+    method: &str,
+    path: &str,
+    query: &str,
+    body: &str,
+    headers: &[(String, String)],
+) -> FuseHandle {
+    let tn = b"Request";
+    let data = fuse_data_new(tn.as_ptr(), tn.len(), 5, None);
+    // field 0: method
+    fuse_data_set_field(data, 0, fuse_string_new_utf8(method.as_ptr(), method.len()));
+    // field 1: path
+    fuse_data_set_field(data, 1, fuse_string_new_utf8(path.as_ptr(), path.len()));
+    // field 2: headers (Map<String, String>)
+    let hdr_map = fuse_map_new();
+    for (k, v) in headers {
+        fuse_map_set(hdr_map,
+            fuse_string_new_utf8(k.as_ptr(), k.len()),
+            fuse_string_new_utf8(v.as_ptr(), v.len()));
+    }
+    fuse_data_set_field(data, 2, hdr_map);
+    // field 3: query (Map<String, String>)
+    let q_map = fuse_map_new();
+    for pair in query.split('&') {
+        if let Some((k, v)) = pair.split_once('=') {
+            fuse_map_set(q_map,
+                fuse_string_new_utf8(k.as_ptr(), k.len()),
+                fuse_string_new_utf8(v.as_ptr(), v.len()));
+        }
+    }
+    fuse_data_set_field(data, 3, q_map);
+    // field 4: body
+    fuse_data_set_field(data, 4, fuse_string_new_utf8(body.as_ptr(), body.len()));
+    data
+}
+
+/// Extract Response fields from a Fuse data class (status, body, contentType).
+unsafe fn extract_response(handle: FuseHandle) -> (u16, String, String) {
+    let val = value_ref(handle);
+    if let ValueKind::Data(d) = &val.kind {
+        let status = if d.fields.len() > 0 { extract_int(d.fields[0]) as u16 } else { 200 };
+        let body = if d.fields.len() > 1 { clone_to_string(d.fields[1]) } else { String::new() };
+        let ct = if d.fields.len() > 2 { clone_to_string(d.fields[2]) } else { "text/plain".to_string() };
+        (status, body, ct)
+    } else {
+        (200, clone_to_string(handle), "text/plain".to_string())
+    }
+}
+
+/// Call a Fuse handler closure with a request, returning a response handle.
+unsafe fn call_handler(closure: FuseHandle, request: FuseHandle) -> FuseHandle {
+    let fn_ptr_raw: FuseHandle = {
+        let list_val = value_ref(closure);
+        match &list_val.kind {
+            ValueKind::List(items) if !items.is_empty() => items[0],
+            _ => return fuse_unit(),
+        }
+    };
+    let fn_ptr: unsafe extern "C" fn(FuseHandle, FuseHandle) -> FuseHandle =
+        std::mem::transmute(fn_ptr_raw);
+    fn_ptr(closure, request)
+}
+
+/// Start the HTTP server.  Blocks until the server is stopped.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_http_server_listen(
+    host: FuseHandle,
+    port: FuseHandle,
+    _threads: FuseHandle,
+) -> FuseHandle {
+    let h = unsafe { clone_to_string(host) };
+    let p = extract_int(port);
+    let addr = format!("{h}:{p}");
+    let server = match tiny_http::Server::http(&addr) {
+        Ok(s) => s,
+        Err(e) => {
+            let msg = format!("http_server: {e}");
+            return unsafe { fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len())) };
+        }
+    };
+    eprintln!("Fuse HTTP server listening on {addr}");
+    for mut request in server.incoming_requests() {
+        let method = request.method().to_string();
+        let raw_url = request.url().to_string();
+        let (path, query) = raw_url.split_once('?').unwrap_or((&raw_url, ""));
+        let headers: Vec<(String, String)> = request.headers()
+            .iter()
+            .map(|h| (h.field.as_str().as_str().to_string(), h.value.as_str().to_string()))
+            .collect();
+        let mut body_buf = String::new();
+        let _ = request.as_reader().read_to_string(&mut body_buf);
+
+        // Find matching route.
+        let handler = HTTP_ROUTES.with(|routes| {
+            let routes = routes.borrow();
+            routes.iter().find(|r| r.method == method && r.path == path)
+                .map(|r| r.closure)
+        });
+
+        if let Some(closure) = handler {
+            let req_handle = unsafe { make_request(&method, path, query, &body_buf, &headers) };
+            let resp_handle = unsafe { call_handler(closure, req_handle) };
+            let (status, body, content_type) = unsafe { extract_response(resp_handle) };
+            let response = tiny_http::Response::from_string(body)
+                .with_status_code(status)
+                .with_header(
+                    tiny_http::Header::from_bytes(
+                        b"Content-Type" as &[u8],
+                        content_type.as_bytes(),
+                    ).unwrap()
+                );
+            let _ = request.respond(response);
+        } else {
+            let response = tiny_http::Response::from_string("Not Found")
+                .with_status_code(404);
+            let _ = request.respond(response);
+        }
+    }
+    unsafe { fuse_ok(fuse_unit()) }
+}
