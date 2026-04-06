@@ -18,6 +18,7 @@ pub struct FuseValue {
 enum ValueKind {
     Int(i64),
     Float(f64),
+    Float32(f32),
     Bool(bool),
     String(String),
     List(Vec<FuseHandle>),
@@ -84,6 +85,7 @@ unsafe fn clone_to_string(handle: FuseHandle) -> String {
     match &unsafe { value_ref(handle) }.kind {
         ValueKind::Int(value) => value.to_string(),
         ValueKind::Float(value) => { let s = value.to_string(); if s.contains('.') { s } else { format!("{s}.0") } },
+        ValueKind::Float32(value) => { let s = value.to_string(); if s.contains('.') { s } else { format!("{s}.0") } },
         ValueKind::Bool(value) => {
             if *value {
                 "true".to_string()
@@ -307,6 +309,7 @@ pub unsafe extern "C" fn fuse_is_truthy(handle: FuseHandle) -> bool {
             ValueKind::Result { is_ok, .. } => *is_ok,
             ValueKind::Int(value) => *value != 0,
             ValueKind::Float(value) => *value != 0.0,
+            ValueKind::Float32(value) => *value != 0.0,
             ValueKind::String(value) => !value.is_empty(),
             ValueKind::List(value) => !value.is_empty(),
             ValueKind::Channel(value) => !value.items.is_empty(),
@@ -948,6 +951,7 @@ unsafe fn clone_value(handle: FuseHandle) -> FuseHandle {
     match &src.kind {
         ValueKind::Int(v) => unsafe { fuse_int(*v) },
         ValueKind::Float(v) => unsafe { fuse_float(*v) },
+        ValueKind::Float32(v) => unsafe { fuse_rt_f32_new(*v as f64) },
         ValueKind::Bool(v) => unsafe { fuse_bool(*v) },
         ValueKind::String(v) => FuseValue::new(ValueKind::String(v.clone())),
         ValueKind::Unit => unsafe { fuse_unit() },
@@ -1191,6 +1195,76 @@ pub unsafe extern "C" fn fuse_rt_float_parse(h: FuseHandle) -> FuseHandle {
     let msg = "float: expected string";
     fuse_err(fuse_string_new_utf8(msg.as_ptr(), msg.len()))
 }
+// --- Float32 FFI helpers ---
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_new(value: f64) -> FuseHandle {
+    FuseValue::new(ValueKind::Float32(value as f32))
+}
+
+unsafe fn extract_f32(handle: FuseHandle) -> f32 {
+    unsafe {
+        match &(*handle).kind {
+            ValueKind::Float32(v) => *v,
+            ValueKind::Float(v) => *v as f32,
+            ValueKind::Int(v) => *v as f32,
+            _ => 0.0,
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_value(handle: FuseHandle) -> f64 {
+    extract_f32(handle) as f64
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_add(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_f32_new((extract_f32(lhs) + extract_f32(rhs)) as f64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_sub(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_f32_new((extract_f32(lhs) - extract_f32(rhs)) as f64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_mul(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_f32_new((extract_f32(lhs) * extract_f32(rhs)) as f64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_div(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_f32_new((extract_f32(lhs) / extract_f32(rhs)) as f64)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_eq(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_f32(lhs) == extract_f32(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_lt(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_f32(lhs) < extract_f32(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_gt(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_f32(lhs) > extract_f32(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_le(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_f32(lhs) <= extract_f32(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_ge(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_f32(lhs) >= extract_f32(rhs))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_to_string(handle: FuseHandle) -> FuseHandle {
+    let s = {
+        let v = extract_f32(handle).to_string();
+        if v.contains('.') { v } else { format!("{v}.0") }
+    };
+    fuse_string_new_utf8(s.as_ptr(), s.len())
+}
+
 // --- IO FFI helpers ---
 
 unsafe fn make_io_error(msg: &str, code: i64) -> FuseHandle {

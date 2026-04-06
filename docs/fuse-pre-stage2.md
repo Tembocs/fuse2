@@ -466,14 +466,14 @@ importing modules. `path.SEPARATOR` cannot be read after `import path`.
 
 ---
 
-### Phase W2.1 — Float32 Runtime Value
+### Phase W2.1 — Float32 Runtime Value [DONE]
 
-- [ ] **W2.1.1** Add `Float32(f32)` variant to `FuseValue` enum.
-- [ ] **W2.1.2** Add `fuse_rt_f32_new(val: f64) -> *mut FuseValue`.
-- [ ] **W2.1.3** Add `fuse_rt_f32_value(handle) -> f64`.
-- [ ] **W2.1.4** Add arithmetic: `fuse_rt_f32_add/sub/mul/div`.
-- [ ] **W2.1.5** Add comparison: `fuse_rt_f32_eq/lt/gt/le/ge`.
-- [ ] **W2.1.6** Add `fuse_rt_f32_to_string`.
+- [x] **W2.1.1** Add `Float32(f32)` variant to `FuseValue` enum.
+- [x] **W2.1.2** Add `fuse_rt_f32_new(val: f64) -> *mut FuseValue`.
+- [x] **W2.1.3** Add `fuse_rt_f32_value(handle) -> f64`.
+- [x] **W2.1.4** Add arithmetic: `fuse_rt_f32_add/sub/mul/div`.
+- [x] **W2.1.5** Add comparison: `fuse_rt_f32_eq/lt/gt/le/ge`.
+- [x] **W2.1.6** Add `fuse_rt_f32_to_string`.
 
 ---
 
