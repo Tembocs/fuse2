@@ -1365,6 +1365,51 @@ pub unsafe extern "C" fn fuse_rt_os_move(src: FuseHandle, dst: FuseHandle) -> Fu
     }
 }
 
+// --- Env FFI ---
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_env_get(name: FuseHandle) -> FuseHandle {
+    let key = extract_string(name);
+    match std::env::var(key) {
+        Ok(val) => fuse_some(fuse_string_new_utf8(val.as_ptr(), val.len())),
+        Err(_) => fuse_none(),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_env_set(name: FuseHandle, value: FuseHandle) -> FuseHandle {
+    let key = extract_string(name);
+    let val = extract_string(value);
+    // SAFETY: set_var is unsafe in Rust 2024 due to thread-safety concerns,
+    // but Fuse's single-threaded evaluator makes this safe in practice.
+    unsafe { std::env::set_var(key, val); }
+    fuse_ok(fuse_unit())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_env_remove(name: FuseHandle) -> FuseHandle {
+    let key = extract_string(name);
+    unsafe { std::env::remove_var(key); }
+    fuse_ok(fuse_unit())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_env_all() -> FuseHandle {
+    let map = fuse_map_new();
+    for (key, val) in std::env::vars() {
+        let k = fuse_string_new_utf8(key.as_ptr(), key.len());
+        let v = fuse_string_new_utf8(val.as_ptr(), val.len());
+        fuse_map_set(map, k, v);
+    }
+    map
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_env_has(name: FuseHandle) -> FuseHandle {
+    let key = extract_string(name);
+    fuse_bool(std::env::var(key).is_ok())
+}
+
 // --- List FFI helpers ---
 
 #[unsafe(no_mangle)]

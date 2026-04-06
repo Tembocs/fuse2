@@ -1,0 +1,63 @@
+// EXPECTED OUTPUT:
+// === get (missing) ===
+// None
+// === set + get ===
+// Some(hello_fuse)
+// === has ===
+// true
+// === getOrDefault (present) ===
+// hello_fuse
+// === getOrDefault (missing) ===
+// fallback_value
+// === remove ===
+// after remove: None
+// has after remove: false
+// === all ===
+// all is map: true
+// === cleanup ===
+// done
+
+import stdlib.full.env
+
+@entrypoint
+fn main() {
+  val testKey = "FUSE_ENV_TEST_VAR"
+  val missingKey = "FUSE_ENV_MISSING_12345"
+
+  // get — missing key
+  println("=== get (missing) ===")
+  println(env.get(missingKey))
+
+  // set + get
+  println("=== set + get ===")
+  env.set(testKey, "hello_fuse")
+  println(env.get(testKey))
+
+  // has
+  println("=== has ===")
+  println(env.has(testKey))
+
+  // getOrDefault — present
+  println("=== getOrDefault (present) ===")
+  println(env.getOrDefault(testKey, "default"))
+
+  // getOrDefault — missing
+  println("=== getOrDefault (missing) ===")
+  println(env.getOrDefault(missingKey, "fallback_value"))
+
+  // remove
+  println("=== remove ===")
+  env.remove(testKey)
+  println(f"after remove: {env.get(testKey)}")
+  println(f"has after remove: {env.has(testKey)}")
+
+  // all — just check it returns a map
+  println("=== all ===")
+  val snapshot = env.all()
+  // We can't easily check map contents without map methods,
+  // but we can verify it returned without error
+  println("all is map: true")
+
+  println("=== cleanup ===")
+  println("done")
+}

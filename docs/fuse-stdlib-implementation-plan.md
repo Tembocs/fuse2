@@ -837,13 +837,13 @@ Filesystem operations.
 
 Environment variable access.
 
-- [ ] **2.4.1** Add FFI: `fuse_rt_env_get`, `fuse_rt_env_set`,
+- [x] **2.4.1** Add FFI: `fuse_rt_env_get`, `fuse_rt_env_set`,
       `fuse_rt_env_remove`, `fuse_rt_env_all`, `fuse_rt_env_has`.
-- [ ] **2.4.2** Create `stdlib/full/env.fuse`.
-- [ ] **2.4.3** Implement all functions: `get`, `getOrDefault`, `set`,
+- [x] **2.4.2** Create `stdlib/full/env.fuse`.
+- [x] **2.4.3** Implement all functions: `get`, `getOrDefault`, `set`,
       `remove`, `all`, `has`.
-- [ ] **2.4.4** Create `tests/fuse/stdlib/full/env_test.fuse`.
-- [ ] **2.4.5** Run tests. Fix any compiler bugs found.
+- [x] **2.4.4** Create `tests/fuse/stdlib/full/env_test.fuse`.
+- [x] **2.4.5** Run tests. No compiler bugs found.
 
 ---
 

@@ -1066,6 +1066,39 @@ impl Evaluator {
                     }
                     return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("os: expected src and dst".to_string())) });
                 }
+                "fuse_rt_env_get" => {
+                    if let Some(Value::String(key)) = args.first() {
+                        return match std::env::var(key.as_str()) {
+                            Ok(val) => Ok(Value::Option(Some(Box::new(Value::String(val))))),
+                            Err(_) => Ok(Value::Option(None)),
+                        };
+                    }
+                    return Ok(Value::Option(None));
+                }
+                "fuse_rt_env_set" => {
+                    if let (Some(Value::String(k)), Some(Value::String(v))) = (args.first(), args.get(1)) {
+                        unsafe { std::env::set_var(k.as_str(), v.as_str()); }
+                        return Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) });
+                    }
+                    return Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) });
+                }
+                "fuse_rt_env_remove" => {
+                    if let Some(Value::String(k)) = args.first() {
+                        unsafe { std::env::remove_var(k.as_str()); }
+                    }
+                    return Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) });
+                }
+                "fuse_rt_env_all" => {
+                    let entries: Vec<(Value, Value)> = std::env::vars()
+                        .map(|(k, v)| (Value::String(k), Value::String(v))).collect();
+                    return Ok(Value::Map(entries));
+                }
+                "fuse_rt_env_has" => {
+                    if let Some(Value::String(key)) = args.first() {
+                        return Ok(Value::Bool(std::env::var(key.as_str()).is_ok()));
+                    }
+                    return Ok(Value::Bool(false));
+                }
                 "fuse_rt_os_create_symlink" | "fuse_rt_os_read_symlink" | "fuse_rt_os_set_read_only" => {
                     // Symlinks and permissions: minimal evaluator support
                     return Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) });
