@@ -1514,6 +1514,365 @@ pub unsafe extern "C" fn fuse_rt_process_run_with_stdin(
     }
 }
 
+// --- Net FFI ---
+
+unsafe fn make_net_error(msg: &str, code: i64) -> FuseHandle {
+    let type_name = b"NetError";
+    let data = fuse_data_new(type_name.as_ptr(), type_name.len(), 2, None);
+    fuse_data_set_field(data, 0, fuse_string_new_utf8(msg.as_ptr(), msg.len()));
+    fuse_data_set_field(data, 1, fuse_int(code));
+    data
+}
+
+unsafe fn net_error_code(e: &std::io::Error) -> i64 {
+    match e.kind() {
+        std::io::ErrorKind::ConnectionRefused => 1,
+        std::io::ErrorKind::TimedOut => 2,
+        std::io::ErrorKind::AddrInUse => 3,
+        std::io::ErrorKind::BrokenPipe => 4,
+        std::io::ErrorKind::NotConnected => 5,
+        _ => 0,
+    }
+}
+
+unsafe fn wrap_tcp_stream(stream: std::net::TcpStream) -> FuseHandle {
+    let boxed: Box<dyn std::any::Any> = Box::new(stream);
+    let ptr = Box::into_raw(boxed);
+    let type_name = b"TcpStream";
+    let handle = fuse_data_new(type_name.as_ptr(), type_name.len(), 1, None);
+    fuse_data_set_field(handle, 0, ptr as FuseHandle);
+    handle
+}
+
+unsafe fn extract_tcp_stream<'a>(handle: FuseHandle) -> Option<&'a mut std::net::TcpStream> {
+    if let ValueKind::Data(data) = &(*handle).kind {
+        if let Some(field0) = data.fields.first() {
+            let ptr = *field0 as *mut dyn std::any::Any;
+            if !ptr.is_null() {
+                return (*ptr).downcast_mut::<std::net::TcpStream>();
+            }
+        }
+    }
+    None
+}
+
+// --- TcpStream ---
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_tcp_connect(addr: FuseHandle, port: FuseHandle) -> FuseHandle {
+    let a = extract_string(addr);
+    let p = match &(*port).kind { ValueKind::Int(n) => *n as u16, _ => 0 };
+    match std::net::TcpStream::connect((a, p)) {
+        Ok(stream) => fuse_ok(wrap_tcp_stream(stream)),
+        Err(e) => { let msg = format!("net: {e}"); fuse_err(make_net_error(&msg, net_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_tcp_connect_timeout(addr: FuseHandle, port: FuseHandle, timeout_ms: FuseHandle) -> FuseHandle {
+    let a = extract_string(addr);
+    let p = match &(*port).kind { ValueKind::Int(n) => *n as u16, _ => 0 };
+    let ms = match &(*timeout_ms).kind { ValueKind::Int(n) => *n as u64, _ => 5000 };
+    let socket_addr = format!("{a}:{p}");
+    match socket_addr.parse::<std::net::SocketAddr>() {
+        Ok(sa) => match std::net::TcpStream::connect_timeout(&sa, std::time::Duration::from_millis(ms)) {
+            Ok(stream) => fuse_ok(wrap_tcp_stream(stream)),
+            Err(e) => { let msg = format!("net: {e}"); fuse_err(make_net_error(&msg, net_error_code(&e))) }
+        },
+        Err(e) => { let msg = format!("net: invalid address: {e}"); fuse_err(make_net_error(&msg, 0)) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_tcp_read(stream: FuseHandle, max_bytes: FuseHandle) -> FuseHandle {
+    use std::io::Read;
+    let max = match &(*max_bytes).kind { ValueKind::Int(n) => *n as usize, _ => 4096 };
+    if let Some(s) = extract_tcp_stream(stream) {
+        let mut buf = vec![0u8; max];
+        match s.read(&mut buf) {
+            Ok(n) => {
+                let list = fuse_list_new();
+                for &b in &buf[..n] { fuse_list_push(list, fuse_int(b as i64)); }
+                fuse_ok(list)
+            }
+            Err(e) => { let msg = format!("net: {e}"); fuse_err(make_net_error(&msg, net_error_code(&e))) }
+        }
+    } else {
+        fuse_err(make_net_error("net: invalid stream", 0))
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_tcp_read_all(stream: FuseHandle) -> FuseHandle {
+    use std::io::Read;
+    if let Some(s) = extract_tcp_stream(stream) {
+        let mut buf = String::new();
+        match s.read_to_string(&mut buf) {
+            Ok(_) => fuse_ok(fuse_string_new_utf8(buf.as_ptr(), buf.len())),
+            Err(e) => { let msg = format!("net: {e}"); fuse_err(make_net_error(&msg, net_error_code(&e))) }
+        }
+    } else {
+        fuse_err(make_net_error("net: invalid stream", 0))
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_tcp_write(stream: FuseHandle, data: FuseHandle) -> FuseHandle {
+    use std::io::Write;
+    if let Some(s) = extract_tcp_stream(stream) {
+        let d = extract_string(data);
+        match s.write(d.as_bytes()) {
+            Ok(n) => fuse_ok(fuse_int(n as i64)),
+            Err(e) => { let msg = format!("net: {e}"); fuse_err(make_net_error(&msg, net_error_code(&e))) }
+        }
+    } else {
+        fuse_err(make_net_error("net: invalid stream", 0))
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_tcp_write_bytes(stream: FuseHandle, data: FuseHandle) -> FuseHandle {
+    use std::io::Write;
+    if let Some(s) = extract_tcp_stream(stream) {
+        if let ValueKind::List(items) = &(*data).kind {
+            let bytes: Vec<u8> = items.iter().filter_map(|h| match &(**h).kind { ValueKind::Int(n) => Some(*n as u8), _ => None }).collect();
+            match s.write(&bytes) {
+                Ok(n) => return fuse_ok(fuse_int(n as i64)),
+                Err(e) => { let msg = format!("net: {e}"); return fuse_err(make_net_error(&msg, net_error_code(&e))); }
+            }
+        }
+        fuse_err(make_net_error("net: expected byte list", 0))
+    } else {
+        fuse_err(make_net_error("net: invalid stream", 0))
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_tcp_flush(stream: FuseHandle) -> FuseHandle {
+    use std::io::Write;
+    if let Some(s) = extract_tcp_stream(stream) {
+        match s.flush() {
+            Ok(()) => fuse_ok(fuse_unit()),
+            Err(e) => { let msg = format!("net: {e}"); fuse_err(make_net_error(&msg, net_error_code(&e))) }
+        }
+    } else {
+        fuse_err(make_net_error("net: invalid stream", 0))
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_tcp_set_read_timeout(stream: FuseHandle, ms: FuseHandle) -> FuseHandle {
+    if let Some(s) = extract_tcp_stream(stream) {
+        let timeout = match &(*ms).kind { ValueKind::Int(0) => None, ValueKind::Int(n) => Some(std::time::Duration::from_millis(*n as u64)), _ => None };
+        match s.set_read_timeout(timeout) {
+            Ok(()) => fuse_ok(fuse_unit()),
+            Err(e) => { let msg = format!("net: {e}"); fuse_err(make_net_error(&msg, net_error_code(&e))) }
+        }
+    } else {
+        fuse_err(make_net_error("net: invalid stream", 0))
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_tcp_set_write_timeout(stream: FuseHandle, ms: FuseHandle) -> FuseHandle {
+    if let Some(s) = extract_tcp_stream(stream) {
+        let timeout = match &(*ms).kind { ValueKind::Int(0) => None, ValueKind::Int(n) => Some(std::time::Duration::from_millis(*n as u64)), _ => None };
+        match s.set_write_timeout(timeout) {
+            Ok(()) => fuse_ok(fuse_unit()),
+            Err(e) => { let msg = format!("net: {e}"); fuse_err(make_net_error(&msg, net_error_code(&e))) }
+        }
+    } else {
+        fuse_err(make_net_error("net: invalid stream", 0))
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_tcp_local_addr(stream: FuseHandle) -> FuseHandle {
+    if let Some(s) = extract_tcp_stream(stream) {
+        match s.local_addr() {
+            Ok(addr) => { let a = addr.to_string(); fuse_ok(fuse_string_new_utf8(a.as_ptr(), a.len())) }
+            Err(e) => { let msg = format!("net: {e}"); fuse_err(make_net_error(&msg, net_error_code(&e))) }
+        }
+    } else {
+        fuse_err(make_net_error("net: invalid stream", 0))
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_tcp_peer_addr(stream: FuseHandle) -> FuseHandle {
+    if let Some(s) = extract_tcp_stream(stream) {
+        match s.peer_addr() {
+            Ok(addr) => { let a = addr.to_string(); fuse_ok(fuse_string_new_utf8(a.as_ptr(), a.len())) }
+            Err(e) => { let msg = format!("net: {e}"); fuse_err(make_net_error(&msg, net_error_code(&e))) }
+        }
+    } else {
+        fuse_err(make_net_error("net: invalid stream", 0))
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_tcp_close(_stream: FuseHandle) -> FuseHandle {
+    // Drop happens when the data class is ASAP-destroyed.
+    fuse_ok(fuse_unit())
+}
+
+// --- TcpListener ---
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_tcp_bind(addr: FuseHandle, port: FuseHandle) -> FuseHandle {
+    let a = extract_string(addr);
+    let p = match &(*port).kind { ValueKind::Int(n) => *n as u16, _ => 0 };
+    match std::net::TcpListener::bind((a, p)) {
+        Ok(listener) => {
+            let boxed: Box<dyn std::any::Any> = Box::new(listener);
+            let ptr = Box::into_raw(boxed);
+            let type_name = b"TcpListener";
+            let handle = fuse_data_new(type_name.as_ptr(), type_name.len(), 1, None);
+            fuse_data_set_field(handle, 0, ptr as FuseHandle);
+            fuse_ok(handle)
+        }
+        Err(e) => { let msg = format!("net: {e}"); fuse_err(make_net_error(&msg, net_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_tcp_accept(listener: FuseHandle) -> FuseHandle {
+    if let ValueKind::Data(data) = &(*listener).kind {
+        if let Some(field0) = data.fields.first() {
+            let ptr = *field0 as *mut dyn std::any::Any;
+            if !ptr.is_null() {
+                if let Some(l) = (*ptr).downcast_ref::<std::net::TcpListener>() {
+                    return match l.accept() {
+                        Ok((stream, _addr)) => fuse_ok(wrap_tcp_stream(stream)),
+                        Err(e) => { let msg = format!("net: {e}"); fuse_err(make_net_error(&msg, net_error_code(&e))) }
+                    };
+                }
+            }
+        }
+    }
+    fuse_err(make_net_error("net: invalid listener", 0))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_tcp_listener_local_addr(listener: FuseHandle) -> FuseHandle {
+    if let ValueKind::Data(data) = &(*listener).kind {
+        if let Some(field0) = data.fields.first() {
+            let ptr = *field0 as *mut dyn std::any::Any;
+            if !ptr.is_null() {
+                if let Some(l) = (*ptr).downcast_ref::<std::net::TcpListener>() {
+                    return match l.local_addr() {
+                        Ok(addr) => { let a = addr.to_string(); fuse_ok(fuse_string_new_utf8(a.as_ptr(), a.len())) }
+                        Err(e) => { let msg = format!("net: {e}"); fuse_err(make_net_error(&msg, net_error_code(&e))) }
+                    };
+                }
+            }
+        }
+    }
+    fuse_err(make_net_error("net: invalid listener", 0))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_tcp_listener_close(_listener: FuseHandle) -> FuseHandle {
+    fuse_ok(fuse_unit())
+}
+
+// --- UdpSocket ---
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_udp_bind(addr: FuseHandle, port: FuseHandle) -> FuseHandle {
+    let a = extract_string(addr);
+    let p = match &(*port).kind { ValueKind::Int(n) => *n as u16, _ => 0 };
+    match std::net::UdpSocket::bind((a, p)) {
+        Ok(socket) => {
+            let boxed: Box<dyn std::any::Any> = Box::new(socket);
+            let ptr = Box::into_raw(boxed);
+            let type_name = b"UdpSocket";
+            let handle = fuse_data_new(type_name.as_ptr(), type_name.len(), 1, None);
+            fuse_data_set_field(handle, 0, ptr as FuseHandle);
+            fuse_ok(handle)
+        }
+        Err(e) => { let msg = format!("net: {e}"); fuse_err(make_net_error(&msg, net_error_code(&e))) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_udp_send_to(socket: FuseHandle, payload: FuseHandle, addr: FuseHandle, port: FuseHandle) -> FuseHandle {
+    if let ValueKind::Data(dv) = &(*socket).kind {
+        if let Some(field0) = dv.fields.first() {
+            let ptr = *field0 as *mut dyn std::any::Any;
+            if !ptr.is_null() {
+                if let Some(s) = (*ptr).downcast_ref::<std::net::UdpSocket>() {
+                    if let ValueKind::List(items) = &(*payload).kind {
+                        let bytes: Vec<u8> = items.iter().filter_map(|h| match &(**h).kind { ValueKind::Int(n) => Some(*n as u8), _ => None }).collect();
+                        let a = extract_string(addr);
+                        let p = match &(*port).kind { ValueKind::Int(n) => *n as u16, _ => 0 };
+                        return match s.send_to(&bytes, (a, p)) {
+                            Ok(n) => fuse_ok(fuse_int(n as i64)),
+                            Err(e) => { let msg = format!("net: {e}"); fuse_err(make_net_error(&msg, net_error_code(&e))) }
+                        };
+                    }
+                }
+            }
+        }
+    }
+    fuse_err(make_net_error("net: invalid socket", 0))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_udp_recv_from(socket: FuseHandle, max_bytes: FuseHandle) -> FuseHandle {
+    if let ValueKind::Data(data) = &(*socket).kind {
+        if let Some(field0) = data.fields.first() {
+            let ptr = *field0 as *mut dyn std::any::Any;
+            if !ptr.is_null() {
+                if let Some(s) = (*ptr).downcast_ref::<std::net::UdpSocket>() {
+                    let max = match &(*max_bytes).kind { ValueKind::Int(n) => *n as usize, _ => 4096 };
+                    let mut buf = vec![0u8; max];
+                    return match s.recv_from(&mut buf) {
+                        Ok((n, addr)) => {
+                            let list = fuse_list_new();
+                            for &b in &buf[..n] { fuse_list_push(list, fuse_int(b as i64)); }
+                            let addr_str = addr.ip().to_string();
+                            let port = addr.port() as i64;
+                            // Return a 3-element list: [data_list, addr_string, port_int]
+                            let result = fuse_list_new();
+                            fuse_list_push(result, list);
+                            fuse_list_push(result, fuse_string_new_utf8(addr_str.as_ptr(), addr_str.len()));
+                            fuse_list_push(result, fuse_int(port));
+                            fuse_ok(result)
+                        }
+                        Err(e) => { let msg = format!("net: {e}"); fuse_err(make_net_error(&msg, net_error_code(&e))) }
+                    };
+                }
+            }
+        }
+    }
+    fuse_err(make_net_error("net: invalid socket", 0))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_udp_set_broadcast(socket: FuseHandle, enabled: FuseHandle) -> FuseHandle {
+    if let ValueKind::Data(data) = &(*socket).kind {
+        if let Some(field0) = data.fields.first() {
+            let ptr = *field0 as *mut dyn std::any::Any;
+            if !ptr.is_null() {
+                if let Some(s) = (*ptr).downcast_ref::<std::net::UdpSocket>() {
+                    let en = match &(*enabled).kind { ValueKind::Bool(b) => *b, _ => false };
+                    return match s.set_broadcast(en) {
+                        Ok(()) => fuse_ok(fuse_unit()),
+                        Err(e) => { let msg = format!("net: {e}"); fuse_err(make_net_error(&msg, net_error_code(&e))) }
+                    };
+                }
+            }
+        }
+    }
+    fuse_err(make_net_error("net: invalid socket", 0))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_net_udp_close(_socket: FuseHandle) -> FuseHandle {
+    fuse_ok(fuse_unit())
+}
+
 // --- Random FFI ---
 
 // Splitmix64 — simple, high-quality PRNG. State is a single i64.

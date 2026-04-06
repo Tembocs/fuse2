@@ -1,0 +1,132 @@
+// Fuse Full stdlib — net module.
+//
+// Low-level TCP and UDP networking. All operations are synchronous.
+// For HTTP, use http.fuse. This module provides raw socket access.
+//
+// import stdlib.full.net
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_net_tcp_connect(addr: String, port: Int) -> Result<TcpStream, NetError>
+extern fn fuse_rt_net_tcp_connect_timeout(addr: String, port: Int, timeoutMs: Int) -> Result<TcpStream, NetError>
+extern fn fuse_rt_net_tcp_read(stream: TcpStream, maxBytes: Int) -> Result<List<Int>, NetError>
+extern fn fuse_rt_net_tcp_read_all(stream: TcpStream) -> Result<String, NetError>
+extern fn fuse_rt_net_tcp_write(stream: TcpStream, content: String) -> Result<Int, NetError>
+extern fn fuse_rt_net_tcp_write_bytes(stream: TcpStream, bytes: List<Int>) -> Result<Int, NetError>
+extern fn fuse_rt_net_tcp_flush(stream: TcpStream) -> Result<Int, NetError>
+extern fn fuse_rt_net_tcp_set_read_timeout(stream: TcpStream, ms: Int) -> Result<Int, NetError>
+extern fn fuse_rt_net_tcp_set_write_timeout(stream: TcpStream, ms: Int) -> Result<Int, NetError>
+extern fn fuse_rt_net_tcp_local_addr(stream: TcpStream) -> Result<String, NetError>
+extern fn fuse_rt_net_tcp_peer_addr(stream: TcpStream) -> Result<String, NetError>
+extern fn fuse_rt_net_tcp_close(stream: TcpStream) -> Result<Int, NetError>
+extern fn fuse_rt_net_tcp_bind(addr: String, port: Int) -> Result<TcpListener, NetError>
+extern fn fuse_rt_net_tcp_accept(listener: TcpListener) -> Result<TcpStream, NetError>
+extern fn fuse_rt_net_tcp_listener_local_addr(listener: TcpListener) -> Result<String, NetError>
+extern fn fuse_rt_net_tcp_listener_close(listener: TcpListener) -> Result<Int, NetError>
+extern fn fuse_rt_net_udp_bind(addr: String, port: Int) -> Result<UdpSocket, NetError>
+extern fn fuse_rt_net_udp_send_to(socket: UdpSocket, bytes: List<Int>, addr: String, port: Int) -> Result<Int, NetError>
+extern fn fuse_rt_net_udp_recv_from(socket: UdpSocket, maxBytes: Int) -> Result<List<Int>, NetError>
+extern fn fuse_rt_net_udp_set_broadcast(socket: UdpSocket, enabled: Bool) -> Result<Int, NetError>
+extern fn fuse_rt_net_udp_close(socket: UdpSocket) -> Result<Int, NetError>
+
+// --- Error type ---
+
+pub data class NetError(val message: String, val code: Int)
+// code: 0 = generic, 1 = connection refused, 2 = timeout,
+//       3 = address in use, 4 = broken pipe, 5 = not connected
+
+// --- TcpStream ---
+
+pub struct TcpStream { }
+
+pub fn TcpStream.connect(addr: String, port: Int) -> Result<TcpStream, NetError> {
+  fuse_rt_net_tcp_connect(addr, port)
+}
+
+pub fn TcpStream.connectTimeout(addr: String, port: Int, timeoutMs: Int) -> Result<TcpStream, NetError> {
+  fuse_rt_net_tcp_connect_timeout(addr, port, timeoutMs)
+}
+
+pub fn TcpStream.read(mutref self, maxBytes: Int) -> Result<List<Int>, NetError> {
+  fuse_rt_net_tcp_read(self, maxBytes)
+}
+
+pub fn TcpStream.readAll(mutref self) -> Result<String, NetError> {
+  fuse_rt_net_tcp_read_all(self)
+}
+
+pub fn TcpStream.write(mutref self, content: String) -> Result<Int, NetError> {
+  fuse_rt_net_tcp_write(self, content)
+}
+
+pub fn TcpStream.writeBytes(mutref self, bytes: List<Int>) -> Result<Int, NetError> {
+  fuse_rt_net_tcp_write_bytes(self, bytes)
+}
+
+pub fn TcpStream.flush(mutref self) -> Result<Int, NetError> {
+  fuse_rt_net_tcp_flush(self)
+}
+
+pub fn TcpStream.setReadTimeout(mutref self, ms: Int) -> Result<Int, NetError> {
+  fuse_rt_net_tcp_set_read_timeout(self, ms)
+}
+
+pub fn TcpStream.setWriteTimeout(mutref self, ms: Int) -> Result<Int, NetError> {
+  fuse_rt_net_tcp_set_write_timeout(self, ms)
+}
+
+pub fn TcpStream.localAddr(ref self) -> Result<String, NetError> {
+  fuse_rt_net_tcp_local_addr(self)
+}
+
+pub fn TcpStream.peerAddr(ref self) -> Result<String, NetError> {
+  fuse_rt_net_tcp_peer_addr(self)
+}
+
+pub fn TcpStream.close(owned self) -> Result<Int, NetError> {
+  fuse_rt_net_tcp_close(self)
+}
+
+// --- TcpListener ---
+
+pub struct TcpListener { }
+
+pub fn TcpListener.bind(addr: String, port: Int) -> Result<TcpListener, NetError> {
+  fuse_rt_net_tcp_bind(addr, port)
+}
+
+pub fn TcpListener.accept(mutref self) -> Result<TcpStream, NetError> {
+  fuse_rt_net_tcp_accept(self)
+}
+
+pub fn TcpListener.localAddr(ref self) -> Result<String, NetError> {
+  fuse_rt_net_tcp_listener_local_addr(self)
+}
+
+pub fn TcpListener.close(owned self) -> Result<Int, NetError> {
+  fuse_rt_net_tcp_listener_close(self)
+}
+
+// --- UdpSocket ---
+
+pub struct UdpSocket { }
+
+pub fn UdpSocket.bind(addr: String, port: Int) -> Result<UdpSocket, NetError> {
+  fuse_rt_net_udp_bind(addr, port)
+}
+
+pub fn UdpSocket.sendTo(mutref self, bytes: List<Int>, addr: String, port: Int) -> Result<Int, NetError> {
+  fuse_rt_net_udp_send_to(self, bytes, addr, port)
+}
+
+pub fn UdpSocket.recvFrom(mutref self, maxBytes: Int) -> Result<List<Int>, NetError> {
+  fuse_rt_net_udp_recv_from(self, maxBytes)
+}
+
+pub fn UdpSocket.setBroadcast(mutref self, enabled: Bool) -> Result<Int, NetError> {
+  fuse_rt_net_udp_set_broadcast(self, enabled)
+}
+
+pub fn UdpSocket.close(owned self) -> Result<Int, NetError> {
+  fuse_rt_net_udp_close(self)
+}

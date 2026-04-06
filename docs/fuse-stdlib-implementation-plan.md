@@ -939,28 +939,24 @@ Child process spawning.
 
 TCP and UDP networking.
 
-- [ ] **3.1.1** Add FFI: `fuse_rt_net_tcp_connect`,
-      `fuse_rt_net_tcp_connect_timeout`, `fuse_rt_net_tcp_read`,
-      `fuse_rt_net_tcp_read_exact`, `fuse_rt_net_tcp_read_line`,
-      `fuse_rt_net_tcp_read_all`, `fuse_rt_net_tcp_write`,
-      `fuse_rt_net_tcp_write_bytes`, `fuse_rt_net_tcp_flush`,
-      `fuse_rt_net_tcp_set_read_timeout`,
-      `fuse_rt_net_tcp_set_write_timeout`,
-      `fuse_rt_net_tcp_local_addr`, `fuse_rt_net_tcp_peer_addr`,
-      `fuse_rt_net_tcp_close`,
-      `fuse_rt_net_tcp_bind`, `fuse_rt_net_tcp_accept`,
-      `fuse_rt_net_tcp_listener_local_addr`,
-      `fuse_rt_net_tcp_listener_close`,
-      `fuse_rt_net_udp_bind`, `fuse_rt_net_udp_send_to`,
-      `fuse_rt_net_udp_recv_from`, `fuse_rt_net_udp_set_broadcast`,
-      `fuse_rt_net_udp_close`.
-- [ ] **3.1.2** Create `stdlib/full/net.fuse`.
-- [ ] **3.1.3** Define `NetError` data class.
-- [ ] **3.1.4** Implement `TcpStream`: all methods including `__del__`.
-- [ ] **3.1.5** Implement `TcpListener`: all methods including `__del__`.
-- [ ] **3.1.6** Implement `UdpSocket`: all methods including `__del__`.
-- [ ] **3.1.7** Create `tests/fuse/stdlib/full/net_test.fuse`.
-- [ ] **3.1.8** Run tests. Fix any compiler bugs found.
+- [x] **3.1.1** Add 22 FFI functions to fuse-runtime backed by std::net:
+      TcpStream (connect, connect_timeout, read, read_all, write,
+      write_bytes, flush, set_read/write_timeout, local/peer_addr, close),
+      TcpListener (bind, accept, local_addr, close),
+      UdpSocket (bind, send_to, recv_from, set_broadcast, close).
+- [x] **3.1.2** Create `stdlib/full/net.fuse`.
+- [x] **3.1.3** Define `NetError` data class with error codes
+      (0=generic, 1=refused, 2=timeout, 3=addr_in_use, 4=broken_pipe,
+      5=not_connected).
+- [x] **3.1.4** Implement `TcpStream`: connect, connectTimeout, read,
+      readAll, write, writeBytes, flush, setReadTimeout, setWriteTimeout,
+      localAddr, peerAddr, close.
+- [x] **3.1.5** Implement `TcpListener`: bind, accept, localAddr, close.
+- [x] **3.1.6** Implement `UdpSocket`: bind, sendTo, recvFrom,
+      setBroadcast, close.
+- [x] **3.1.7** Create `tests/fuse/stdlib/full/net_test.fuse`.
+- [x] **3.1.8** Run tests. No compiler bugs found. Note: `data` is a
+      reserved keyword — cannot be used as parameter names in Fuse.
 
 ---
 

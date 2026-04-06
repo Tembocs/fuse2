@@ -1,0 +1,41 @@
+// EXPECTED OUTPUT:
+// === TcpListener.bind ===
+// bind ok: true
+// === TcpStream.connect refused ===
+// refused: true
+// === UdpSocket.bind ===
+// udp bind ok: true
+// === done ===
+// done
+
+import stdlib.full.net
+
+@entrypoint
+fn main() {
+  // TcpListener.bind — bind to loopback on ephemeral port
+  println("=== TcpListener.bind ===")
+  val bindResult = TcpListener.bind("127.0.0.1", 0)
+  match bindResult {
+    Ok(listener) => println("bind ok: true")
+    Err(e) => println(f"bind error: {e.message}")
+  }
+
+  // TcpStream.connect — connection refused to a port nothing listens on
+  println("=== TcpStream.connect refused ===")
+  val connResult = TcpStream.connect("127.0.0.1", 1)
+  match connResult {
+    Ok(stream) => println("refused: false")
+    Err(e) => println("refused: true")
+  }
+
+  // UdpSocket.bind — bind to loopback on ephemeral port
+  println("=== UdpSocket.bind ===")
+  val udpResult = UdpSocket.bind("127.0.0.1", 0)
+  match udpResult {
+    Ok(socket) => println("udp bind ok: true")
+    Err(e) => println(f"udp bind error: {e.message}")
+  }
+
+  println("=== done ===")
+  println("done")
+}

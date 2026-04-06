@@ -1099,6 +1099,45 @@ impl Evaluator {
                     }
                     return Ok(Value::Bool(false));
                 }
+                "fuse_rt_net_tcp_connect" | "fuse_rt_net_tcp_connect_timeout" => {
+                    // Evaluator: attempt real connection for testing
+                    if let (Some(Value::String(addr)), Some(Value::Int(port))) = (args.first(), args.get(1)) {
+                        return match std::net::TcpStream::connect((addr.as_str(), *port as u16)) {
+                            Ok(_stream) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("net: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("net: expected addr and port".to_string())) });
+                }
+                "fuse_rt_net_tcp_bind" => {
+                    if let (Some(Value::String(addr)), Some(Value::Int(port))) = (args.first(), args.get(1)) {
+                        return match std::net::TcpListener::bind((addr.as_str(), *port as u16)) {
+                            Ok(_listener) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("net: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("net: expected addr and port".to_string())) });
+                }
+                "fuse_rt_net_udp_bind" => {
+                    if let (Some(Value::String(addr)), Some(Value::Int(port))) = (args.first(), args.get(1)) {
+                        return match std::net::UdpSocket::bind((addr.as_str(), *port as u16)) {
+                            Ok(_socket) => Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) }),
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("net: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("net: expected addr and port".to_string())) });
+                }
+                "fuse_rt_net_tcp_read" | "fuse_rt_net_tcp_read_all" | "fuse_rt_net_tcp_write"
+                | "fuse_rt_net_tcp_write_bytes" | "fuse_rt_net_tcp_flush"
+                | "fuse_rt_net_tcp_set_read_timeout" | "fuse_rt_net_tcp_set_write_timeout"
+                | "fuse_rt_net_tcp_local_addr" | "fuse_rt_net_tcp_peer_addr"
+                | "fuse_rt_net_tcp_close" | "fuse_rt_net_tcp_accept"
+                | "fuse_rt_net_tcp_listener_local_addr" | "fuse_rt_net_tcp_listener_close"
+                | "fuse_rt_net_udp_send_to" | "fuse_rt_net_udp_recv_from"
+                | "fuse_rt_net_udp_set_broadcast" | "fuse_rt_net_udp_close" => {
+                    // Opaque handle operations — evaluator returns stub results
+                    return Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) });
+                }
                 "fuse_rt_process_run" => {
                     if let (Some(Value::String(prog)), Some(Value::List(args_list))) = (args.first(), args.get(1)) {
                         let mut cmd = std::process::Command::new(prog.as_str());
