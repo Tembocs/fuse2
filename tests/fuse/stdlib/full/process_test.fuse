@@ -1,0 +1,65 @@
+// EXPECTED OUTPUT:
+// === process.shell ===
+// shell ok: true
+// has stdout: true
+// === process.run ===
+// run ok: true
+// exit code: 0
+// success: true
+// === process.shell failure ===
+// failed: true
+// === process.run not found ===
+// not found: true
+// === done ===
+// done
+
+import stdlib.full.process
+
+@entrypoint
+fn main() {
+  // process.shell — run a simple echo command
+  println("=== process.shell ===")
+  val shellResult = process.shell("echo hello_from_shell")
+  match shellResult {
+    Ok(output) => {
+      println("shell ok: true")
+      val hasOut = output.stdout != ""
+      println(f"has stdout: {hasOut}")
+    }
+    Err(e) => println(f"shell error: {e.message}")
+  }
+
+  // process.run — run echo directly
+  println("=== process.run ===")
+  val runResult = process.run("cmd.exe", ["/C", "echo hello_from_run"])
+  match runResult {
+    Ok(output) => {
+      println("run ok: true")
+      println(f"exit code: {output.exitCode}")
+      println(f"success: {output.success}")
+    }
+    Err(e) => println(f"run error: {e.message}")
+  }
+
+  // process.shell with a command that fails
+  println("=== process.shell failure ===")
+  val failResult = process.shell("exit 1")
+  match failResult {
+    Ok(output) => {
+      val failed = output.success == false
+      println(f"failed: {failed}")
+    }
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // process.run with non-existent program
+  println("=== process.run not found ===")
+  val badResult = process.run("__nonexistent_program_12345__", [])
+  match badResult {
+    Ok(output) => println("not found: false")
+    Err(e) => println("not found: true")
+  }
+
+  println("=== done ===")
+  println("done")
+}

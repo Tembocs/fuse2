@@ -1410,6 +1410,110 @@ pub unsafe extern "C" fn fuse_rt_env_has(name: FuseHandle) -> FuseHandle {
     fuse_bool(std::env::var(key).is_ok())
 }
 
+// --- Process FFI ---
+
+unsafe fn make_process_error(msg: &str, code: i64) -> FuseHandle {
+    let type_name = b"ProcessError";
+    let data = fuse_data_new(type_name.as_ptr(), type_name.len(), 2, None);
+    fuse_data_set_field(data, 0, fuse_string_new_utf8(msg.as_ptr(), msg.len()));
+    fuse_data_set_field(data, 1, fuse_int(code));
+    data
+}
+
+unsafe fn output_to_handle(output: &std::process::Output) -> FuseHandle {
+    let type_name = b"Output";
+    let data = fuse_data_new(type_name.as_ptr(), type_name.len(), 4, None);
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let code = output.status.code().unwrap_or(-1) as i64;
+    fuse_data_set_field(data, 0, fuse_string_new_utf8(stdout.as_ptr(), stdout.len()));
+    fuse_data_set_field(data, 1, fuse_string_new_utf8(stderr.as_ptr(), stderr.len()));
+    fuse_data_set_field(data, 2, fuse_int(code));
+    fuse_data_set_field(data, 3, fuse_bool(output.status.success()));
+    data
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_process_run(program: FuseHandle, args: FuseHandle) -> FuseHandle {
+    let prog = extract_string(program);
+    let mut cmd = std::process::Command::new(prog);
+    if let ValueKind::List(items) = &(*args).kind {
+        for item in items {
+            if let ValueKind::String(s) = &(**item).kind {
+                cmd.arg(s.as_str());
+            }
+        }
+    }
+    match cmd.output() {
+        Ok(output) => fuse_ok(output_to_handle(&output)),
+        Err(e) => { let msg = format!("process: {e}"); fuse_err(make_process_error(&msg, -1)) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_process_shell(command: FuseHandle) -> FuseHandle {
+    let cmd_str = extract_string(command);
+    let result = if cfg!(windows) {
+        std::process::Command::new("cmd.exe").args(["/C", cmd_str]).output()
+    } else {
+        std::process::Command::new("sh").args(["-c", cmd_str]).output()
+    };
+    match result {
+        Ok(output) => fuse_ok(output_to_handle(&output)),
+        Err(e) => { let msg = format!("process: {e}"); fuse_err(make_process_error(&msg, -1)) }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_process_run_with_stdin(
+    program: FuseHandle, args: FuseHandle, stdin_data: FuseHandle,
+    cwd: FuseHandle, env_keys: FuseHandle, env_vals: FuseHandle,
+) -> FuseHandle {
+    use std::io::Write;
+    let prog = extract_string(program);
+    let mut cmd = std::process::Command::new(prog);
+    if let ValueKind::List(items) = &(*args).kind {
+        for item in items {
+            if let ValueKind::String(s) = &(**item).kind {
+                cmd.arg(s.as_str());
+            }
+        }
+    }
+    // cwd
+    let cwd_str = extract_string(cwd);
+    if !cwd_str.is_empty() {
+        cmd.current_dir(cwd_str);
+    }
+    // env
+    if let (ValueKind::List(keys), ValueKind::List(vals)) = (&(*env_keys).kind, &(*env_vals).kind) {
+        for (k, v) in keys.iter().zip(vals.iter()) {
+            if let (ValueKind::String(ks), ValueKind::String(vs)) = (&(**k).kind, &(**v).kind) {
+                cmd.env(ks.as_str(), vs.as_str());
+            }
+        }
+    }
+    // stdin
+    let stdin_str = extract_string(stdin_data);
+    if !stdin_str.is_empty() {
+        cmd.stdin(std::process::Stdio::piped());
+    }
+    match cmd.spawn() {
+        Ok(mut child) => {
+            if !stdin_str.is_empty() {
+                if let Some(ref mut stdin) = child.stdin {
+                    let _ = stdin.write_all(stdin_str.as_bytes());
+                }
+                child.stdin.take(); // close stdin
+            }
+            match child.wait_with_output() {
+                Ok(output) => fuse_ok(output_to_handle(&output)),
+                Err(e) => { let msg = format!("process: {e}"); fuse_err(make_process_error(&msg, -1)) }
+            }
+        }
+        Err(e) => { let msg = format!("process: {e}"); fuse_err(make_process_error(&msg, -1)) }
+    }
+}
+
 // --- Random FFI ---
 
 // Splitmix64 — simple, high-quality PRNG. State is a single i64.

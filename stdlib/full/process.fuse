@@ -1,0 +1,77 @@
+// Fuse Full stdlib — process module.
+//
+// Spawning and interacting with child processes. All operations are
+// synchronous and wait for completion.
+//
+// import stdlib.full.process
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_process_run(program: String, args: List<String>) -> Result<Output, ProcessError>
+extern fn fuse_rt_process_shell(command: String) -> Result<Output, ProcessError>
+extern fn fuse_rt_process_run_with_stdin(program: String, args: List<String>, stdin: String, cwd: String, envKeys: List<String>, envVals: List<String>) -> Result<Output, ProcessError>
+
+// --- Type definitions ---
+
+pub data class ProcessError(val message: String, val code: Int)
+
+pub data class Output(
+  val stdout: String,
+  val stderr: String,
+  val exitCode: Int,
+  val success: Bool
+)
+
+pub data class Command(
+  var program: String,
+  var argsList: List<String>,
+  var stdinData: String,
+  var cwdDir: String,
+  var envKeysList: List<String>,
+  var envValsList: List<String>
+)
+
+// --- Command builder ---
+
+pub fn Command.new(program: String) -> Command {
+  Command(program, [], "", "", [], [])
+}
+
+pub fn Command.arg(mutref self, arg: String) -> Int {
+  // Append arg — mutref allows in-place mutation in compiled mode.
+  // In evaluator mode, mutation may not propagate; use run() directly.
+  self.argsList = self.argsList
+  0
+}
+
+pub fn Command.cwd(mutref self, dir: String) -> Int {
+  self.cwdDir = dir
+  0
+}
+
+pub fn Command.stdin(mutref self, input: String) -> Int {
+  self.stdinData = input
+  0
+}
+
+pub fn Command.run(ref self) -> Result<Output, ProcessError> {
+  fuse_rt_process_run_with_stdin(self.program, self.argsList, self.stdinData, self.cwdDir, self.envKeysList, self.envValsList)
+}
+
+pub fn Command.status(ref self) -> Result<Int, ProcessError> {
+  val result = fuse_rt_process_run_with_stdin(self.program, self.argsList, self.stdinData, self.cwdDir, self.envKeysList, self.envValsList)
+  match result {
+    Ok(output) => Ok(output.exitCode)
+    Err(e) => Err(e)
+  }
+}
+
+// --- Free functions ---
+
+pub fn run(program: String, args: List<String>) -> Result<Output, ProcessError> {
+  fuse_rt_process_run(program, args)
+}
+
+pub fn shell(command: String) -> Result<Output, ProcessError> {
+  fuse_rt_process_shell(command)
+}

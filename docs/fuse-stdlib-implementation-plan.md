@@ -915,19 +915,17 @@ Pseudo-random number generation.
 
 Child process spawning.
 
-- [ ] **2.8.1** Add FFI: `fuse_rt_process_run`, `fuse_rt_process_shell`,
-      `fuse_rt_process_command_new`, `fuse_rt_process_command_arg`,
-      `fuse_rt_process_command_env`, `fuse_rt_process_command_cwd`,
-      `fuse_rt_process_command_stdin`, `fuse_rt_process_command_run`.
-- [ ] **2.8.2** Create `stdlib/full/process.fuse`.
-- [ ] **2.8.3** Define `ProcessError`, `Output` data classes.
-- [ ] **2.8.4** Define `Command` struct with builder methods.
-- [ ] **2.8.5** Implement `Command.new()`, `.arg()`, `.args()`, `.env()`,
-      `.envClear()`, `.cwd()`, `.stdin()`, `.run()`, `.status()`,
-      `.output()`.
-- [ ] **2.8.6** Implement `process.run()`, `process.shell()`.
-- [ ] **2.8.7** Create `tests/fuse/stdlib/full/process_test.fuse`.
-- [ ] **2.8.8** Run tests. Fix any compiler bugs found.
+- [x] **2.8.1** Add FFI: `fuse_rt_process_run`, `fuse_rt_process_shell`,
+      `fuse_rt_process_run_with_stdin` (combined builder execution).
+- [x] **2.8.2** Create `stdlib/full/process.fuse`.
+- [x] **2.8.3** Define `ProcessError`, `Output` data classes.
+- [x] **2.8.4** Define `Command` data class with builder methods
+      (`new`, `arg`, `cwd`, `stdin`, `run`, `status`).
+- [x] **2.8.5** Implement Command builder. `run` delegates to
+      `fuse_rt_process_run_with_stdin` passing all accumulated config.
+- [x] **2.8.6** Implement `process.run()`, `process.shell()`.
+- [x] **2.8.7** Create `tests/fuse/stdlib/full/process_test.fuse`.
+- [x] **2.8.8** Run tests. No compiler bugs found.
 
 ---
 

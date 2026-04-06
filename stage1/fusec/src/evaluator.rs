@@ -1099,6 +1099,96 @@ impl Evaluator {
                     }
                     return Ok(Value::Bool(false));
                 }
+                "fuse_rt_process_run" => {
+                    if let (Some(Value::String(prog)), Some(Value::List(args_list))) = (args.first(), args.get(1)) {
+                        let mut cmd = std::process::Command::new(prog.as_str());
+                        for arg in args_list { if let Value::String(s) = arg { cmd.arg(s.as_str()); } }
+                        return match cmd.output() {
+                            Ok(output) => {
+                                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                                let code = output.status.code().unwrap_or(-1) as i64;
+                                Ok(Value::Result { is_ok: true, value: Box::new(Value::Data(Rc::new(RefCell::new(DataInstance {
+                                    module_path: PathBuf::new(), type_name: "Output".to_string(),
+                                    fields: [("stdout", Value::String(stdout)), ("stderr", Value::String(stderr)),
+                                             ("exitCode", Value::Int(code)), ("success", Value::Bool(output.status.success()))]
+                                        .into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+                                    field_order: vec!["stdout","stderr","exitCode","success"].into_iter().map(String::from).collect(),
+                                    methods: HashMap::new(), destroyed: false,
+                                })))) })
+                            }
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("process: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("process: expected program and args".to_string())) });
+                }
+                "fuse_rt_process_shell" => {
+                    if let Some(Value::String(cmd_str)) = args.first() {
+                        let result = if cfg!(windows) {
+                            std::process::Command::new("cmd.exe").args(["/C", cmd_str.as_str()]).output()
+                        } else {
+                            std::process::Command::new("sh").args(["-c", cmd_str.as_str()]).output()
+                        };
+                        return match result {
+                            Ok(output) => {
+                                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                                let code = output.status.code().unwrap_or(-1) as i64;
+                                Ok(Value::Result { is_ok: true, value: Box::new(Value::Data(Rc::new(RefCell::new(DataInstance {
+                                    module_path: PathBuf::new(), type_name: "Output".to_string(),
+                                    fields: [("stdout", Value::String(stdout)), ("stderr", Value::String(stderr)),
+                                             ("exitCode", Value::Int(code)), ("success", Value::Bool(output.status.success()))]
+                                        .into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+                                    field_order: vec!["stdout","stderr","exitCode","success"].into_iter().map(String::from).collect(),
+                                    methods: HashMap::new(), destroyed: false,
+                                })))) })
+                            }
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("process: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("process: expected command".to_string())) });
+                }
+                "fuse_rt_process_run_with_stdin" => {
+                    // Simplified evaluator: just delegate to fuse_rt_process_run logic
+                    if let (Some(Value::String(prog)), Some(Value::List(args_list))) = (args.first(), args.get(1)) {
+                        let mut cmd = std::process::Command::new(prog.as_str());
+                        for arg in args_list { if let Value::String(s) = arg { cmd.arg(s.as_str()); } }
+                        // cwd
+                        if let Some(Value::String(cwd)) = args.get(3) {
+                            if !cwd.is_empty() { cmd.current_dir(cwd.as_str()); }
+                        }
+                        // stdin
+                        let stdin_str = if let Some(Value::String(s)) = args.get(2) { s.clone() } else { String::new() };
+                        if !stdin_str.is_empty() { cmd.stdin(std::process::Stdio::piped()); }
+                        return match cmd.spawn() {
+                            Ok(mut child) => {
+                                if !stdin_str.is_empty() {
+                                    use std::io::Write;
+                                    if let Some(ref mut stdin) = child.stdin { let _ = stdin.write_all(stdin_str.as_bytes()); }
+                                    child.stdin.take();
+                                }
+                                match child.wait_with_output() {
+                                    Ok(output) => {
+                                        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                                        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                                        let code = output.status.code().unwrap_or(-1) as i64;
+                                        Ok(Value::Result { is_ok: true, value: Box::new(Value::Data(Rc::new(RefCell::new(DataInstance {
+                                            module_path: PathBuf::new(), type_name: "Output".to_string(),
+                                            fields: [("stdout", Value::String(stdout)), ("stderr", Value::String(stderr)),
+                                                     ("exitCode", Value::Int(code)), ("success", Value::Bool(output.status.success()))]
+                                                .into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+                                            field_order: vec!["stdout","stderr","exitCode","success"].into_iter().map(String::from).collect(),
+                                            methods: HashMap::new(), destroyed: false,
+                                        })))) })
+                                    }
+                                    Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("process: {e}"))) }),
+                                }
+                            }
+                            Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("process: {e}"))) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("process: expected args".to_string())) });
+                }
                 "fuse_rt_random_new" => {
                     let seed = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos() as i64;
