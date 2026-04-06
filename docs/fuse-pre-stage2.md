@@ -485,13 +485,13 @@ importing modules. `path.SEPARATOR` cannot be read after `import path`.
 
 ---
 
-### Phase W2.3 — Float32 Checker
+### Phase W2.3 — Float32 Checker [DONE]
 
-- [ ] **W2.3.1** Register `Float32` in checker's built-in type set.
-- [ ] **W2.3.2** `Float32` distinct from `Float`. No implicit coercion.
-- [ ] **W2.3.3** Add `Float32` to valid arithmetic/comparison types.
-- [ ] **W2.3.4** Verify `SIMD<Float32, N>` still works.
-- [ ] **W2.3.5** Test: type error assigning `Float` to `Float32`.
+- [x] **W2.3.1** Register `Float32` in checker's built-in type set.
+- [x] **W2.3.2** `Float32` distinct from `Float`. No implicit coercion.
+- [x] **W2.3.3** Add `Float32` to valid arithmetic/comparison types.
+- [x] **W2.3.4** Verify `SIMD<Float32, N>` still works.
+- [x] **W2.3.5** Test: type error assigning `Float` to `Float32`.
 
 ---
 

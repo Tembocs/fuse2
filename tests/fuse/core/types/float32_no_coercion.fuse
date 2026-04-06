@@ -1,0 +1,13 @@
+// EXPECTED ERROR:
+// error: type mismatch: expected `Float32`, found `Float`
+//   --> float32_no_coercion.fuse:5:1
+
+fn wrongReturn() -> Float32 {
+  val x: Float = 3.14
+  x
+}
+
+@entrypoint
+fn main() {
+  println(wrongReturn())
+}
