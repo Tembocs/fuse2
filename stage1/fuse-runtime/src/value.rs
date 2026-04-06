@@ -1514,6 +1514,157 @@ pub unsafe extern "C" fn fuse_rt_process_run_with_stdin(
     }
 }
 
+// --- HTTP FFI ---
+
+unsafe fn make_http_error(msg: &str, code: i64) -> FuseHandle {
+    let type_name = b"HttpError";
+    let data = fuse_data_new(type_name.as_ptr(), type_name.len(), 2, None);
+    fuse_data_set_field(data, 0, fuse_string_new_utf8(msg.as_ptr(), msg.len()));
+    fuse_data_set_field(data, 1, fuse_int(code));
+    data
+}
+
+unsafe fn http_error_code(e: &ureq::Error) -> i64 {
+    match e {
+        ureq::Error::Transport(_) => 3,
+        _ => 0,
+    }
+}
+
+unsafe fn response_to_handle(status: u16, body: &str, headers: &[(String, String)]) -> FuseHandle {
+    let type_name = b"Response";
+    let data = fuse_data_new(type_name.as_ptr(), type_name.len(), 3, None);
+    fuse_data_set_field(data, 0, fuse_int(status as i64));
+    let header_map = fuse_map_new();
+    for (k, v) in headers {
+        fuse_map_set(header_map, fuse_string_new_utf8(k.as_ptr(), k.len()),
+                     fuse_string_new_utf8(v.as_ptr(), v.len()));
+    }
+    fuse_data_set_field(data, 1, header_map);
+    fuse_data_set_field(data, 2, fuse_string_new_utf8(body.as_ptr(), body.len()));
+    data
+}
+
+unsafe fn do_http_request(method: &str, url: &str, body: Option<&str>, content_type: Option<&str>) -> FuseHandle {
+    let request = match method {
+        "GET" => ureq::get(url),
+        "POST" => ureq::post(url),
+        "PUT" => ureq::put(url),
+        "DELETE" => ureq::delete(url),
+        _ => ureq::get(url),
+    };
+    let result = if let Some(ct) = content_type {
+        let req = request.set("Content-Type", ct);
+        if let Some(b) = body { req.send_string(b) } else { req.call() }
+    } else {
+        if let Some(b) = body { request.send_string(b) } else { request.call() }
+    };
+    match result {
+        Ok(response) => {
+            let status = response.status();
+            let mut headers = Vec::new();
+            for name in response.headers_names() {
+                if let Some(val) = response.header(&name) {
+                    headers.push((name, val.to_string()));
+                }
+            }
+            let body_str = response.into_string().unwrap_or_default();
+            fuse_ok(response_to_handle(status, &body_str, &headers))
+        }
+        Err(ureq::Error::Status(code, response)) => {
+            let mut headers = Vec::new();
+            for name in response.headers_names() {
+                if let Some(val) = response.header(&name) {
+                    headers.push((name, val.to_string()));
+                }
+            }
+            let body_str = response.into_string().unwrap_or_default();
+            fuse_ok(response_to_handle(code, &body_str, &headers))
+        }
+        Err(e) => {
+            let msg = format!("http: {e}");
+            fuse_err(make_http_error(&msg, http_error_code(&e)))
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_http_get(url: FuseHandle) -> FuseHandle {
+    do_http_request("GET", extract_string(url), None, None)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_http_post(url: FuseHandle, body: FuseHandle) -> FuseHandle {
+    do_http_request("POST", extract_string(url), Some(extract_string(body)), None)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_http_post_json(url: FuseHandle, body: FuseHandle) -> FuseHandle {
+    do_http_request("POST", extract_string(url), Some(extract_string(body)), Some("application/json"))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_http_put(url: FuseHandle, body: FuseHandle) -> FuseHandle {
+    do_http_request("PUT", extract_string(url), Some(extract_string(body)), None)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_http_delete(url: FuseHandle) -> FuseHandle {
+    do_http_request("DELETE", extract_string(url), None, None)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_http_request(method: FuseHandle, url: FuseHandle, body: FuseHandle, headers_keys: FuseHandle, headers_vals: FuseHandle) -> FuseHandle {
+    let m = extract_string(method);
+    let u = extract_string(url);
+    let b = extract_string(body);
+    let mut request = match m {
+        "GET" => ureq::get(u),
+        "POST" => ureq::post(u),
+        "PUT" => ureq::put(u),
+        "DELETE" => ureq::delete(u),
+        "PATCH" => ureq::patch(u),
+        "HEAD" => ureq::head(u),
+        _ => ureq::get(u),
+    };
+    // Apply headers
+    if let (ValueKind::List(keys), ValueKind::List(vals)) = (&(*headers_keys).kind, &(*headers_vals).kind) {
+        for (k, v) in keys.iter().zip(vals.iter()) {
+            if let (ValueKind::String(ks), ValueKind::String(vs)) = (&(**k).kind, &(**v).kind) {
+                request = request.set(ks.as_str(), vs.as_str());
+            }
+        }
+    }
+    let result = if b.is_empty() { request.call() } else { request.send_string(b) };
+    match result {
+        Ok(response) => {
+            let status = response.status();
+            let mut hdrs = Vec::new();
+            for name in response.headers_names() {
+                if let Some(val) = response.header(&name) {
+                    hdrs.push((name, val.to_string()));
+                }
+            }
+            let body_str = response.into_string().unwrap_or_default();
+            fuse_ok(response_to_handle(status, &body_str, &hdrs))
+        }
+        Err(ureq::Error::Status(code, response)) => {
+            let mut hdrs = Vec::new();
+            for name in response.headers_names() {
+                if let Some(val) = response.header(&name) {
+                    hdrs.push((name, val.to_string()));
+                }
+            }
+            let body_str = response.into_string().unwrap_or_default();
+            fuse_ok(response_to_handle(code, &body_str, &hdrs))
+        }
+        Err(e) => {
+            let msg = format!("http: {e}");
+            fuse_err(make_http_error(&msg, http_error_code(&e)))
+        }
+    }
+}
+
 // --- JSON FFI ---
 
 // JsonValue is represented as a data class with tag + value fields:

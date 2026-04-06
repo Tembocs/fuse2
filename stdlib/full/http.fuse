@@ -1,0 +1,54 @@
+// Fuse Full stdlib — http module.
+//
+// HTTP client — GET, POST, PUT, DELETE. Backed by ureq (blocking).
+// No HTTP server (see http_server.fuse in ext/).
+//
+// import stdlib.full.http
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_http_get(url: String) -> Result<Response, HttpError>
+extern fn fuse_rt_http_post(url: String, body: String) -> Result<Response, HttpError>
+extern fn fuse_rt_http_post_json(url: String, body: String) -> Result<Response, HttpError>
+extern fn fuse_rt_http_put(url: String, body: String) -> Result<Response, HttpError>
+extern fn fuse_rt_http_delete(url: String) -> Result<Response, HttpError>
+extern fn fuse_rt_http_request(method: String, url: String, body: String, headerKeys: List<String>, headerVals: List<String>) -> Result<Response, HttpError>
+
+// --- Type definitions ---
+
+pub data class HttpError(val message: String, val code: Int)
+// code: 0 = generic, 1 = timeout, 2 = dns failure, 3 = connection refused, 4 = tls error
+
+pub data class Response(
+  val status: Int,
+  val headers: Map<String, String>,
+  val body: String
+)
+
+// --- Convenience functions ---
+
+pub fn get(url: String) -> Result<Response, HttpError> {
+  fuse_rt_http_get(url)
+}
+
+pub fn post(url: String, body: String) -> Result<Response, HttpError> {
+  fuse_rt_http_post(url, body)
+}
+
+pub fn postJson(url: String, body: String) -> Result<Response, HttpError> {
+  fuse_rt_http_post_json(url, body)
+}
+
+pub fn put(url: String, body: String) -> Result<Response, HttpError> {
+  fuse_rt_http_put(url, body)
+}
+
+pub fn delete(url: String) -> Result<Response, HttpError> {
+  fuse_rt_http_delete(url)
+}
+
+// --- Response helpers ---
+
+pub fn Response.ok(ref self) -> Bool {
+  self.status >= 200 and self.status < 300
+}

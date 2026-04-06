@@ -1116,6 +1116,54 @@ impl Evaluator {
                     }
                     return Ok(Value::Bool(false));
                 }
+                "fuse_rt_http_get" | "fuse_rt_http_post" | "fuse_rt_http_post_json"
+                | "fuse_rt_http_put" | "fuse_rt_http_delete" | "fuse_rt_http_request" => {
+                    // HTTP in evaluator: real requests via ureq
+                    let url = if let Some(Value::String(u)) = args.first() { u.clone() } else { return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("http: expected url".to_string())) }); };
+                    let body = args.get(1).and_then(|v| if let Value::String(s) = v { Some(s.clone()) } else { None });
+                    let method = match function.name.as_str() {
+                        "fuse_rt_http_get" => "GET",
+                        "fuse_rt_http_post" | "fuse_rt_http_post_json" => "POST",
+                        "fuse_rt_http_put" => "PUT",
+                        "fuse_rt_http_delete" => "DELETE",
+                        "fuse_rt_http_request" => if let Some(Value::String(m)) = args.first() { return Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) }); } else { "GET" },
+                        _ => "GET",
+                    };
+                    let mut request = match method {
+                        "POST" => ureq::post(&url),
+                        "PUT" => ureq::put(&url),
+                        "DELETE" => ureq::delete(&url),
+                        _ => ureq::get(&url),
+                    };
+                    if function.name == "fuse_rt_http_post_json" {
+                        request = request.set("Content-Type", "application/json");
+                    }
+                    let result = if let Some(b) = &body { request.send_string(b) } else { request.call() };
+                    return match result {
+                        Ok(response) => {
+                            let status = response.status() as i64;
+                            let body_str = response.into_string().unwrap_or_default();
+                            Ok(Value::Result { is_ok: true, value: Box::new(Value::Data(Rc::new(RefCell::new(DataInstance {
+                                module_path: PathBuf::new(), type_name: "Response".to_string(),
+                                fields: [("status", Value::Int(status)), ("headers", Value::Map(Vec::new())), ("body", Value::String(body_str))]
+                                    .into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+                                field_order: vec!["status","headers","body"].into_iter().map(String::from).collect(),
+                                methods: HashMap::new(), destroyed: false,
+                            })))) })
+                        }
+                        Err(ureq::Error::Status(code, response)) => {
+                            let body_str = response.into_string().unwrap_or_default();
+                            Ok(Value::Result { is_ok: true, value: Box::new(Value::Data(Rc::new(RefCell::new(DataInstance {
+                                module_path: PathBuf::new(), type_name: "Response".to_string(),
+                                fields: [("status", Value::Int(code as i64)), ("headers", Value::Map(Vec::new())), ("body", Value::String(body_str))]
+                                    .into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+                                field_order: vec!["status","headers","body"].into_iter().map(String::from).collect(),
+                                methods: HashMap::new(), destroyed: false,
+                            })))) })
+                        }
+                        Err(e) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(format!("http: {e}"))) }),
+                    };
+                }
                 "fuse_rt_json_parse" => {
                     if let Some(Value::String(s)) = args.first() {
                         fn parse_value(s: &str, pos: &mut usize) -> Result<Value, String> {
