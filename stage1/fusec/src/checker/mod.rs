@@ -37,6 +37,7 @@ struct ModuleInfo {
     module: Module,
     symbols: HashMap<String, Symbol>,
     extension_functions: HashMap<(String, String), hir::FunctionDecl>,
+    static_functions: HashMap<(String, String), hir::FunctionDecl>,
 }
 
 pub struct Checker {
@@ -87,12 +88,19 @@ impl Checker {
             module,
             symbols: HashMap::new(),
             extension_functions: HashMap::new(),
+            static_functions: HashMap::new(),
         };
 
         for function in &info.module.functions {
             if let Some(receiver_type) = &function.receiver_type {
-                info.extension_functions
-                    .insert((receiver_type.clone(), function.name.clone()), function.clone());
+                let is_static = function.params.first().map_or(true, |p| p.name != "self");
+                if is_static {
+                    info.static_functions
+                        .insert((receiver_type.clone(), function.name.clone()), function.clone());
+                } else {
+                    info.extension_functions
+                        .insert((receiver_type.clone(), function.name.clone()), function.clone());
+                }
             } else {
                 info.symbols.insert(
                     function.name.clone(),
@@ -860,8 +868,16 @@ impl Checker {
                 resolved = self.resolve_function(&name.value);
             }
             hir::Expr::Member(member) => {
-                if let Some(receiver_type) = self.infer_expr_type(module, &member.object, scope, owner_name) {
-                    resolved = self.resolve_extension(&receiver_type, &member.name);
+                // Try static function first when the object looks like a type name.
+                if let hir::Expr::Name(name) = member.object.as_ref() {
+                    if !scope.contains_key(&name.value) {
+                        resolved = self.resolve_static_function(&name.value, &member.name);
+                    }
+                }
+                if resolved.is_none() {
+                    if let Some(receiver_type) = self.infer_expr_type(module, &member.object, scope, owner_name) {
+                        resolved = self.resolve_extension(&receiver_type, &member.name);
+                    }
                 }
             }
             _ => {}
@@ -937,6 +953,16 @@ impl Checker {
             module
                 .extension_functions
                 .get(&(receiver_key.to_string(), name.to_string()))
+                .cloned()
+        })
+    }
+
+    fn resolve_static_function(&self, type_name: &str, name: &str) -> Option<hir::FunctionDecl> {
+        let type_key = type_name.split('<').next().unwrap_or(type_name);
+        self.module_cache.values().find_map(|module| {
+            module
+                .static_functions
+                .get(&(type_key.to_string(), name.to_string()))
                 .cloned()
         })
     }

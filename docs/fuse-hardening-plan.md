@@ -366,27 +366,27 @@ is `self`) and static methods (no `self` param). There is no
    prepending a receiver as the first argument (static methods have no
    implicit `self`).
 
-- [ ] **H0.5.1** Add `static_functions: HashMap<(String, String), hir::FunctionDecl>`
+- [x] **H0.5.1** Add `static_functions: HashMap<(String, String), hir::FunctionDecl>`
       to `ModuleInfo` in checker.
-- [ ] **H0.5.2** Update function registration in checker: if function has
+- [x] **H0.5.2** Update function registration in checker: if function has
       `receiver_type` and first param name is NOT `"self"`, store in
       `static_functions`. Otherwise store in `extension_functions`.
-- [ ] **H0.5.3** Add `resolve_static_function(type_name: &str, method_name: &str)`
+- [x] **H0.5.3** Add `resolve_static_function(type_name: &str, method_name: &str)`
       lookup method to checker.
-- [ ] **H0.5.4** Update `check_call` for `Expr::Member` to check
+- [x] **H0.5.4** Update `check_call` for `Expr::Member` to check
       `static_functions` when the member target is a type name (not a value).
-- [ ] **H0.5.5** Add `statics: HashMap<(String, String), hir::FunctionDecl>`
+- [x] **H0.5.5** Add `statics: HashMap<(String, String), hir::FunctionDecl>`
       to `LoadedModule` in codegen.
-- [ ] **H0.5.6** Populate `statics` during module loading in `emit_object`.
-- [ ] **H0.5.7** Declare static function symbols in `declare_user_surface`.
-- [ ] **H0.5.8** In `compile_type_namespace_call`: before the hardcoded
+- [x] **H0.5.6** Populate `statics` during module loading in `emit_object`.
+- [x] **H0.5.7** Declare static function symbols in `declare_user_surface`.
+- [x] **H0.5.8** In `compile_type_namespace_call`: before the hardcoded
       fallback, look up `statics` and compile the call without a receiver
       argument.
-- [ ] **H0.5.9** Add test: `static_method_basic.fuse` —
+- [x] **H0.5.9** Add test: `static_method_basic.fuse` —
       `fn Int.parse(s: String) -> Int { ... }; val x = Int.parse("42")`
-- [ ] **H0.5.10** Add test: `static_method_constructor.fuse` —
+- [x] **H0.5.10** Add test: `static_method_constructor.fuse` —
       `fn Set.new() -> Set<T> { ... }; val s = Set.new()`
-- [ ] **H0.5.11** Run full test suite.
+- [x] **H0.5.11** Run full test suite.
 
 ---
 

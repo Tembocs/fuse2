@@ -66,6 +66,7 @@ struct LoadedModule {
     path: PathBuf,
     functions: HashMap<String, fa::FunctionDecl>,
     extensions: HashMap<(String, String), fa::FunctionDecl>,
+    statics: HashMap<(String, String), fa::FunctionDecl>,
     data_classes: HashMap<String, fa::DataClassDecl>,
     enums: HashMap<String, fa::EnumDecl>,
     extern_fns: HashMap<String, fa::ExternFnDecl>,
@@ -134,6 +135,19 @@ impl BuildSession {
         })
     }
 
+    fn resolve_static(&self, type_name: &str, name: &str) -> Option<(&Path, &fa::FunctionDecl)> {
+        let key = (
+            layout::canonical_type_name(type_name).to_string(),
+            name.to_string(),
+        );
+        self.modules.values().find_map(|module| {
+            module
+                .statics
+                .get(&key)
+                .map(|function| (module.path.as_path(), function))
+        })
+    }
+
     fn find_data(&self, type_name: &str) -> Option<(&Path, &fa::DataClassDecl)> {
         let key = layout::canonical_type_name(type_name);
         self.modules.values().find_map(|module| {
@@ -181,15 +195,21 @@ fn load_module_recursive(
     let filename = display_name(&path);
     let parsed = parse_source(&source, &filename).map_err(|diag| diag.render())?;
     let module = lower_program(&parsed, path.clone());
-    // Resolve `Self` in return types of extension functions and data class methods
-    // so all downstream callers (emit_object, collect_ir_text, infer_expr_type)
-    // see the concrete type rather than the placeholder.
-    let mut extensions = module.extension_functions.clone();
-    for ((receiver_type, _), function) in extensions.iter_mut() {
+    // Resolve `Self` in return types and split extension functions into
+    // instance methods (first param is self) and static functions (no self).
+    let mut extensions = HashMap::new();
+    let mut statics = HashMap::new();
+    for ((receiver_type, name), mut function) in module.extension_functions.clone() {
         if let Some(ref mut rt) = function.return_type {
             if rt.contains("Self") {
-                *rt = rt.replace("Self", receiver_type);
+                *rt = rt.replace("Self", &receiver_type);
             }
+        }
+        let is_static = function.params.first().map_or(true, |p| p.name != "self");
+        if is_static {
+            statics.insert((receiver_type, name), function);
+        } else {
+            extensions.insert((receiver_type, name), function);
         }
     }
     let mut data_classes: HashMap<String, fa::DataClassDecl> = module
@@ -214,6 +234,7 @@ fn load_module_recursive(
             .map(|function| (function.name.clone(), function.clone()))
             .collect(),
         extensions,
+        statics,
         data_classes,
         enums: module
             .enums
@@ -423,6 +444,14 @@ impl<'a> BackendCompiler<'a> {
                     .map_err(|error| error.to_string())?;
                 self.function_ids.insert(name, func_id);
             }
+            for function in loaded.statics.values() {
+                let name = symbol_for_function(loaded.path.as_path(), function);
+                let func_id = self
+                    .module
+                    .declare_function(&name, Linkage::Local, &self.handle_signature(function.params.len()))
+                    .map_err(|error| error.to_string())?;
+                self.function_ids.insert(name, func_id);
+            }
             for data in loaded.data_classes.values() {
                 for method in &data.methods {
                     let name = layout::function_symbol(loaded.path.as_path(), &method.name);
@@ -485,6 +514,9 @@ impl<'a> BackendCompiler<'a> {
                 }
                 self.compile_function(loaded.path.as_path(), &function)?;
             }
+            for function in loaded.statics.values() {
+                self.compile_function(loaded.path.as_path(), function)?;
+            }
             for data in loaded.data_classes.values() {
                 for method in &data.methods {
                     let mut method = method.clone();
@@ -523,6 +555,11 @@ impl<'a> BackendCompiler<'a> {
                     }
                 }
                 if let Some(ir) = self.compile_function_to_ir(loaded.path.as_path(), &function)? {
+                    ir_parts.push(ir);
+                }
+            }
+            for function in loaded.statics.values() {
+                if let Some(ir) = self.compile_function_to_ir(loaded.path.as_path(), function)? {
                     ir_parts.push(ir);
                 }
             }
@@ -2451,7 +2488,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 if let Some((target_module, function)) = self
                     .compiler
                     .session
-                    .resolve_extension(base, member)
+                    .resolve_static(base, member)
                 {
                     let symbol = symbol_for_function(target_module, function);
                     let func_id = *self

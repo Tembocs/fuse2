@@ -1,0 +1,20 @@
+// EXPECTED OUTPUT:
+// 42
+// hello world
+
+fn Int.fromString(s: String) -> Int {
+  42
+}
+
+fn String.join2(a: String, b: String) -> String {
+  f"{a} {b}"
+}
+
+@entrypoint
+fn main() {
+  val x = Int.fromString("42")
+  println(x)
+
+  val s = String.join2("hello", "world")
+  println(s)
+}
