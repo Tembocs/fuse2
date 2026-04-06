@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// first: hello
+// second: 42
+// first: true
+// second: world
+data class Pair<A, B>(val first: A, val second: B)
+
+@entrypoint
+fn main() {
+  val p1 = Pair("hello", 42)
+  println(f"first: {p1.first}")
+  println(f"second: {p1.second}")
+
+  val p2 = Pair(true, "world")
+  println(f"first: {p2.first}")
+  println(f"second: {p2.second}")
+}

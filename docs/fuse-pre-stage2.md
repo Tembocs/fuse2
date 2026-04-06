@@ -395,7 +395,7 @@ public field accessors (structs are opaque).
 
 ---
 
-### Phase W1.2 — Generic Data Class Syntax
+### Phase W1.2 — Generic Data Class Syntax [DONE]
 
 **Root cause:** `parse_data_class` expects `(` immediately after name —
 no `<...>` type parameter parsing. `DataClassDecl` has no `type_params`.
@@ -403,15 +403,15 @@ no `<...>` type parameter parsing. `DataClassDecl` has no `type_params`.
 **Fix approach:** Add `type_params: Vec<String>`. Parse `<T, U>` after
 name. Pass through HIR. Codegen needs no change (type erasure).
 
-- [ ] **W1.2.1** Add `type_params: Vec<String>` to `DataClassDecl`.
-- [ ] **W1.2.2** Parse `<...>` type params after name in `parse_data_class`.
-- [ ] **W1.2.3** Update HIR `DataClassDecl` to carry `type_params`.
-- [ ] **W1.2.4** Update HIR lowering to propagate `type_params`.
-- [ ] **W1.2.5** Update checker: register type params in data class scope.
-- [ ] **W1.2.6** Verify codegen works without changes (type erasure).
-- [ ] **W1.2.7** Test: `generic_data_class.fuse` — `data class Pair<A, B>`.
-- [ ] **W1.2.8** Test: `generic_data_class_methods.fuse`.
-- [ ] **W1.2.9** Full test suite green.
+- [x] **W1.2.1** Add `type_params: Vec<String>` to `DataClassDecl`.
+- [x] **W1.2.2** Parse `<...>` type params after name in `parse_data_class`.
+- [x] **W1.2.3** Update HIR `DataClassDecl` to carry `type_params`.
+- [x] **W1.2.4** Update HIR lowering to propagate `type_params`.
+- [x] **W1.2.5** Update checker: register type params in data class scope.
+- [x] **W1.2.6** Verify codegen works without changes (type erasure).
+- [x] **W1.2.7** Test: `generic_data_class.fuse` — `data class Pair<A, B>`.
+- [x] **W1.2.8** Test: `generic_data_class_methods.fuse`.
+- [x] **W1.2.9** Full test suite green.
 
 ---
 

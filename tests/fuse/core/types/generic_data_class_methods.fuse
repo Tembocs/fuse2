@@ -1,0 +1,21 @@
+// EXPECTED OUTPUT:
+// Box(99)
+// 99
+// [del] Box destroyed
+@value
+data class Box<T>(val value: T) {
+  fn unwrap(ref self) -> T {
+    self.value
+  }
+
+  fn __del__(owned self) {
+    println("[del] Box destroyed")
+  }
+}
+
+@entrypoint
+fn main() {
+  val b = Box(99)
+  println(f"Box({b.value})")
+  println(b.unwrap())
+}
