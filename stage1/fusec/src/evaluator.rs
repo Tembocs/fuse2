@@ -479,6 +479,7 @@ impl Evaluator {
                     if ext.is_pub || true {
                         module.functions.insert(ext.name.clone(), fa::FunctionDecl {
                             name: ext.name.clone(),
+                            type_params: Vec::new(),
                             params: ext.params.clone(),
                             return_type: ext.return_type.clone(),
                             body: fa::Block { statements: Vec::new(), span: ext.span },
@@ -2506,6 +2507,7 @@ impl Evaluator {
             fa::Expr::Lambda(lambda) => {
                 let decl = fa::FunctionDecl {
                     name: format!("__lambda_{}", lambda.span.line),
+                    type_params: Vec::new(),
                     params: lambda.params.clone(),
                     return_type: lambda.return_type.clone(),
                     body: lambda.body.clone(),

@@ -3716,6 +3716,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
 
         let decl = fa::FunctionDecl {
             name: lambda_name,
+            type_params: Vec::new(),
             params: all_params,
             return_type: lambda.return_type.clone(),
             body: lambda.body.clone(),

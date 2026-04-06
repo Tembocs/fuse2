@@ -167,6 +167,19 @@ impl Parser {
             }
             name = method_token.text;
         }
+        let mut type_params = Vec::new();
+        if self.match_kind(TokenKind::Lt).is_some() {
+            loop {
+                type_params.push(
+                    self.expect(TokenKind::Identifier, "expected type parameter name")?
+                        .text,
+                );
+                if self.match_kind(TokenKind::Comma).is_none() {
+                    break;
+                }
+            }
+            self.expect(TokenKind::Gt, "expected `>` after type parameters")?;
+        }
         self.expect(TokenKind::LParen, "expected `(` after function name")?;
         let mut params = Vec::new();
         if self.peek(0).kind != TokenKind::RParen {
@@ -196,6 +209,7 @@ impl Parser {
         };
         Ok(FunctionDecl {
             name,
+            type_params,
             params,
             return_type,
             body,

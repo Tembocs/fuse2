@@ -415,7 +415,7 @@ name. Pass through HIR. Codegen needs no change (type erasure).
 
 ---
 
-### Phase W1.3 — Generic Free Functions
+### Phase W1.3 — Generic Free Functions [DONE]
 
 **Root cause:** `FunctionDecl` has no `type_params`. `parse_function`
 does not check for `<` after function name.
@@ -423,14 +423,14 @@ does not check for `<` after function name.
 **Fix approach:** Add `type_params: Vec<String>`. Parse after name.
 Pass through HIR. Codegen needs no change (type erasure).
 
-- [ ] **W1.3.1** Add `type_params: Vec<String>` to `FunctionDecl`.
-- [ ] **W1.3.2** Parse `<...>` type params after name in `parse_function`.
-- [ ] **W1.3.3** Update HIR `FunctionDecl` and lowering.
-- [ ] **W1.3.4** Update checker: register type params in function scope.
-- [ ] **W1.3.5** Verify codegen works without changes (type erasure).
-- [ ] **W1.3.6** Test: `generic_function.fuse` — `fn identity<T>(x: T) -> T`.
-- [ ] **W1.3.7** Test: `generic_function_multiple.fuse` — `fn pair<A, B>`.
-- [ ] **W1.3.8** Full test suite green.
+- [x] **W1.3.1** Add `type_params: Vec<String>` to `FunctionDecl`.
+- [x] **W1.3.2** Parse `<...>` type params after name in `parse_function`.
+- [x] **W1.3.3** Update HIR `FunctionDecl` and lowering.
+- [x] **W1.3.4** Update checker: register type params in function scope.
+- [x] **W1.3.5** Verify codegen works without changes (type erasure).
+- [x] **W1.3.6** Test: `generic_function.fuse` — `fn identity<T>(x: T) -> T`.
+- [x] **W1.3.7** Test: `generic_function_multiple.fuse` — `fn pair<A, B>`.
+- [x] **W1.3.8** Full test suite green.
 
 ---
 

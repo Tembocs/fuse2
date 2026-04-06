@@ -73,6 +73,7 @@ pub struct FieldDecl {
 #[derive(Clone, Debug)]
 pub struct FunctionDecl {
     pub name: String,
+    pub type_params: Vec<String>,
     pub params: Vec<Param>,
     pub return_type: Option<String>,
     pub body: Block,

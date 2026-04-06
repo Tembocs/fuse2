@@ -141,6 +141,7 @@ impl Checker {
         for extern_fn in &info.module.extern_fns {
             let synthetic = hir::FunctionDecl {
                 name: extern_fn.name.clone(),
+                type_params: Vec::new(),
                 params: extern_fn.params.clone(),
                 return_type: extern_fn.return_type.clone(),
                 body: hir::Block {
