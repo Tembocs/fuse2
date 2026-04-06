@@ -1215,13 +1215,104 @@ Is the lock order truly dynamic?
 - Locks must be acquired in ascending rank order — violations are a compile error.
 - Same rank means independent — safe to acquire in any order.
 - Guards are released by ASAP destruction — no forgotten unlocks.
-- Guards are released by ASAP destruction.
 
 ### Edge cases
 
 - A `Shared<T>` with `@rank(0)` can only be acquired first. No other lock can be held when acquiring rank 0.
 - `try_write` returns `Err(LockError::Timeout)` if the lock cannot be acquired within the timeout. The caller must handle this.
 - Spawned tasks that capture `ref` values extend the lifetime of those values until the task completes.
+
+### How I/O works without async/await
+
+Fuse does not have `async`/`await`. Functions that do I/O are normal functions. The caller decides whether to run them concurrently:
+
+```fuse
+// Normal function — no async keyword needed
+fn fetchUser(id: Int) -> Result<User, NetworkError> {
+    val resp = Http.get(f"/users/{id}")?
+    match resp.status {
+        200 => Ok(resp.json::<User>()?)
+        _   => Err(NetworkError.Http(resp.status))
+    }
+}
+
+// Sequential — just call it
+@entrypoint
+fn main() {
+    val user = fetchUser(42)?
+    println(user.name)
+}
+
+// Concurrent — spawn it, communicate via channel
+@entrypoint
+fn main() {
+    val (tx, rx) = Chan::<Result<User, NetworkError>>.bounded(1)
+    spawn move { tx.send(fetchUser(42)) }
+    val user = rx.recv()??
+    println(user.name)
+}
+```
+
+There is no function coloring. Every function is the same. Concurrency is a call-site decision, not a function declaration decision.
+
+### Patterns
+
+**Timeout:**
+
+```fuse
+fn fetchWithTimeout(id: Int) -> Result<User, String> {
+    val (tx, rx) = Chan::<Result<User, NetworkError>>.bounded(1)
+    spawn move { tx.send(fetchUser(id)) }
+
+    match rx.recv_timeout(Timeout.secs(5)) {
+        Ok(result) => result.mapErr(fn(e: NetworkError) -> String { e.toString() })
+        Err(_)     => Err("request timed out")
+    }
+}
+```
+
+**Worker pool:**
+
+```fuse
+fn processItems(items: List<Item>) -> List<Result<Output, Error>> {
+    val (work_tx, work_rx) = Chan::<Item>.bounded(100)
+    val (result_tx, result_rx) = Chan::<Result<Output, Error>>.bounded(100)
+
+    for _ in range(0, 4) {
+        spawn move {
+            for item in work_rx {
+                result_tx.send(process(item))
+            }
+        }
+    }
+
+    for item in items { work_tx.send(item) }
+    work_tx.close()
+
+    val results = List::<Result<Output, Error>>.new()
+    for _ in items { results.push(result_rx.recv()?) }
+    results
+}
+```
+
+**Pipeline:**
+
+```fuse
+fn pipeline(input: Chan<RawData>) -> Chan<ProcessedData> {
+    val (tx, rx) = Chan::<ProcessedData>.bounded(50)
+
+    spawn move {
+        for raw in input {
+            val parsed = parse(raw)
+            val validated = validate(parsed)
+            tx.send(transform(validated))
+        }
+        tx.close()
+    }
+
+    rx
+}
+```
 
 ---
 

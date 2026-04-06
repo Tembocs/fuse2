@@ -332,19 +332,19 @@ to the next wave.** Do not silently continue.
 
 ---
 
-### Phase W0.7 — Concurrency Guide Patterns
+### Phase W0.7 — Concurrency Guide Patterns [DONE]
 
 > Add concurrency patterns from the concurrency model design to the
 > language guide §1.17, completing the concurrency documentation.
 
-- [ ] **W0.7.1** Add "How I/O Works Without async/await" subsection to §1.17:
+- [x] **W0.7.1** Add "How I/O Works Without async/await" subsection to §1.17:
       sequential call vs `spawn` + channel pattern (two code examples).
-- [ ] **W0.7.2** Add "Patterns" subsection to §1.17 with: timeout via
+- [x] **W0.7.2** Add "Patterns" subsection to §1.17 with: timeout via
       `recv_timeout`, worker pool (bounded channel + N spawned workers),
       and pipeline (spawn produces to output channel).
-- [ ] **W0.7.3** Fix spawn capture syntax in §1.17: remove `||` (not Fuse
+- [x] **W0.7.3** Fix spawn capture syntax in §1.17: remove `||` (not Fuse
       syntax). Use `spawn move { }` and `spawn ref { }`.
-- [ ] **W0.7.4** Run Stage 0 test suite to verify no test header references
+- [x] **W0.7.4** Run Stage 0 test suite to verify no test header references
       changed syntax.
 
 ---
