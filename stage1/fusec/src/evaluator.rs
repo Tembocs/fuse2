@@ -1099,6 +1099,128 @@ impl Evaluator {
                     }
                     return Ok(Value::Bool(false));
                 }
+                "fuse_rt_json_parse" => {
+                    if let Some(Value::String(s)) = args.first() {
+                        fn parse_value(s: &str, pos: &mut usize) -> Result<Value, String> {
+                            skip_ws(s, pos);
+                            if *pos >= s.len() { return Err("unexpected end".to_string()); }
+                            match s.as_bytes()[*pos] {
+                                b'"' => { let st = parse_str(s, pos)?; Ok(make_jv(3, Value::String(st))) }
+                                b't' => { if s[*pos..].starts_with("true") { *pos+=4; Ok(make_jv(1, Value::Bool(true))) } else { Err(format!("unexpected at {}", *pos)) } }
+                                b'f' => { if s[*pos..].starts_with("false") { *pos+=5; Ok(make_jv(1, Value::Bool(false))) } else { Err(format!("unexpected at {}", *pos)) } }
+                                b'n' => { if s[*pos..].starts_with("null") { *pos+=4; Ok(make_jv(0, Value::Unit)) } else { Err(format!("unexpected at {}", *pos)) } }
+                                b'-' | b'0'..=b'9' => {
+                                    let start = *pos;
+                                    if s.as_bytes()[*pos]==b'-' { *pos+=1; }
+                                    while *pos<s.len() && s.as_bytes()[*pos].is_ascii_digit() { *pos+=1; }
+                                    if *pos<s.len() && s.as_bytes()[*pos]==b'.' { *pos+=1; while *pos<s.len() && s.as_bytes()[*pos].is_ascii_digit() { *pos+=1; } }
+                                    if *pos<s.len() && matches!(s.as_bytes()[*pos], b'e'|b'E') { *pos+=1; if *pos<s.len() && matches!(s.as_bytes()[*pos], b'+'|b'-') { *pos+=1; } while *pos<s.len() && s.as_bytes()[*pos].is_ascii_digit() { *pos+=1; } }
+                                    let n: f64 = s[start..*pos].parse().map_err(|e| format!("{e}"))?;
+                                    Ok(make_jv(2, Value::Float(n)))
+                                }
+                                b'[' => {
+                                    *pos+=1; let mut items = Vec::new();
+                                    skip_ws(s, pos);
+                                    if *pos<s.len() && s.as_bytes()[*pos]==b']' { *pos+=1; return Ok(make_jv(4, Value::List(items))); }
+                                    loop {
+                                        items.push(parse_value(s, pos)?);
+                                        skip_ws(s, pos);
+                                        if *pos>=s.len() { return Err("unterminated array".to_string()); }
+                                        if s.as_bytes()[*pos]==b']' { *pos+=1; break; }
+                                        if s.as_bytes()[*pos]!=b',' { return Err(format!("expected ',' at {}", *pos)); }
+                                        *pos+=1;
+                                    }
+                                    Ok(make_jv(4, Value::List(items)))
+                                }
+                                b'{' => {
+                                    *pos+=1; let mut entries = Vec::new();
+                                    skip_ws(s, pos);
+                                    if *pos<s.len() && s.as_bytes()[*pos]==b'}' { *pos+=1; return Ok(make_jv(5, Value::Map(entries))); }
+                                    loop {
+                                        skip_ws(s, pos);
+                                        let key = parse_str(s, pos)?;
+                                        skip_ws(s, pos);
+                                        if *pos>=s.len() || s.as_bytes()[*pos]!=b':' { return Err(format!("expected ':' at {}", *pos)); }
+                                        *pos+=1;
+                                        let val = parse_value(s, pos)?;
+                                        entries.push((Value::String(key), val));
+                                        skip_ws(s, pos);
+                                        if *pos>=s.len() { return Err("unterminated object".to_string()); }
+                                        if s.as_bytes()[*pos]==b'}' { *pos+=1; break; }
+                                        if s.as_bytes()[*pos]!=b',' { return Err(format!("expected ',' at {}", *pos)); }
+                                        *pos+=1;
+                                    }
+                                    Ok(make_jv(5, Value::Map(entries)))
+                                }
+                                c => Err(format!("unexpected '{}' at {}", c as char, *pos))
+                            }
+                        }
+                        fn skip_ws(s: &str, pos: &mut usize) { while *pos<s.len() && matches!(s.as_bytes()[*pos], b' '|b'\t'|b'\n'|b'\r') { *pos+=1; } }
+                        fn parse_str(s: &str, pos: &mut usize) -> Result<String, String> {
+                            if *pos>=s.len() || s.as_bytes()[*pos]!=b'"' { return Err(format!("expected '\"' at {}", *pos)); }
+                            *pos+=1; let mut r = String::new();
+                            while *pos<s.len() { let c=s.as_bytes()[*pos]; if c==b'"' { *pos+=1; return Ok(r); }
+                                if c==b'\\' { *pos+=1; if *pos>=s.len() { return Err("escape".to_string()); }
+                                    match s.as_bytes()[*pos] { b'"'=>r.push('"'), b'\\'=>r.push('\\'), b'n'=>r.push('\n'), b'r'=>r.push('\r'), b't'=>r.push('\t'), b'/'=>r.push('/'), c=>r.push(c as char) } }
+                                else { r.push(c as char); } *pos+=1; } Err("unterminated string".to_string())
+                        }
+                        fn make_jv(tag: i64, val: Value) -> Value {
+                            use std::cell::RefCell; use std::rc::Rc; use std::collections::HashMap; use std::path::PathBuf;
+                            Value::Data(Rc::new(RefCell::new(DataInstance {
+                                module_path: PathBuf::new(), type_name: "JsonValue".to_string(),
+                                fields: [("tag", Value::Int(tag)), ("value", val)].into_iter().map(|(k,v)|(k.to_string(),v)).collect(),
+                                field_order: vec!["tag".to_string(),"value".to_string()],
+                                methods: HashMap::new(), destroyed: false,
+                            })))
+                        }
+                        let mut pos = 0usize;
+                        return match parse_value(s.as_str(), &mut pos) {
+                            Ok(v) => Ok(Value::Result { is_ok: true, value: Box::new(v) }),
+                            Err(msg) => Ok(Value::Result { is_ok: false, value: Box::new(Value::String(msg)) }),
+                        };
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("json: expected string".to_string())) });
+                }
+                "fuse_rt_json_stringify" | "fuse_rt_json_stringify_pretty" => {
+                    fn stringify_jv(v: &Value, pretty: bool, indent: usize, depth: usize) -> String {
+                        if let Value::Data(rc) = v {
+                            let data = rc.borrow();
+                            let tag = match data.fields.get("tag") { Some(Value::Int(n)) => *n, _ => -1 };
+                            let val = data.fields.get("value").cloned().unwrap_or(Value::Unit);
+                            return match tag {
+                                0 => "null".to_string(),
+                                1 => match val { Value::Bool(b) => b.to_string(), _ => "false".to_string() },
+                                2 => match val { Value::Float(f) => { if f==f.floor() && f.is_finite() { format!("{f:.1}") } else { f.to_string() } }, Value::Int(n) => format!("{n}.0"), _ => "0".to_string() },
+                                3 => match val { Value::String(s) => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n")), _ => "\"\"".to_string() },
+                                4 => {
+                                    if let Value::List(items) = val { if items.is_empty() { return "[]".to_string(); }
+                                        let parts: Vec<String> = items.iter().map(|i| stringify_jv(i, pretty, indent, depth+1)).collect();
+                                        if pretty { let pad=" ".repeat(indent*(depth+1)); let pc=" ".repeat(indent*depth); format!("[\n{pad}{}\n{pc}]", parts.join(&format!(",\n{pad}"))) }
+                                        else { format!("[{}]", parts.join(",")) }
+                                    } else { "[]".to_string() }
+                                }
+                                5 => {
+                                    if let Value::Map(entries) = val { if entries.is_empty() { return "{}".to_string(); }
+                                        let parts: Vec<String> = entries.iter().map(|(k,v)| { let ks = match k { Value::String(s)=>s.clone(), _=>String::new() };
+                                            let vs = stringify_jv(v, pretty, indent, depth+1);
+                                            if pretty { format!("\"{ks}\": {vs}") } else { format!("\"{ks}\":{vs}") }
+                                        }).collect();
+                                        if pretty { let pad=" ".repeat(indent*(depth+1)); let pc=" ".repeat(indent*depth); format!("{{\n{pad}{}\n{pc}}}", parts.join(&format!(",\n{pad}"))) }
+                                        else { format!("{{{}}}", parts.join(",")) }
+                                    } else { "{}".to_string() }
+                                }
+                                _ => "null".to_string(),
+                            };
+                        }
+                        "null".to_string()
+                    }
+                    let pretty = function.name == "fuse_rt_json_stringify_pretty";
+                    let indent = if pretty { if let Some(Value::Int(n)) = args.get(1) { *n as usize } else { 2 } } else { 0 };
+                    if let Some(v) = args.first() {
+                        return Ok(Value::String(stringify_jv(v, pretty, indent, 0)));
+                    }
+                    return Ok(Value::String("null".to_string()));
+                }
                 "fuse_rt_net_tcp_connect" | "fuse_rt_net_tcp_connect_timeout" => {
                     // Evaluator: attempt real connection for testing
                     if let (Some(Value::String(addr)), Some(Value::Int(port))) = (args.first(), args.get(1)) {

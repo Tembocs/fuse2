@@ -1,0 +1,62 @@
+// Fuse Full stdlib — json module.
+//
+// JSON serialisation and deserialisation. JsonValue is a tagged data
+// class: tag 0=null, 1=bool, 2=number, 3=string, 4=array, 5=object.
+//
+// import stdlib.full.json
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_json_parse(input: String) -> Result<JsonValue, JsonError>
+extern fn fuse_rt_json_stringify(value: JsonValue) -> String
+extern fn fuse_rt_json_stringify_pretty(value: JsonValue, indent: Int) -> String
+
+// --- Type definitions ---
+
+pub data class JsonError(val message: String, val line: Int, val col: Int)
+
+pub data class JsonValue(val tag: Int, val value: Int)
+// tag: 0=null, 1=bool, 2=number, 3=string, 4=array, 5=object
+// value: depends on tag (Bool, Float, String, List, Map)
+
+// --- Parsing ---
+
+pub fn parse(s: String) -> Result<JsonValue, JsonError> {
+  fuse_rt_json_parse(s)
+}
+
+// --- Serialisation ---
+
+pub fn stringify(value: ref JsonValue) -> String {
+  fuse_rt_json_stringify(value)
+}
+
+pub fn stringifyPretty(value: ref JsonValue, indent: Int) -> String {
+  fuse_rt_json_stringify_pretty(value, indent)
+}
+
+// --- Type checking helpers ---
+
+pub fn JsonValue.isNull(ref self) -> Bool {
+  self.tag == 0
+}
+
+pub fn JsonValue.isBool(ref self) -> Bool {
+  self.tag == 1
+}
+
+pub fn JsonValue.isNumber(ref self) -> Bool {
+  self.tag == 2
+}
+
+pub fn JsonValue.isString(ref self) -> Bool {
+  self.tag == 3
+}
+
+pub fn JsonValue.isArray(ref self) -> Bool {
+  self.tag == 4
+}
+
+pub fn JsonValue.isObject(ref self) -> Bool {
+  self.tag == 5
+}

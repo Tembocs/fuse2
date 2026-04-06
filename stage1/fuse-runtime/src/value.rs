@@ -1514,6 +1514,263 @@ pub unsafe extern "C" fn fuse_rt_process_run_with_stdin(
     }
 }
 
+// --- JSON FFI ---
+
+// JsonValue is represented as a data class with tag + value fields:
+//   field 0: tag (Int) — 0=null, 1=bool, 2=number, 3=string, 4=array, 5=object
+//   field 1: value (dynamic — Bool, Float, String, List, or Map depending on tag)
+unsafe fn json_value_new(tag: i64, value: FuseHandle) -> FuseHandle {
+    let type_name = b"JsonValue";
+    let data = fuse_data_new(type_name.as_ptr(), type_name.len(), 2, None);
+    fuse_data_set_field(data, 0, fuse_int(tag));
+    fuse_data_set_field(data, 1, value);
+    data
+}
+
+unsafe fn json_parse_value(s: &str, pos: &mut usize) -> Result<FuseHandle, String> {
+    skip_whitespace(s, pos);
+    if *pos >= s.len() { return Err("unexpected end of input".to_string()); }
+    let ch = s.as_bytes()[*pos];
+    match ch {
+        b'"' => {
+            let st = json_parse_string(s, pos)?;
+            Ok(json_value_new(3, fuse_string_new_utf8(st.as_ptr(), st.len())))
+        }
+        b't' | b'f' => {
+            if s[*pos..].starts_with("true") {
+                *pos += 4; Ok(json_value_new(1, fuse_bool(true)))
+            } else if s[*pos..].starts_with("false") {
+                *pos += 5; Ok(json_value_new(1, fuse_bool(false)))
+            } else { Err(format!("unexpected token at {}", *pos)) }
+        }
+        b'n' => {
+            if s[*pos..].starts_with("null") {
+                *pos += 4; Ok(json_value_new(0, fuse_unit()))
+            } else { Err(format!("unexpected token at {}", *pos)) }
+        }
+        b'-' | b'0'..=b'9' => {
+            let start = *pos;
+            if s.as_bytes()[*pos] == b'-' { *pos += 1; }
+            while *pos < s.len() && s.as_bytes()[*pos].is_ascii_digit() { *pos += 1; }
+            if *pos < s.len() && s.as_bytes()[*pos] == b'.' {
+                *pos += 1;
+                while *pos < s.len() && s.as_bytes()[*pos].is_ascii_digit() { *pos += 1; }
+            }
+            if *pos < s.len() && (s.as_bytes()[*pos] == b'e' || s.as_bytes()[*pos] == b'E') {
+                *pos += 1;
+                if *pos < s.len() && (s.as_bytes()[*pos] == b'+' || s.as_bytes()[*pos] == b'-') { *pos += 1; }
+                while *pos < s.len() && s.as_bytes()[*pos].is_ascii_digit() { *pos += 1; }
+            }
+            let num_str = &s[start..*pos];
+            let num: f64 = num_str.parse().map_err(|e| format!("invalid number: {e}"))?;
+            Ok(json_value_new(2, fuse_float(num)))
+        }
+        b'[' => {
+            *pos += 1;
+            let list = fuse_list_new();
+            skip_whitespace(s, pos);
+            if *pos < s.len() && s.as_bytes()[*pos] == b']' {
+                *pos += 1; return Ok(json_value_new(4, list));
+            }
+            loop {
+                let item = json_parse_value(s, pos)?;
+                fuse_list_push(list, item);
+                skip_whitespace(s, pos);
+                if *pos >= s.len() { return Err("unterminated array".to_string()); }
+                if s.as_bytes()[*pos] == b']' { *pos += 1; break; }
+                if s.as_bytes()[*pos] != b',' { return Err(format!("expected ',' or ']' at {}", *pos)); }
+                *pos += 1;
+            }
+            Ok(json_value_new(4, list))
+        }
+        b'{' => {
+            *pos += 1;
+            let map = fuse_map_new();
+            skip_whitespace(s, pos);
+            if *pos < s.len() && s.as_bytes()[*pos] == b'}' {
+                *pos += 1; return Ok(json_value_new(5, map));
+            }
+            loop {
+                skip_whitespace(s, pos);
+                if *pos >= s.len() || s.as_bytes()[*pos] != b'"' {
+                    return Err(format!("expected string key at {}", *pos));
+                }
+                let key = json_parse_string(s, pos)?;
+                skip_whitespace(s, pos);
+                if *pos >= s.len() || s.as_bytes()[*pos] != b':' {
+                    return Err(format!("expected ':' at {}", *pos));
+                }
+                *pos += 1;
+                let val = json_parse_value(s, pos)?;
+                let k = fuse_string_new_utf8(key.as_ptr(), key.len());
+                fuse_map_set(map, k, val);
+                skip_whitespace(s, pos);
+                if *pos >= s.len() { return Err("unterminated object".to_string()); }
+                if s.as_bytes()[*pos] == b'}' { *pos += 1; break; }
+                if s.as_bytes()[*pos] != b',' { return Err(format!("expected ',' or '}}' at {}", *pos)); }
+                *pos += 1;
+            }
+            Ok(json_value_new(5, map))
+        }
+        _ => Err(format!("unexpected character '{}' at {}", ch as char, *pos))
+    }
+}
+
+fn skip_whitespace(s: &str, pos: &mut usize) {
+    while *pos < s.len() && matches!(s.as_bytes()[*pos], b' ' | b'\t' | b'\n' | b'\r') {
+        *pos += 1;
+    }
+}
+
+fn json_parse_string(s: &str, pos: &mut usize) -> Result<String, String> {
+    if *pos >= s.len() || s.as_bytes()[*pos] != b'"' {
+        return Err(format!("expected '\"' at {}", *pos));
+    }
+    *pos += 1;
+    let mut result = String::new();
+    while *pos < s.len() {
+        let ch = s.as_bytes()[*pos];
+        if ch == b'"' { *pos += 1; return Ok(result); }
+        if ch == b'\\' {
+            *pos += 1;
+            if *pos >= s.len() { return Err("unterminated string escape".to_string()); }
+            match s.as_bytes()[*pos] {
+                b'"' => result.push('"'),
+                b'\\' => result.push('\\'),
+                b'/' => result.push('/'),
+                b'n' => result.push('\n'),
+                b'r' => result.push('\r'),
+                b't' => result.push('\t'),
+                b'b' => result.push('\u{0008}'),
+                b'f' => result.push('\u{000C}'),
+                b'u' => {
+                    *pos += 1;
+                    if *pos + 4 > s.len() { return Err("incomplete unicode escape".to_string()); }
+                    let hex = &s[*pos..*pos+4];
+                    let cp = u32::from_str_radix(hex, 16).map_err(|_| "invalid unicode escape".to_string())?;
+                    if let Some(c) = char::from_u32(cp) { result.push(c); }
+                    *pos += 3; // will be incremented by 1 at end of loop
+                }
+                c => { result.push(c as char); }
+            }
+        } else {
+            result.push(ch as char);
+        }
+        *pos += 1;
+    }
+    Err("unterminated string".to_string())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_json_parse(input: FuseHandle) -> FuseHandle {
+    let s = extract_string(input);
+    let mut pos = 0usize;
+    match json_parse_value(s, &mut pos) {
+        Ok(value) => fuse_ok(value),
+        Err(msg) => {
+            let type_name = b"JsonError";
+            let err = fuse_data_new(type_name.as_ptr(), type_name.len(), 3, None);
+            fuse_data_set_field(err, 0, fuse_string_new_utf8(msg.as_ptr(), msg.len()));
+            fuse_data_set_field(err, 1, fuse_int(1));
+            fuse_data_set_field(err, 2, fuse_int(pos as i64));
+            fuse_err(err)
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_json_stringify(value: FuseHandle) -> FuseHandle {
+    let s = json_stringify_impl(value, false, 0, 0);
+    fuse_string_new_utf8(s.as_ptr(), s.len())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_json_stringify_pretty(value: FuseHandle, indent: FuseHandle) -> FuseHandle {
+    let ind = match &(*indent).kind { ValueKind::Int(n) => *n as usize, _ => 2 };
+    let s = json_stringify_impl(value, true, ind, 0);
+    fuse_string_new_utf8(s.as_ptr(), s.len())
+}
+
+unsafe fn json_stringify_impl(handle: FuseHandle, pretty: bool, indent: usize, depth: usize) -> String {
+    if let ValueKind::Data(dv) = &(*handle).kind {
+        if dv.fields.len() >= 2 {
+            let tag = match &(*dv.fields[0]).kind { ValueKind::Int(n) => *n, _ => -1 };
+            let val = dv.fields[1];
+            return match tag {
+                0 => "null".to_string(),
+                1 => match &(*val).kind { ValueKind::Bool(b) => b.to_string(), _ => "false".to_string() },
+                2 => match &(*val).kind {
+                    ValueKind::Float(f) => {
+                        if *f == f.floor() && f.is_finite() { format!("{f:.1}") } else { f.to_string() }
+                    }
+                    ValueKind::Int(n) => format!("{n}.0"),
+                    _ => "0".to_string()
+                },
+                3 => {
+                    let s = match &(*val).kind { ValueKind::String(s) => s.as_str(), _ => "" };
+                    format!("\"{}\"", json_escape(s))
+                }
+                4 => {
+                    if let ValueKind::List(items) = &(*val).kind {
+                        if items.is_empty() { return "[]".to_string(); }
+                        let mut parts = Vec::new();
+                        for item in items {
+                            parts.push(json_stringify_impl(*item, pretty, indent, depth + 1));
+                        }
+                        if pretty {
+                            let pad = " ".repeat(indent * (depth + 1));
+                            let pad_close = " ".repeat(indent * depth);
+                            format!("[\n{pad}{}\n{pad_close}]", parts.join(&format!(",\n{pad}")))
+                        } else {
+                            format!("[{}]", parts.join(","))
+                        }
+                    } else { "[]".to_string() }
+                }
+                5 => {
+                    if let ValueKind::Map(map) = &(*val).kind {
+                        if map.entries.is_empty() { return "{}".to_string(); }
+                        let mut parts = Vec::new();
+                        for (k, v) in &map.entries {
+                            let ks = match &(**k).kind { ValueKind::String(s) => s.clone(), _ => String::new() };
+                            let vs = json_stringify_impl(*v, pretty, indent, depth + 1);
+                            if pretty {
+                                parts.push(format!("\"{}\": {}", json_escape(&ks), vs));
+                            } else {
+                                parts.push(format!("\"{}\":{}", json_escape(&ks), vs));
+                            }
+                        }
+                        if pretty {
+                            let pad = " ".repeat(indent * (depth + 1));
+                            let pad_close = " ".repeat(indent * depth);
+                            format!("{{\n{pad}{}\n{pad_close}}}", parts.join(&format!(",\n{pad}")))
+                        } else {
+                            format!("{{{}}}", parts.join(","))
+                        }
+                    } else { "{}".to_string() }
+                }
+                _ => "null".to_string(),
+            };
+        }
+    }
+    "null".to_string()
+}
+
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c < ' ' => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 // --- Net FFI ---
 
 unsafe fn make_net_error(msg: &str, code: i64) -> FuseHandle {

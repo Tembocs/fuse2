@@ -1,0 +1,180 @@
+// EXPECTED OUTPUT:
+// === parse null ===
+// isNull: true
+// === parse bool ===
+// isBool: true
+// === parse number ===
+// isNumber: true
+// === parse string ===
+// isString: true
+// === parse array ===
+// isArray: true
+// === parse object ===
+// isObject: true
+// === stringify null ===
+// null
+// === stringify bool ===
+// true
+// === stringify number ===
+// 42.0
+// === stringify string ===
+// "hello"
+// === stringify array ===
+// [1.0,2.0,3.0]
+// === stringify object ===
+// object ok: true
+// === parse complex ===
+// complex ok: true
+// === stringify pretty ===
+// pretty ok: true
+// === parse error ===
+// error: true
+// === round-trip ===
+// round-trip ok: true
+// === done ===
+// done
+
+import stdlib.full.json
+
+@entrypoint
+fn main() {
+  // parse null
+  println("=== parse null ===")
+  val nullResult = json.parse("null")
+  match nullResult {
+    Ok(v) => println(f"isNull: {v.isNull()}")
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // parse bool
+  println("=== parse bool ===")
+  val boolResult = json.parse("true")
+  match boolResult {
+    Ok(v) => println(f"isBool: {v.isBool()}")
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // parse number
+  println("=== parse number ===")
+  val numResult = json.parse("42")
+  match numResult {
+    Ok(v) => println(f"isNumber: {v.isNumber()}")
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // parse string
+  println("=== parse string ===")
+  val strResult = json.parse("\"hello\"")
+  match strResult {
+    Ok(v) => println(f"isString: {v.isString()}")
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // parse array
+  println("=== parse array ===")
+  val arrResult = json.parse("[1, 2, 3]")
+  match arrResult {
+    Ok(v) => println(f"isArray: {v.isArray()}")
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // parse object
+  println("=== parse object ===")
+  val objResult = json.parse("{\"key\": \"value\"}")
+  match objResult {
+    Ok(v) => println(f"isObject: {v.isObject()}")
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // stringify null
+  println("=== stringify null ===")
+  match json.parse("null") {
+    Ok(v) => println(json.stringify(ref v))
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // stringify bool
+  println("=== stringify bool ===")
+  match json.parse("true") {
+    Ok(v) => println(json.stringify(ref v))
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // stringify number
+  println("=== stringify number ===")
+  match json.parse("42") {
+    Ok(v) => println(json.stringify(ref v))
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // stringify string
+  println("=== stringify string ===")
+  match json.parse("\"hello\"") {
+    Ok(v) => println(json.stringify(ref v))
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // stringify array
+  println("=== stringify array ===")
+  match json.parse("[1, 2, 3]") {
+    Ok(v) => println(json.stringify(ref v))
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // stringify object
+  println("=== stringify object ===")
+  match json.parse("{\"a\": 1}") {
+    Ok(v) => {
+      val s = json.stringify(ref v)
+      // Map ordering may vary, just check it has the key
+      val objOk = s == "{\"a\":1.0}"
+      println(f"object ok: {objOk}")
+    }
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // parse complex nested JSON
+  println("=== parse complex ===")
+  val complex = json.parse("{\"name\": \"alice\", \"age\": 30, \"tags\": [\"a\", \"b\"]}")
+  match complex {
+    Ok(v) => {
+      val isObj = v.isObject()
+      println(f"complex ok: {isObj}")
+    }
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // stringify pretty
+  println("=== stringify pretty ===")
+  match json.parse("[1, 2]") {
+    Ok(v) => {
+      val pretty = json.stringifyPretty(ref v, 2)
+      val prettyOk = pretty != "[1.0,2.0]"
+      println(f"pretty ok: {prettyOk}")
+    }
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  // parse error
+  println("=== parse error ===")
+  val badResult = json.parse("{invalid}")
+  match badResult {
+    Ok(v) => println("error: false")
+    Err(e) => println("error: true")
+  }
+
+  // round-trip: parse then stringify
+  println("=== round-trip ===")
+  val original = "[1,2,3]"
+  match json.parse(original) {
+    Ok(v) => {
+      val back = json.stringify(ref v)
+      val rtOk = back == "[1.0,2.0,3.0]"
+      println(f"round-trip ok: {rtOk}")
+    }
+    Err(e) => println(f"error: {e.message}")
+  }
+
+  println("=== done ===")
+  println("done")
+}
