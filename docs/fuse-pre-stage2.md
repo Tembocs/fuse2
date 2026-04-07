@@ -162,8 +162,8 @@ to the next wave.** Do not silently continue.
 | W4 | Annotation System | 3 | 18 | W0 + W1 | Not started |
 | W5 | Interface System | 6 | 52 | W1 (structs, generics) | Not started |
 | W6 | Evaluator Robustness | 2 | 9 | — | Not started |
-| W7 | LSP Foundation | 4 | 20 | W0 + W1 | Not started |
-| W8 | WASM Target | 4 | 16 | W0 + W1 + W2 | Not started |
+| W7 | LSP Foundation | 4 | 20 | W0 + W1 | Done |
+| W8 | WASM Target | 4 | 16 | W0 + W1 + W2 | W8.1-W8.3 done |
 | **Total** | | **42** | **~289** | | |
 
 ---
@@ -923,40 +923,40 @@ block. Stack frame is several KB. Overflows after ~5 cross-module calls.
 
 ### Phase W7.1 — LSP Crate Setup & Initialize
 
-- [ ] **W7.1.1** Refactor `fusec/src/lib.rs`: expose `lex`, `parse`, `check`.
-- [ ] **W7.1.2** Create `stage1/fuse-lsp/Cargo.toml`.
-- [ ] **W7.1.3** Create `fuse-lsp/src/main.rs` with JSON-RPC loop.
-- [ ] **W7.1.4** Implement `initialize`/`initialized` handshake.
-- [ ] **W7.1.5** Verify: starts, responds, shuts down cleanly.
+- [x] **W7.1.1** Refactor `fusec/src/lib.rs`: expose `lex`, `parse`, `check`.
+- [x] **W7.1.2** Create `stage1/fuse-lsp/Cargo.toml`.
+- [x] **W7.1.3** Create `fuse-lsp/src/main.rs` with JSON-RPC loop.
+- [x] **W7.1.4** Implement `initialize`/`initialized` handshake.
+- [x] **W7.1.5** Verify: starts, responds, shuts down cleanly.
 
 ---
 
 ### Phase W7.2 — Diagnostics
 
-- [ ] **W7.2.1** Implement `didOpen`/`didChange`/`didClose`.
-- [ ] **W7.2.2** On change: run lexer → parser → checker.
-- [ ] **W7.2.3** Convert to `publishDiagnostics` notifications.
-- [ ] **W7.2.4** Map `Span` to LSP `Range`.
-- [ ] **W7.2.5** Map severity.
-- [ ] **W7.2.6** Test: syntax error shows red squiggles.
+- [x] **W7.2.1** Implement `didOpen`/`didChange`/`didClose`.
+- [x] **W7.2.2** On change: run lexer → parser → checker.
+- [x] **W7.2.3** Convert to `publishDiagnostics` notifications.
+- [x] **W7.2.4** Map `Span` to LSP `Range`.
+- [x] **W7.2.5** Map severity.
+- [x] **W7.2.6** Test: syntax error shows red squiggles.
 
 ---
 
 ### Phase W7.3 — Go to Definition & Hover
 
-- [ ] **W7.3.1** Implement `textDocument/definition`.
-- [ ] **W7.3.2** Implement `textDocument/hover`.
-- [ ] **W7.3.3** Handle: locals, params, imports, extensions, fields.
-- [ ] **W7.3.4** Test: hover shows type; click navigates.
+- [x] **W7.3.1** Implement `textDocument/definition`.
+- [x] **W7.3.2** Implement `textDocument/hover`.
+- [x] **W7.3.3** Handle: locals, params, imports, extensions, fields.
+- [x] **W7.3.4** Test: hover shows type; click navigates.
 
 ---
 
 ### Phase W7.4 — Completion
 
-- [ ] **W7.4.1** Implement `textDocument/completion`.
-- [ ] **W7.4.2** Include: locals, functions, imports, keywords, stdlib.
-- [ ] **W7.4.3** After `.`: suggest extension methods for inferred type.
-- [ ] **W7.4.4** Test: `list.` shows extension methods.
+- [x] **W7.4.1** Implement `textDocument/completion`.
+- [x] **W7.4.2** Include: locals, functions, imports, keywords, stdlib.
+- [x] **W7.4.3** After `.`: suggest extension methods for inferred type.
+- [x] **W7.4.4** Test: `list.` shows extension methods.
 
 ---
 
@@ -979,29 +979,29 @@ block. Stack frame is several KB. Overflows after ~5 cross-module calls.
 
 ### Phase W8.1 — Cranelift WASM32 Backend
 
-- [ ] **W8.1.1** Add `--target` flag (values: `native`, `wasi`).
-- [ ] **W8.1.2** Configure Cranelift ISA as `wasm32` for `wasi`.
-- [ ] **W8.1.3** Adjust pointer type: `i64` → `i32` for wasm32.
-- [ ] **W8.1.4** Generate `.wasm` output.
-- [ ] **W8.1.5** Test: produces valid `.wasm` file.
+- [x] **W8.1.1** Add `--target` flag (values: `native`, `wasi`).
+- [x] **W8.1.2** Configure Cranelift ISA as `wasm32` for `wasi`.
+- [x] **W8.1.3** Adjust pointer type: `i64` → `i32` for wasm32.
+- [x] **W8.1.4** Generate `.wasm` output.
+- [x] **W8.1.5** Test: produces valid `.wasm` file.
 
 ---
 
 ### Phase W8.2 — Runtime Compilation to WASI
 
-- [ ] **W8.2.1** Add `wasm32-wasi` target to `fuse-runtime`.
-- [ ] **W8.2.2** Audit for OS-specific code, add `#[cfg]` guards.
-- [ ] **W8.2.3** Produce `fuse_runtime.wasm`.
-- [ ] **W8.2.4** Test: compiles cleanly to `wasm32-wasi`.
+- [x] **W8.2.1** Add `wasm32-wasi` target to `fuse-runtime`.
+- [x] **W8.2.2** Audit for OS-specific code, add `#[cfg]` guards.
+- [x] **W8.2.3** Produce `fuse_runtime.wasm`.
+- [x] **W8.2.4** Test: compiles cleanly to `wasm32-wasi`.
 
 ---
 
 ### Phase W8.3 — Module Availability Validation
 
-- [ ] **W8.3.1** Define per-target module availability.
-- [ ] **W8.3.2** Validate imports against target in checker.
-- [ ] **W8.3.3** Error: `module 'process' not available on target 'wasi'`.
-- [ ] **W8.3.4** Test: import `process` with `--target wasi` → error.
+- [x] **W8.3.1** Define per-target module availability.
+- [x] **W8.3.2** Validate imports against target in checker.
+- [x] **W8.3.3** Error: `module 'process' not available on target 'wasi'`.
+- [x] **W8.3.4** Test: import `process` with `--target wasi` → error.
 
 ---
 
