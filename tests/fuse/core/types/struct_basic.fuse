@@ -1,12 +1,13 @@
 // EXPECTED OUTPUT:
 // created
 // hello from struct
-struct Widget { }
+struct Widget {
+  val id: Int
+}
 
 fn Widget.create() -> Widget {
   println("created")
-  val items = [1]
-  return items
+  Widget(1)
 }
 
 fn Widget.greet(ref self) -> String {

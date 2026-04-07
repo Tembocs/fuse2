@@ -111,6 +111,17 @@ impl Checker {
                 );
             }
         }
+        // Load extension functions from HIR (Type.method definitions).
+        for ((receiver_type, name), function) in &info.module.extension_functions {
+            let is_static = function.params.first().map_or(true, |p| p.name != "self");
+            if is_static {
+                info.static_functions
+                    .insert((receiver_type.clone(), name.clone()), function.clone());
+            } else {
+                info.extension_functions
+                    .insert((receiver_type.clone(), name.clone()), function.clone());
+            }
+        }
         for data in &info.module.data_classes {
             info.symbols.insert(
                 data.name.clone(),
@@ -179,6 +190,28 @@ impl Checker {
             for method in data.methods.clone() {
                 self.check_function(module, &method, Some(&data));
             }
+        }
+        for struct_decl in module.module.structs.clone() {
+            for method in struct_decl.methods.clone() {
+                // Convert StructDecl to DataClassDecl for owner context.
+                let as_data = hir::DataClassDecl {
+                    name: struct_decl.name.clone(),
+                    type_params: Vec::new(),
+                    fields: struct_decl.fields.clone(),
+                    methods: struct_decl.methods.clone(),
+                    is_pub: struct_decl.is_pub,
+                    annotations: struct_decl.annotations.clone(),
+                    span: struct_decl.span,
+                };
+                self.check_function(module, &method, Some(&as_data));
+            }
+        }
+        // Check extension and static functions (Type.method defined outside type body).
+        for function in module.extension_functions.values() {
+            self.check_function(module, function, None);
+        }
+        for function in module.static_functions.values() {
+            self.check_function(module, function, None);
         }
     }
 
@@ -906,7 +939,11 @@ impl Checker {
         }
 
         if let Some(function) = resolved {
-            for (param, arg) in function.params.iter().zip(call.args.iter()) {
+            // For method calls, skip the implicit `self` parameter.
+            let is_method_call = matches!(call.callee.as_ref(), hir::Expr::Member(_))
+                && function.params.first().map_or(false, |p| p.name == "self");
+            let params = if is_method_call { &function.params[1..] } else { &function.params[..] };
+            for (param, arg) in params.iter().zip(call.args.iter()) {
                 if param.convention.as_deref() == Some("mutref") && !matches!(arg, hir::Expr::MutRef(_)) {
                     self.add_error(
                         &display_name(&module.path),
