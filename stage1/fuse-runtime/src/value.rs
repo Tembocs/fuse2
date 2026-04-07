@@ -1761,6 +1761,7 @@ pub unsafe extern "C" fn fuse_rt_u64_to_string(handle: FuseHandle) -> FuseHandle
 
 // --- IO FFI helpers ---
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn make_io_error(msg: &str, code: i64) -> FuseHandle {
     let type_name = b"IOError";
     let data = fuse_data_new(type_name.as_ptr(), type_name.len(), 2, None);
@@ -1769,6 +1770,7 @@ unsafe fn make_io_error(msg: &str, code: i64) -> FuseHandle {
     data
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn io_error_code(e: &std::io::Error) -> i64 {
     match e.kind() {
         std::io::ErrorKind::NotFound => 1,
@@ -1779,6 +1781,7 @@ unsafe fn io_error_code(e: &std::io::Error) -> i64 {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_io_read_file(path: FuseHandle) -> FuseHandle {
     let p = extract_string(path);
@@ -1788,6 +1791,7 @@ pub unsafe extern "C" fn fuse_rt_io_read_file(path: FuseHandle) -> FuseHandle {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_io_read_file_bytes(path: FuseHandle) -> FuseHandle {
     let p = extract_string(path);
@@ -1801,6 +1805,7 @@ pub unsafe extern "C" fn fuse_rt_io_read_file_bytes(path: FuseHandle) -> FuseHan
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_io_write_file(path: FuseHandle, content: FuseHandle) -> FuseHandle {
     let p = extract_string(path);
@@ -1811,6 +1816,7 @@ pub unsafe extern "C" fn fuse_rt_io_write_file(path: FuseHandle, content: FuseHa
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_io_write_file_bytes(path: FuseHandle, bytes: FuseHandle) -> FuseHandle {
     if let ValueKind::List(items) = &(*bytes).kind {
@@ -1825,6 +1831,7 @@ pub unsafe extern "C" fn fuse_rt_io_write_file_bytes(path: FuseHandle, bytes: Fu
     fuse_err(make_io_error(msg, 0))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_io_append_file(path: FuseHandle, content: FuseHandle) -> FuseHandle {
     use std::io::Write;
@@ -1839,6 +1846,7 @@ pub unsafe extern "C" fn fuse_rt_io_append_file(path: FuseHandle, content: FuseH
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_io_read_line() -> FuseHandle {
     let mut line = String::new();
@@ -1851,6 +1859,7 @@ pub unsafe extern "C" fn fuse_rt_io_read_line() -> FuseHandle {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_io_read_all() -> FuseHandle {
     use std::io::Read;
@@ -1863,6 +1872,7 @@ pub unsafe extern "C" fn fuse_rt_io_read_all() -> FuseHandle {
 
 // --- File handle FFI ---
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_file_open(path: FuseHandle, mode: FuseHandle) -> FuseHandle {
     use std::io::BufWriter;
@@ -1887,11 +1897,13 @@ pub unsafe extern "C" fn fuse_rt_file_open(path: FuseHandle, mode: FuseHandle) -
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe extern "C" fn fuse_rt_file_destructor(_handle: FuseHandle) {
     // The file handle is cleaned up when the data class is dropped.
     // In a production runtime, this would close the file descriptor.
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_file_close(_file: FuseHandle) -> FuseHandle {
     fuse_ok(fuse_unit())
@@ -1899,12 +1911,14 @@ pub unsafe extern "C" fn fuse_rt_file_close(_file: FuseHandle) -> FuseHandle {
 
 // --- Path FFI ---
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_path_separator() -> FuseHandle {
     let sep = if cfg!(windows) { "\\" } else { "/" };
     fuse_string_new_utf8(sep.as_ptr(), sep.len())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_path_cwd() -> FuseHandle {
     match std::env::current_dir() {
@@ -1921,21 +1935,25 @@ pub unsafe extern "C" fn fuse_rt_path_cwd() -> FuseHandle {
 
 // --- OS FFI ---
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_exists(path: FuseHandle) -> FuseHandle {
     fuse_bool(std::path::Path::new(extract_string(path)).exists())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_is_file(path: FuseHandle) -> FuseHandle {
     fuse_bool(std::path::Path::new(extract_string(path)).is_file())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_is_dir(path: FuseHandle) -> FuseHandle {
     fuse_bool(std::path::Path::new(extract_string(path)).is_dir())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn metadata_to_file_info(p: &str, meta: &std::fs::Metadata) -> FuseHandle {
     let type_name = b"FileInfo";
     let data = fuse_data_new(type_name.as_ptr(), type_name.len(), 6, None);
@@ -1956,6 +1974,7 @@ unsafe fn metadata_to_file_info(p: &str, meta: &std::fs::Metadata) -> FuseHandle
     data
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_stat(path: FuseHandle) -> FuseHandle {
     let p = extract_string(path);
@@ -1965,6 +1984,7 @@ pub unsafe extern "C" fn fuse_rt_os_stat(path: FuseHandle) -> FuseHandle {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn dir_entry_to_handle(entry: &std::fs::DirEntry) -> FuseHandle {
     let type_name = b"DirEntry";
     let data = fuse_data_new(type_name.as_ptr(), type_name.len(), 5, None);
@@ -1986,6 +2006,7 @@ unsafe fn dir_entry_to_handle(entry: &std::fs::DirEntry) -> FuseHandle {
     data
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_read_dir(path: FuseHandle) -> FuseHandle {
     let p = extract_string(path);
@@ -2001,6 +2022,7 @@ pub unsafe extern "C" fn fuse_rt_os_read_dir(path: FuseHandle) -> FuseHandle {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_mkdir(path: FuseHandle) -> FuseHandle {
     let p = extract_string(path);
@@ -2010,6 +2032,7 @@ pub unsafe extern "C" fn fuse_rt_os_mkdir(path: FuseHandle) -> FuseHandle {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_mkdir_all(path: FuseHandle) -> FuseHandle {
     let p = extract_string(path);
@@ -2019,6 +2042,7 @@ pub unsafe extern "C" fn fuse_rt_os_mkdir_all(path: FuseHandle) -> FuseHandle {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_create_file(path: FuseHandle) -> FuseHandle {
     let p = extract_string(path);
@@ -2028,6 +2052,7 @@ pub unsafe extern "C" fn fuse_rt_os_create_file(path: FuseHandle) -> FuseHandle 
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_copy_file(src: FuseHandle, dst: FuseHandle) -> FuseHandle {
     let s = extract_string(src);
@@ -2038,6 +2063,7 @@ pub unsafe extern "C" fn fuse_rt_os_copy_file(src: FuseHandle, dst: FuseHandle) 
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
@@ -2052,6 +2078,7 @@ unsafe fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> st
     Ok(())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_copy_dir(src: FuseHandle, dst: FuseHandle) -> FuseHandle {
     let s = extract_string(src);
@@ -2062,6 +2089,7 @@ pub unsafe extern "C" fn fuse_rt_os_copy_dir(src: FuseHandle, dst: FuseHandle) -
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_rename(src: FuseHandle, dst: FuseHandle) -> FuseHandle {
     let s = extract_string(src);
@@ -2072,6 +2100,7 @@ pub unsafe extern "C" fn fuse_rt_os_rename(src: FuseHandle, dst: FuseHandle) -> 
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_remove_file(path: FuseHandle) -> FuseHandle {
     let p = extract_string(path);
@@ -2081,6 +2110,7 @@ pub unsafe extern "C" fn fuse_rt_os_remove_file(path: FuseHandle) -> FuseHandle 
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_remove_dir(path: FuseHandle) -> FuseHandle {
     let p = extract_string(path);
@@ -2090,6 +2120,7 @@ pub unsafe extern "C" fn fuse_rt_os_remove_dir(path: FuseHandle) -> FuseHandle {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_remove_dir_all(path: FuseHandle) -> FuseHandle {
     let p = extract_string(path);
@@ -2099,6 +2130,7 @@ pub unsafe extern "C" fn fuse_rt_os_remove_dir_all(path: FuseHandle) -> FuseHand
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_create_symlink(src: FuseHandle, dst: FuseHandle) -> FuseHandle {
     let s = extract_string(src);
@@ -2120,6 +2152,7 @@ pub unsafe extern "C" fn fuse_rt_os_create_symlink(src: FuseHandle, dst: FuseHan
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_read_symlink(path: FuseHandle) -> FuseHandle {
     let p = extract_string(path);
@@ -2132,6 +2165,7 @@ pub unsafe extern "C" fn fuse_rt_os_read_symlink(path: FuseHandle) -> FuseHandle
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_set_read_only(path: FuseHandle, readonly: FuseHandle) -> FuseHandle {
     let p = extract_string(path);
@@ -2149,12 +2183,14 @@ pub unsafe extern "C" fn fuse_rt_os_set_read_only(path: FuseHandle, readonly: Fu
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_temp_dir() -> FuseHandle {
     let s = std::env::temp_dir().to_string_lossy().to_string();
     fuse_string_new_utf8(s.as_ptr(), s.len())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_temp_file(prefix: FuseHandle) -> FuseHandle {
     let pfx = extract_string(prefix);
@@ -2171,6 +2207,7 @@ pub unsafe extern "C" fn fuse_rt_os_temp_file(prefix: FuseHandle) -> FuseHandle 
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_temp_dir_create(prefix: FuseHandle) -> FuseHandle {
     let pfx = extract_string(prefix);
@@ -2187,6 +2224,7 @@ pub unsafe extern "C" fn fuse_rt_os_temp_dir_create(prefix: FuseHandle) -> FuseH
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn read_dir_recursive_impl(root: &std::path::Path, list: FuseHandle) -> std::io::Result<()> {
     for entry in std::fs::read_dir(root)? {
         let entry = entry?;
@@ -2198,6 +2236,7 @@ unsafe fn read_dir_recursive_impl(root: &std::path::Path, list: FuseHandle) -> s
     Ok(())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_read_dir_recursive(path: FuseHandle) -> FuseHandle {
     let p = extract_string(path);
@@ -2208,6 +2247,7 @@ pub unsafe extern "C" fn fuse_rt_os_read_dir_recursive(path: FuseHandle) -> Fuse
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_os_move(src: FuseHandle, dst: FuseHandle) -> FuseHandle {
     let s = extract_string(src);
@@ -2233,6 +2273,7 @@ pub unsafe extern "C" fn fuse_rt_os_move(src: FuseHandle, dst: FuseHandle) -> Fu
 
 // --- Env FFI ---
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_env_get(name: FuseHandle) -> FuseHandle {
     let key = extract_string(name);
@@ -2242,6 +2283,7 @@ pub unsafe extern "C" fn fuse_rt_env_get(name: FuseHandle) -> FuseHandle {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_env_set(name: FuseHandle, value: FuseHandle) -> FuseHandle {
     let key = extract_string(name);
@@ -2252,6 +2294,7 @@ pub unsafe extern "C" fn fuse_rt_env_set(name: FuseHandle, value: FuseHandle) ->
     fuse_ok(fuse_unit())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_env_remove(name: FuseHandle) -> FuseHandle {
     let key = extract_string(name);
@@ -2259,6 +2302,7 @@ pub unsafe extern "C" fn fuse_rt_env_remove(name: FuseHandle) -> FuseHandle {
     fuse_ok(fuse_unit())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_env_all() -> FuseHandle {
     let map = fuse_map_new();
@@ -2270,6 +2314,7 @@ pub unsafe extern "C" fn fuse_rt_env_all() -> FuseHandle {
     map
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_env_has(name: FuseHandle) -> FuseHandle {
     let key = extract_string(name);
@@ -2278,6 +2323,7 @@ pub unsafe extern "C" fn fuse_rt_env_has(name: FuseHandle) -> FuseHandle {
 
 // --- Process FFI ---
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn make_process_error(msg: &str, code: i64) -> FuseHandle {
     let type_name = b"ProcessError";
     let data = fuse_data_new(type_name.as_ptr(), type_name.len(), 2, None);
@@ -2286,6 +2332,7 @@ unsafe fn make_process_error(msg: &str, code: i64) -> FuseHandle {
     data
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn output_to_handle(output: &std::process::Output) -> FuseHandle {
     let type_name = b"Output";
     let data = fuse_data_new(type_name.as_ptr(), type_name.len(), 4, None);
@@ -2299,6 +2346,7 @@ unsafe fn output_to_handle(output: &std::process::Output) -> FuseHandle {
     data
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_process_run(program: FuseHandle, args: FuseHandle) -> FuseHandle {
     let prog = extract_string(program);
@@ -2316,6 +2364,7 @@ pub unsafe extern "C" fn fuse_rt_process_run(program: FuseHandle, args: FuseHand
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_process_shell(command: FuseHandle) -> FuseHandle {
     let cmd_str = extract_string(command);
@@ -2330,6 +2379,7 @@ pub unsafe extern "C" fn fuse_rt_process_shell(command: FuseHandle) -> FuseHandl
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_process_run_with_stdin(
     program: FuseHandle, args: FuseHandle, stdin_data: FuseHandle,
@@ -2382,6 +2432,7 @@ pub unsafe extern "C" fn fuse_rt_process_run_with_stdin(
 
 // --- HTTP FFI ---
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn make_http_error(msg: &str, code: i64) -> FuseHandle {
     let type_name = b"HttpError";
     let data = fuse_data_new(type_name.as_ptr(), type_name.len(), 2, None);
@@ -2390,6 +2441,7 @@ unsafe fn make_http_error(msg: &str, code: i64) -> FuseHandle {
     data
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn http_error_code(e: &ureq::Error) -> i64 {
     match e {
         ureq::Error::Transport(_) => 3,
@@ -2397,6 +2449,7 @@ unsafe fn http_error_code(e: &ureq::Error) -> i64 {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn response_to_handle(status: u16, body: &str, headers: &[(String, String)]) -> FuseHandle {
     let type_name = b"Response";
     let data = fuse_data_new(type_name.as_ptr(), type_name.len(), 3, None);
@@ -2411,6 +2464,7 @@ unsafe fn response_to_handle(status: u16, body: &str, headers: &[(String, String
     data
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn do_http_request(method: &str, url: &str, body: Option<&str>, content_type: Option<&str>) -> FuseHandle {
     let request = match method {
         "GET" => ureq::get(url),
@@ -2454,31 +2508,37 @@ unsafe fn do_http_request(method: &str, url: &str, body: Option<&str>, content_t
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_http_get(url: FuseHandle) -> FuseHandle {
     do_http_request("GET", extract_string(url), None, None)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_http_post(url: FuseHandle, body: FuseHandle) -> FuseHandle {
     do_http_request("POST", extract_string(url), Some(extract_string(body)), None)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_http_post_json(url: FuseHandle, body: FuseHandle) -> FuseHandle {
     do_http_request("POST", extract_string(url), Some(extract_string(body)), Some("application/json"))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_http_put(url: FuseHandle, body: FuseHandle) -> FuseHandle {
     do_http_request("PUT", extract_string(url), Some(extract_string(body)), None)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_http_delete(url: FuseHandle) -> FuseHandle {
     do_http_request("DELETE", extract_string(url), None, None)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_http_request(method: FuseHandle, url: FuseHandle, body: FuseHandle, headers_keys: FuseHandle, headers_vals: FuseHandle) -> FuseHandle {
     let m = extract_string(method);
@@ -2790,6 +2850,7 @@ fn json_escape(s: &str) -> String {
 
 // --- Net FFI ---
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn make_net_error(msg: &str, code: i64) -> FuseHandle {
     let type_name = b"NetError";
     let data = fuse_data_new(type_name.as_ptr(), type_name.len(), 2, None);
@@ -2798,6 +2859,7 @@ unsafe fn make_net_error(msg: &str, code: i64) -> FuseHandle {
     data
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn net_error_code(e: &std::io::Error) -> i64 {
     match e.kind() {
         std::io::ErrorKind::ConnectionRefused => 1,
@@ -2809,6 +2871,7 @@ unsafe fn net_error_code(e: &std::io::Error) -> i64 {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn wrap_tcp_stream(stream: std::net::TcpStream) -> FuseHandle {
     let boxed: Box<dyn std::any::Any> = Box::new(stream);
     let ptr = Box::into_raw(boxed);
@@ -2818,6 +2881,7 @@ unsafe fn wrap_tcp_stream(stream: std::net::TcpStream) -> FuseHandle {
     handle
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn extract_tcp_stream<'a>(handle: FuseHandle) -> Option<&'a mut std::net::TcpStream> {
     if let ValueKind::Data(data) = &(*handle).kind {
         if let Some(field0) = data.fields.first() {
@@ -2832,6 +2896,7 @@ unsafe fn extract_tcp_stream<'a>(handle: FuseHandle) -> Option<&'a mut std::net:
 
 // --- TcpStream ---
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_tcp_connect(addr: FuseHandle, port: FuseHandle) -> FuseHandle {
     let a = extract_string(addr);
@@ -2842,6 +2907,7 @@ pub unsafe extern "C" fn fuse_rt_net_tcp_connect(addr: FuseHandle, port: FuseHan
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_tcp_connect_timeout(addr: FuseHandle, port: FuseHandle, timeout_ms: FuseHandle) -> FuseHandle {
     let a = extract_string(addr);
@@ -2857,6 +2923,7 @@ pub unsafe extern "C" fn fuse_rt_net_tcp_connect_timeout(addr: FuseHandle, port:
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_tcp_read(stream: FuseHandle, max_bytes: FuseHandle) -> FuseHandle {
     use std::io::Read;
@@ -2876,6 +2943,7 @@ pub unsafe extern "C" fn fuse_rt_net_tcp_read(stream: FuseHandle, max_bytes: Fus
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_tcp_read_all(stream: FuseHandle) -> FuseHandle {
     use std::io::Read;
@@ -2890,6 +2958,7 @@ pub unsafe extern "C" fn fuse_rt_net_tcp_read_all(stream: FuseHandle) -> FuseHan
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_tcp_write(stream: FuseHandle, data: FuseHandle) -> FuseHandle {
     use std::io::Write;
@@ -2904,6 +2973,7 @@ pub unsafe extern "C" fn fuse_rt_net_tcp_write(stream: FuseHandle, data: FuseHan
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_tcp_write_bytes(stream: FuseHandle, data: FuseHandle) -> FuseHandle {
     use std::io::Write;
@@ -2921,6 +2991,7 @@ pub unsafe extern "C" fn fuse_rt_net_tcp_write_bytes(stream: FuseHandle, data: F
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_tcp_flush(stream: FuseHandle) -> FuseHandle {
     use std::io::Write;
@@ -2934,6 +3005,7 @@ pub unsafe extern "C" fn fuse_rt_net_tcp_flush(stream: FuseHandle) -> FuseHandle
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_tcp_set_read_timeout(stream: FuseHandle, ms: FuseHandle) -> FuseHandle {
     if let Some(s) = extract_tcp_stream(stream) {
@@ -2947,6 +3019,7 @@ pub unsafe extern "C" fn fuse_rt_net_tcp_set_read_timeout(stream: FuseHandle, ms
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_tcp_set_write_timeout(stream: FuseHandle, ms: FuseHandle) -> FuseHandle {
     if let Some(s) = extract_tcp_stream(stream) {
@@ -2960,6 +3033,7 @@ pub unsafe extern "C" fn fuse_rt_net_tcp_set_write_timeout(stream: FuseHandle, m
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_tcp_local_addr(stream: FuseHandle) -> FuseHandle {
     if let Some(s) = extract_tcp_stream(stream) {
@@ -2972,6 +3046,7 @@ pub unsafe extern "C" fn fuse_rt_net_tcp_local_addr(stream: FuseHandle) -> FuseH
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_tcp_peer_addr(stream: FuseHandle) -> FuseHandle {
     if let Some(s) = extract_tcp_stream(stream) {
@@ -2984,6 +3059,7 @@ pub unsafe extern "C" fn fuse_rt_net_tcp_peer_addr(stream: FuseHandle) -> FuseHa
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_tcp_close(_stream: FuseHandle) -> FuseHandle {
     // Drop happens when the data class is ASAP-destroyed.
@@ -2992,6 +3068,7 @@ pub unsafe extern "C" fn fuse_rt_net_tcp_close(_stream: FuseHandle) -> FuseHandl
 
 // --- TcpListener ---
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_tcp_bind(addr: FuseHandle, port: FuseHandle) -> FuseHandle {
     let a = extract_string(addr);
@@ -3009,6 +3086,7 @@ pub unsafe extern "C" fn fuse_rt_net_tcp_bind(addr: FuseHandle, port: FuseHandle
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_tcp_accept(listener: FuseHandle) -> FuseHandle {
     if let ValueKind::Data(data) = &(*listener).kind {
@@ -3027,6 +3105,7 @@ pub unsafe extern "C" fn fuse_rt_net_tcp_accept(listener: FuseHandle) -> FuseHan
     fuse_err(make_net_error("net: invalid listener", 0))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_tcp_listener_local_addr(listener: FuseHandle) -> FuseHandle {
     if let ValueKind::Data(data) = &(*listener).kind {
@@ -3045,6 +3124,7 @@ pub unsafe extern "C" fn fuse_rt_net_tcp_listener_local_addr(listener: FuseHandl
     fuse_err(make_net_error("net: invalid listener", 0))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_tcp_listener_close(_listener: FuseHandle) -> FuseHandle {
     fuse_ok(fuse_unit())
@@ -3052,6 +3132,7 @@ pub unsafe extern "C" fn fuse_rt_net_tcp_listener_close(_listener: FuseHandle) -
 
 // --- UdpSocket ---
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_udp_bind(addr: FuseHandle, port: FuseHandle) -> FuseHandle {
     let a = extract_string(addr);
@@ -3069,6 +3150,7 @@ pub unsafe extern "C" fn fuse_rt_net_udp_bind(addr: FuseHandle, port: FuseHandle
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_udp_send_to(socket: FuseHandle, payload: FuseHandle, addr: FuseHandle, port: FuseHandle) -> FuseHandle {
     if let ValueKind::Data(dv) = &(*socket).kind {
@@ -3092,6 +3174,7 @@ pub unsafe extern "C" fn fuse_rt_net_udp_send_to(socket: FuseHandle, payload: Fu
     fuse_err(make_net_error("net: invalid socket", 0))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_udp_recv_from(socket: FuseHandle, max_bytes: FuseHandle) -> FuseHandle {
     if let ValueKind::Data(data) = &(*socket).kind {
@@ -3123,6 +3206,7 @@ pub unsafe extern "C" fn fuse_rt_net_udp_recv_from(socket: FuseHandle, max_bytes
     fuse_err(make_net_error("net: invalid socket", 0))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_udp_set_broadcast(socket: FuseHandle, enabled: FuseHandle) -> FuseHandle {
     if let ValueKind::Data(data) = &(*socket).kind {
@@ -3142,6 +3226,7 @@ pub unsafe extern "C" fn fuse_rt_net_udp_set_broadcast(socket: FuseHandle, enabl
     fuse_err(make_net_error("net: invalid socket", 0))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_net_udp_close(_socket: FuseHandle) -> FuseHandle {
     fuse_ok(fuse_unit())
@@ -3159,6 +3244,7 @@ fn splitmix64(state: i64) -> (i64, i64) {
     (s, z) // (new_state, output)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_random_new() -> FuseHandle {
     // Seed from system time nanos
@@ -3200,10 +3286,12 @@ pub unsafe extern "C" fn fuse_rt_random_next_float(state: FuseHandle) -> FuseHan
 
 // --- Time FFI ---
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_time_instant_now() -> FuseHandle {
     let nanos = std::time::Instant::now().elapsed().as_nanos() as i64;
     // Use a thread-local base instant for monotonic measurement
+#[cfg(not(target_arch = "wasm32"))]
     thread_local! {
         static BASE: std::time::Instant = std::time::Instant::now();
     }
@@ -3211,6 +3299,7 @@ pub unsafe extern "C" fn fuse_rt_time_instant_now() -> FuseHandle {
     fuse_int(n)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_time_system_now() -> FuseHandle {
     let secs = std::time::SystemTime::now()
@@ -3220,8 +3309,10 @@ pub unsafe extern "C" fn fuse_rt_time_system_now() -> FuseHandle {
     fuse_int(secs)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_time_elapsed_nanos(start_nanos: FuseHandle) -> FuseHandle {
+#[cfg(not(target_arch = "wasm32"))]
     thread_local! {
         static BASE: std::time::Instant = std::time::Instant::now();
     }
@@ -3232,6 +3323,7 @@ pub unsafe extern "C" fn fuse_rt_time_elapsed_nanos(start_nanos: FuseHandle) -> 
 
 // --- Timer FFI ---
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_timer_sleep_ms(ms_handle: FuseHandle) -> FuseHandle {
     let ms = extract_int(ms_handle);
@@ -3243,6 +3335,7 @@ pub unsafe extern "C" fn fuse_rt_timer_sleep_ms(ms_handle: FuseHandle) -> FuseHa
 
 // --- Sys FFI ---
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_sys_args() -> FuseHandle {
     let list = fuse_list_new();
@@ -3252,12 +3345,14 @@ pub unsafe extern "C" fn fuse_rt_sys_args() -> FuseHandle {
     list
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_sys_exit(code: FuseHandle) -> FuseHandle {
     let c = match &(*code).kind { ValueKind::Int(n) => *n as i32, _ => 1 };
     std::process::exit(c);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_sys_cwd() -> FuseHandle {
     match std::env::current_dir() {
@@ -3272,6 +3367,7 @@ pub unsafe extern "C" fn fuse_rt_sys_cwd() -> FuseHandle {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_sys_set_cwd(path: FuseHandle) -> FuseHandle {
     let p = extract_string(path);
@@ -3284,11 +3380,13 @@ pub unsafe extern "C" fn fuse_rt_sys_set_cwd(path: FuseHandle) -> FuseHandle {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_sys_pid() -> FuseHandle {
     fuse_int(std::process::id() as i64)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_sys_platform() -> FuseHandle {
     let p = if cfg!(target_os = "windows") { "windows" }
@@ -3298,6 +3396,7 @@ pub unsafe extern "C" fn fuse_rt_sys_platform() -> FuseHandle {
     fuse_string_new_utf8(p.as_ptr(), p.len())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_sys_arch() -> FuseHandle {
     let a = if cfg!(target_arch = "x86_64") { "x86_64" }
@@ -3307,11 +3406,13 @@ pub unsafe extern "C" fn fuse_rt_sys_arch() -> FuseHandle {
     fuse_string_new_utf8(a.as_ptr(), a.len())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_sys_num_cpus() -> FuseHandle {
     fuse_int(std::thread::available_parallelism().map(|n| n.get() as i64).unwrap_or(1))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_sys_mem_total() -> FuseHandle {
     // No portable Rust API for total RAM. Return 0 as "unknown".
@@ -3687,6 +3788,7 @@ type JmpBuf = [i64; 16];
 #[cfg(not(all(target_os = "windows", target_arch = "x86_64")))]
 type JmpBuf = [i64; 32];
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe extern "C" {
     #[cfg(target_os = "windows")]
     #[link_name = "_setjmp"]
@@ -3698,20 +3800,24 @@ unsafe extern "C" {
 }
 
 #[cfg(target_os = "windows")]
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn platform_setjmp(buf: *mut JmpBuf) -> i32 {
     unsafe { c_setjmp(buf, ptr::null()) }
 }
 #[cfg(not(target_os = "windows"))]
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn platform_setjmp(buf: *mut JmpBuf) -> i32 {
     unsafe { c_setjmp(buf) }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 thread_local! {
     static PANIC_JMP: Cell<*mut JmpBuf> = const { Cell::new(ptr::null_mut()) };
 }
 
 /// Trigger a Fuse panic.  When called inside an `assertPanics` context this
 /// performs a longjmp back to the recovery point.  Otherwise exits with 101.
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_panic() {
     PANIC_JMP.with(|cell| {
@@ -3725,6 +3831,7 @@ pub unsafe extern "C" fn fuse_rt_panic() {
 
 /// assertEq — compare two opaque handles for equality (via string repr).
 /// On mismatch prints a diagnostic and exits with code 1.
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_test_assert_eq(
     a: FuseHandle,
@@ -3745,6 +3852,7 @@ pub unsafe extern "C" fn fuse_rt_test_assert_eq(
 
 /// assertNe — compare two opaque handles for inequality (via string repr).
 /// On match prints a diagnostic and exits with code 1.
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_test_assert_ne(
     a: FuseHandle,
@@ -3764,6 +3872,7 @@ pub unsafe extern "C" fn fuse_rt_test_assert_ne(
 
 /// assertApprox — compare two Floats within an epsilon tolerance.
 /// On failure prints a diagnostic and exits with code 1.
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_test_assert_approx(
     a: FuseHandle,
@@ -3801,6 +3910,7 @@ pub unsafe extern "C" fn fuse_rt_test_assert_approx(
 /// and the remaining elements are captured variables.
 /// Uses setjmp/longjmp: fuse_rt_panic() performs longjmp back here when
 /// the closure panics.
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_test_assert_panics(closure: FuseHandle) -> FuseHandle {
     let fn_ptr_raw: FuseHandle = {
@@ -4916,17 +5026,20 @@ pub unsafe extern "C" fn fuse_rt_crypto_random_hex(n: FuseHandle) -> FuseHandle 
 // HTTP Server runtime support
 // ---------------------------------------------------------------------------
 
+#[cfg(not(target_arch = "wasm32"))]
 struct Route {
     method: String,
     path: String,
     closure: FuseHandle, // Fuse closure list: [fn_ptr, captures...]
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 thread_local! {
     static HTTP_ROUTES: RefCell<Vec<Route>> = RefCell::new(Vec::new());
 }
 
 /// Register a route.  `closure` is a Fuse closure (List handle).
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_http_server_route(
     method: FuseHandle,
@@ -4942,6 +5055,7 @@ pub unsafe extern "C" fn fuse_rt_http_server_route(
 }
 
 /// Build a Request data class from tiny_http::Request parts.
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn make_request(
     method: &str,
     path: &str,
@@ -4979,6 +5093,7 @@ unsafe fn make_request(
 }
 
 /// Extract Response fields from a Fuse data class (status, body, contentType).
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn extract_response(handle: FuseHandle) -> (u16, String, String) {
     let val = value_ref(handle);
     if let ValueKind::Data(d) = &val.kind {
@@ -4992,6 +5107,7 @@ unsafe fn extract_response(handle: FuseHandle) -> (u16, String, String) {
 }
 
 /// Call a Fuse handler closure with a request, returning a response handle.
+#[cfg(not(target_arch = "wasm32"))]
 unsafe fn call_handler(closure: FuseHandle, request: FuseHandle) -> FuseHandle {
     let fn_ptr_raw: FuseHandle = {
         let list_val = value_ref(closure);
@@ -5006,6 +5122,7 @@ unsafe fn call_handler(closure: FuseHandle, request: FuseHandle) -> FuseHandle {
 }
 
 /// Start the HTTP server.  Blocks until the server is stopped.
+#[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_http_server_listen(
     host: FuseHandle,

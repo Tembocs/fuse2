@@ -7,7 +7,6 @@ edition = "2024"
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-ureq = { version = "2", features = ["tls"] }
 regex = "1"
 toml = "0.8"
 serde_yaml = "0.9"
@@ -16,4 +15,7 @@ hmac = "0.12"
 md-5 = "0.10"
 blake3 = "1"
 getrandom = "0.2"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ureq = { version = "2", features = ["tls"] }
 tiny_http = "0.12"
