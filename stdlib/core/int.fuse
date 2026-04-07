@@ -9,7 +9,7 @@
 
 extern fn fuse_rt_int_to_float(value: Int) -> Float
 extern fn fuse_rt_int_parse(s: String) -> Result<Int, String>
-extern fn fuse_rt_string_len(s: String) -> Int
+extern fn fuse_rt_string_char_count(s: String) -> Int
 extern fn fuse_rt_string_char_at(s: String, index: Int) -> String
 
 // --- Type constants ---
@@ -160,7 +160,7 @@ pub fn parse(s: String) -> Result<Int, String> {
 
 // Parse a hexadecimal string (without "0x" prefix).
 pub fn parseHex(s: String) -> Result<Int, String> {
-  val len = fuse_rt_string_len(s)
+  val len = fuse_rt_string_char_count(s)
   if len == 0 { return Err("int: empty hex string") }
   var result = 0
   var i = 0
@@ -176,7 +176,7 @@ pub fn parseHex(s: String) -> Result<Int, String> {
 
 // Parse a binary string (without "0b" prefix).
 pub fn parseBinary(s: String) -> Result<Int, String> {
-  val len = fuse_rt_string_len(s)
+  val len = fuse_rt_string_char_count(s)
   if len == 0 { return Err("int: empty binary string") }
   var result = 0
   var i = 0

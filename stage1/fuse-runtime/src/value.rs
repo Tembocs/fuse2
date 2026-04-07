@@ -1157,7 +1157,26 @@ pub unsafe extern "C" fn fuse_rt_int_parse(handle: FuseHandle) -> FuseHandle {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_rt_string_len(handle: FuseHandle) -> FuseHandle {
     if let ValueKind::String(s) = &(*handle).kind {
+        return fuse_int(s.len() as i64);
+    }
+    fuse_int(0)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_char_count(handle: FuseHandle) -> FuseHandle {
+    if let ValueKind::String(s) = &(*handle).kind {
         return fuse_int(s.chars().count() as i64);
+    }
+    fuse_int(0)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_string_byte_at(handle: FuseHandle, index: FuseHandle) -> FuseHandle {
+    if let (ValueKind::String(s), ValueKind::Int(i)) = (&(*handle).kind, &(*index).kind) {
+        let idx = *i as usize;
+        if idx < s.len() {
+            return fuse_int(s.as_bytes()[idx] as i64);
+        }
     }
     fuse_int(0)
 }

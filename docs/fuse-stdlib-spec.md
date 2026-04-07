@@ -463,7 +463,7 @@ fn String.capitalize(ref self) -> String  // first char upper, rest lower
 fn String.contains(ref self, sub: String) -> Bool
 fn String.startsWith(ref self, prefix: String) -> Bool
 fn String.endsWith(ref self, suffix: String) -> Bool
-fn String.indexOf(ref self, sub: String) -> Option<Int>      // byte index of first match
+fn String.indexOf(ref self, sub: String) -> Option<Int>      // character index of first match
 fn String.lastIndexOf(ref self, sub: String) -> Option<Int>
 
 // Transformation
@@ -485,8 +485,9 @@ fn String.toFloat(ref self) -> Result<Float, String> // alias for parseFloat
 fn String.toBool(ref self) -> Result<Bool, String>   // "true"/"false" only, case-insensitive
 fn String.toBytes(ref self) -> List<Int>             // UTF-8 byte values
 fn String.chars(ref self) -> List<String>            // Unicode codepoints as single-char strings
-fn String.len(ref self) -> Int                       // byte length (already built-in)
-fn String.charCount(ref self) -> Int                 // Unicode codepoint count (may differ from len)
+fn String.len(ref self) -> Int                       // byte length of UTF-8 representation, O(1)
+fn String.charCount(ref self) -> Int                 // Unicode codepoint count, O(n)
+fn String.byteAt(ref self, i: Int) -> Int            // byte value at byte index i, O(1)
 
 // Comparison
 fn String.compareTo(ref self, other: String) -> Int  // lexicographic: -1, 0, 1

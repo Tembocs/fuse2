@@ -8,9 +8,10 @@
 // --- FFI declarations ---
 
 extern fn fuse_rt_string_len(s: String) -> Int
+extern fn fuse_rt_string_char_count(s: String) -> Int
 extern fn fuse_rt_string_char_at(s: String, index: Int) -> String
+extern fn fuse_rt_string_byte_at(s: String, index: Int) -> Int
 extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
-extern fn fuse_rt_string_byte_len(s: String) -> Int
 extern fn fuse_rt_string_to_lower(s: String) -> String
 extern fn fuse_rt_string_contains(s: String, sub: String) -> Bool
 extern fn fuse_rt_string_starts_with(s: String, prefix: String) -> Bool
@@ -110,7 +111,7 @@ pub fn String.repeat(ref self, n: Int) -> String {
 }
 
 pub fn String.padStart(ref self, width: Int, ch: String) -> String {
-  val len = fuse_rt_string_len(self)
+  val len = fuse_rt_string_char_count(self)
   if len >= width { return self }
   var pad = ""
   var i = 0
@@ -123,7 +124,7 @@ pub fn String.padStart(ref self, width: Int, ch: String) -> String {
 }
 
 pub fn String.padEnd(ref self, width: Int, ch: String) -> String {
-  val len = fuse_rt_string_len(self)
+  val len = fuse_rt_string_char_count(self)
   if len >= width { return self }
   var pad = ""
   var i = 0
@@ -164,8 +165,19 @@ pub fn String.chars(ref self) -> List<String> {
   fuse_rt_string_chars_list(self)
 }
 
-pub fn String.charCount(ref self) -> Int {
+// Byte length of the UTF-8 representation. O(1).
+pub fn String.len(ref self) -> Int {
   fuse_rt_string_len(self)
+}
+
+// Number of Unicode characters. O(n).
+pub fn String.charCount(ref self) -> Int {
+  fuse_rt_string_char_count(self)
+}
+
+// Byte value at byte index i. O(1). Returns 0 if out of bounds.
+pub fn String.byteAt(ref self, i: Int) -> Int {
+  fuse_rt_string_byte_at(self, i)
 }
 
 // --- Comparison ---

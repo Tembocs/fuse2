@@ -10,7 +10,7 @@ import stdlib.full.json
 
 // --- FFI declarations (string operations) ---
 
-extern fn fuse_rt_string_len(s: String) -> Int
+extern fn fuse_rt_string_char_count(s: String) -> Int
 extern fn fuse_rt_string_char_at(s: String, index: Int) -> String
 extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
 extern fn fuse_rt_string_contains(s: String, sub: String) -> Bool
@@ -39,7 +39,7 @@ pub data class Response(val id: Option<Int>, val result: Option<JsonValue>, val 
 
 // --- Internal helpers: string utilities ---
 
-fn strLen(s: String) -> Int { fuse_rt_string_len(s) }
+fn strLen(s: String) -> Int { fuse_rt_string_char_count(s) }
 fn charAt(s: String, i: Int) -> String { fuse_rt_string_char_at(s, i) }
 fn slice(s: String, start: Int, end: Int) -> String { fuse_rt_string_slice(s, start, end) }
 

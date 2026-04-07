@@ -9,7 +9,7 @@
 
 extern fn fuse_rt_float_to_string_fixed(value: Float, decimals: Int) -> String
 extern fn fuse_rt_float_to_string_scientific(value: Float, decimals: Int) -> String
-extern fn fuse_rt_string_len(s: String) -> Int
+extern fn fuse_rt_string_char_count(s: String) -> Int
 extern fn fuse_rt_string_char_at(s: String, index: Int) -> String
 extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
 extern fn fuse_rt_list_len(list: List<T>) -> Int
@@ -40,7 +40,7 @@ pub fn thousands(n: Int) -> String {
   var num = n
   if negative { num = 0 - n }
   val digits = f"{num}"
-  val len = fuse_rt_string_len(digits)
+  val len = fuse_rt_string_char_count(digits)
   var result = ""
   var i = 0
   while i < len {
@@ -65,7 +65,7 @@ pub fn thousandsFloat(n: Float, places: Int) -> String {
   // Use the full fixed-point string and split at the dot to avoid rounding the integer part.
   val decPart = fuse_rt_float_to_string_fixed(num, places)
   // Find the dot in decPart and split into integer + fractional parts
-  val decLen = fuse_rt_string_len(decPart)
+  val decLen = fuse_rt_string_char_count(decPart)
   var dotPos = decLen
   var di = 0
   while di < decLen {
@@ -77,7 +77,7 @@ pub fn thousandsFloat(n: Float, places: Int) -> String {
   val fracStr = fuse_rt_string_slice(decPart, dotPos, decLen)
   val intPart = fuse_rt_string_slice(decPart, 0, dotPos)
   // Format the integer part with commas
-  val intLen = fuse_rt_string_len(intPart)
+  val intLen = fuse_rt_string_char_count(intPart)
   var result = ""
   var i = 0
   while i < intLen {
@@ -161,7 +161,7 @@ pub fn octal(n: Int) -> String {
 
 // Pad on the left with spaces to reach width.
 pub fn padLeft(s: String, width: Int) -> String {
-  val len = fuse_rt_string_len(s)
+  val len = fuse_rt_string_char_count(s)
   if len >= width { return s }
   var pad = ""
   var i = 0
@@ -175,7 +175,7 @@ pub fn padLeft(s: String, width: Int) -> String {
 
 // Pad on the right with spaces to reach width.
 pub fn padRight(s: String, width: Int) -> String {
-  val len = fuse_rt_string_len(s)
+  val len = fuse_rt_string_char_count(s)
   if len >= width { return s }
   var pad = ""
   var i = 0
@@ -189,7 +189,7 @@ pub fn padRight(s: String, width: Int) -> String {
 
 // Center within width, padding both sides with spaces.
 pub fn padCenter(s: String, width: Int) -> String {
-  val len = fuse_rt_string_len(s)
+  val len = fuse_rt_string_char_count(s)
   if len >= width { return s }
   val total = width - len
   val leftPad = total / 2
@@ -211,7 +211,7 @@ pub fn padCenter(s: String, width: Int) -> String {
 
 // Pad on the left with a custom character.
 pub fn padLeftWith(s: String, width: Int, ch: String) -> String {
-  val len = fuse_rt_string_len(s)
+  val len = fuse_rt_string_char_count(s)
   if len >= width { return s }
   var pad = ""
   var i = 0
@@ -225,7 +225,7 @@ pub fn padLeftWith(s: String, width: Int, ch: String) -> String {
 
 // Pad on the right with a custom character.
 pub fn padRightWith(s: String, width: Int, ch: String) -> String {
-  val len = fuse_rt_string_len(s)
+  val len = fuse_rt_string_char_count(s)
   if len >= width { return s }
   var pad = ""
   var i = 0
@@ -239,14 +239,14 @@ pub fn padRightWith(s: String, width: Int, ch: String) -> String {
 
 // Truncate to maxLen characters (no ellipsis).
 pub fn truncate(s: String, maxLen: Int) -> String {
-  val len = fuse_rt_string_len(s)
+  val len = fuse_rt_string_char_count(s)
   if len <= maxLen { return s }
   fuse_rt_string_slice(s, 0, maxLen)
 }
 
 // Truncate and append "..." (total length = maxLen).
 pub fn truncateEllipsis(s: String, maxLen: Int) -> String {
-  val len = fuse_rt_string_len(s)
+  val len = fuse_rt_string_char_count(s)
   if len <= maxLen { return s }
   if maxLen <= 3 { return fuse_rt_string_slice("...", 0, maxLen) }
   val prefix = fuse_rt_string_slice(s, 0, maxLen - 3)

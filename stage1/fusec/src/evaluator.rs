@@ -562,11 +562,14 @@ impl Evaluator {
                     }
                 }
             } else {
-                let exports = imported
-                    .exports
-                    .iter()
-                    .map(|(name, export)| (name.clone(), self.export_value(&imported.path, export)))
-                    .collect::<HashMap<_, _>>();
+                // Bare import: make all public symbols available directly.
+                let mut exports = HashMap::new();
+                for (name, export) in &imported.exports {
+                    let value = self.export_value(&imported.path, export);
+                    env.define(name, value.clone(), false, false);
+                    exports.insert(name.clone(), value);
+                }
+                // Also define module namespace for qualified access (e.g., crypto.sha256).
                 let alias = import_decl
                     .module_path
                     .split('.')
@@ -743,7 +746,24 @@ impl Evaluator {
                 }
                 "fuse_rt_string_len" => {
                     if let Some(Value::String(s)) = args.first() {
+                        return Ok(Value::Int(s.len() as i64));
+                    }
+                    return Ok(Value::Int(0));
+                }
+                "fuse_rt_string_char_count" => {
+                    if let Some(Value::String(s)) = args.first() {
                         return Ok(Value::Int(s.chars().count() as i64));
+                    }
+                    return Ok(Value::Int(0));
+                }
+                "fuse_rt_string_byte_at" => {
+                    if let Some(Value::String(s)) = args.first() {
+                        if let Some(Value::Int(i)) = args.get(1) {
+                            let idx = *i as usize;
+                            if idx < s.len() {
+                                return Ok(Value::Int(s.as_bytes()[idx] as i64));
+                            }
+                        }
                     }
                     return Ok(Value::Int(0));
                 }
@@ -2392,7 +2412,13 @@ impl Evaluator {
             fa::Expr::Call(call) => {
                 if let fa::Expr::Member(member) = call.callee.as_ref() {
                     if let fa::Expr::Name(name) = member.object.as_ref() {
-                        if env.resolve(&name.value).is_none() {
+                        // Try static dispatch (Type.method, Enum.Variant, Map.new) when the
+                        // name is unresolved OR resolves to a type constructor (not a value).
+                        let is_type_name = match env.resolve(&name.value) {
+                            None => true,
+                            Some(binding) => matches!(binding.borrow().value, Value::NativeFunction(ref f) if matches!(f.as_ref(), NativeFunction::DataConstructor { .. })),
+                        };
+                        if is_type_name {
                             let base = name.value.split("::").next().unwrap_or(&name.value);
                             if base == "Map" && member.name == "new" {
                                 return Ok(Value::Map(Vec::new()));

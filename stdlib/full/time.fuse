@@ -10,7 +10,7 @@
 extern fn fuse_rt_time_instant_now() -> Int
 extern fn fuse_rt_time_system_now() -> Int
 extern fn fuse_rt_time_elapsed_nanos(start_nanos: Int) -> Int
-extern fn fuse_rt_string_len(s: String) -> Int
+extern fn fuse_rt_string_char_count(s: String) -> Int
 extern fn fuse_rt_string_char_at(s: String, index: Int) -> String
 extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
 extern fn fuse_rt_int_parse(s: String) -> Result<Int, String>
@@ -320,7 +320,7 @@ pub fn DateTime.isLeapYear(ref self) -> Bool {
 
 pub fn DateTime.parse(s: String) -> Result<DateTime, String> {
   // Accepts: "YYYY-MM-DDTHH:MM:SSZ" or "YYYY-MM-DDTHH:MM:SS"
-  val len = fuse_rt_string_len(s)
+  val len = fuse_rt_string_char_count(s)
   if len < 19 { return Err("time: invalid ISO 8601 format") }
   val yearStr = fuse_rt_string_slice(s, 0, 4)
   val monthStr = fuse_rt_string_slice(s, 5, 7)

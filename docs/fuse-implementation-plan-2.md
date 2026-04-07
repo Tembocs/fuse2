@@ -450,7 +450,7 @@ The following issues were discovered during the self-hosting attempt and must be
 
 **and/or short-circuit SSA corruption.** The short-circuit lowering of `and` and `or` expressions creates SSA merge blocks. In large functions with loops and `mutref` writebacks, the merge block can inherit stale SSA values from the wrong predecessor. This manifests as incorrect boolean results or crashes in programs with complex control flow. Until a full fix is in place, document the limitation and test with programs that combine `and`/`or` with loops and `mutref` parameters.
 
-**UTF-8 byte indexing.** String operations that index by byte position will crash on multi-byte characters. All string indexing in the runtime must operate on character boundaries, not byte offsets. The `fuse-runtime` string operations must validate indices or use character-aware iteration.
+**UTF-8 string API (resolved).** The runtime provides a dual API: `len()` returns byte length (O(1)), `charCount()` returns character count (O(n)), `charAt(i)` uses character indexing (O(n), safe for multi-byte), `byteAt(i)` returns byte at byte offset (O(1)). All stdlib modules use `charCount()`/`charAt()` for character iteration. `byteAt()` is available for performance-critical byte-level access (e.g., Stage 2 lexer).
 
 **Stack size for compiler workloads.** The default stack size (1MB on Windows) is insufficient for compiling large programs — the compiler itself is a large program. The linker invocation must set the stack size to at least 8MB. On Windows this means passing `/STACK:8388608` to `link.exe`. On Linux, `ulimit -s 8192` or an equivalent linker flag.
 
@@ -479,7 +479,7 @@ The FFI surface covers: module creation, function declaration, block creation, i
 **`stage1/fuse-runtime/src/asap.rs`** — Runtime support for ASAP destruction.
 The compiler inserts calls into this at last-use points. Handles the cases where last-use is conditional (inside a `match` arm, early `return`, etc.).
 
-**`stage1/fuse-runtime/src/string_ops.rs`** — String operations with character-aware indexing. No byte-offset indexing exposed to Fuse programs.
+**`stage1/fuse-runtime/src/string_ops.rs`** — String operations. Dual API: character-aware indexing (`charAt`, `charCount`, `slice`) and byte-level access (`len`, `byteAt`) for performance-critical code.
 
 **`stage1/fusec/src/codegen/layout.rs`** — Value layout and ABI. How Fuse structs are laid out in memory. How arguments and return values are passed.
 

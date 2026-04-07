@@ -27,7 +27,7 @@
 import stdlib.ext.crypto
 import stdlib.core.string
 
-extern fn fuse_rt_string_len(s: String) -> Int
+extern fn fuse_rt_string_char_count(s: String) -> Int
 
 @entrypoint
 fn main() {

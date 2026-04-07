@@ -10,7 +10,7 @@
 
 extern fn fuse_rt_path_separator() -> String
 extern fn fuse_rt_path_cwd() -> Result<String, String>
-extern fn fuse_rt_string_len(s: String) -> Int
+extern fn fuse_rt_string_char_count(s: String) -> Int
 extern fn fuse_rt_string_char_at(s: String, index: Int) -> String
 extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
 extern fn fuse_rt_string_replace(s: String, from: String, to: String) -> String
@@ -29,7 +29,7 @@ fn isSep(ch: String) -> Bool {
 }
 
 fn strLen(s: String) -> Int {
-  fuse_rt_string_len(s)
+  fuse_rt_string_char_count(s)
 }
 
 fn charAt(s: String, i: Int) -> String {

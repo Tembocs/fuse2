@@ -920,7 +920,7 @@ fn main() {
 
 - `import a.b.c` maps to `src/a/b/c.fuse` relative to the project root.
 - `import a.b.{X, Y}` imports specific items from `src/a/b.fuse`.
-- `import a.b` imports the module — access items as `b.X`, `b.Y`.
+- `import a.b` imports the module — all public symbols are available directly. Qualified access (`b.X`) also works.
 - `pub` makes items visible outside their module. Items without `pub` are module-private.
 - Circular imports are a compile error.
 - Each `.fuse` file is one module. The file name is the module name.
@@ -1082,15 +1082,20 @@ match parseInt("42") {
 ### Rules
 
 - Strings are immutable. Operations return new strings.
-- `len()` returns byte length (not character count).
-- `charAt(i)` returns the character at byte index `i`.
+- `len()` returns byte length of the UTF-8 representation. O(1).
+- `charCount()` returns the number of Unicode characters. O(n).
+- `charAt(i)` returns the character at character index `i`. O(n). Safe for multi-byte UTF-8.
+- `byteAt(i)` returns the byte value at byte index `i`. O(1). For performance-critical code (lexers, parsers).
+- `chars()` returns a `List<String>` of individual characters. O(n). Preferred for iteration.
 - f-strings can contain any expression inside `{...}`.
 - `parseInt` and `parseFloat` return `Result` (not exceptions).
 
 ### Edge cases
 
-- `charAt` on an index beyond `len() - 1` is a runtime panic. Use `len()` to bounds-check first.
-- `substring(start, end)` uses half-open range: `[start, end)`. If `end > len()`, the result is truncated to `len()`.
+- `charAt` on an index beyond `charCount() - 1` returns an empty string. Use `charCount()` to bounds-check first.
+- `byteAt` on an index beyond `len() - 1` returns 0.
+- `slice(start, end)` uses character indices with half-open range: `[start, end)`.
+- When iterating over characters, prefer `chars()` or iterate with `charCount()` + `charAt()`. Do not use `len()` as a loop bound with `charAt()` — `len()` returns bytes, `charAt()` uses character indices.
 - f-strings nest: `f"outer {f"inner {x}"}"` is valid. The inner f-string is evaluated first.
 - Empty string `""` has `len() == 0`. Calling `charAt(0)` on it panics.
 
@@ -1634,7 +1639,7 @@ let result = ctx.stmts(body);
 
 **Pitfall 2: and/or SSA corruption.** Short-circuit boolean expressions (`and`/`or`) create Cranelift branch blocks. In large programs (100+ functions), these blocks can corrupt SSA variable tracking when used inside functions with loops and mutref parameters. Workaround: extract complex boolean conditions into helper functions. Root cause: likely a block-sealing issue in Cranelift variable resolution. Must be investigated and fixed.
 
-**Pitfall 3: UTF-8 byte indexing.** `String.len()` returns byte length. `charAt(i)` uses byte indexing. Multi-byte characters cause panics at non-boundary bytes. Fix: make charAt return the character containing the byte, or return a replacement character for non-boundary bytes.
+**Pitfall 3: UTF-8 string costs (resolved).** `String.len()` returns byte length (O(1)). `charCount()` returns character count (O(n)). `charAt(i)` uses character indexing and is O(n) per call — avoid in tight loops; use `chars()` instead. `byteAt(i)` is O(1) for performance-critical byte-level access.
 
 **Pitfall 4: Stack size.** Default 1MB stack is insufficient for compiler workloads. Set 8MB via linker flags.
 

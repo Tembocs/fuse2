@@ -11,7 +11,7 @@ extern fn fuse_rt_random_new() -> Int
 extern fn fuse_rt_random_seeded(seed: Int) -> Int
 extern fn fuse_rt_random_next_int(state: Int) -> List<Int>
 extern fn fuse_rt_random_next_float(state: Int) -> List<Float>
-extern fn fuse_rt_string_len(s: String) -> Int
+extern fn fuse_rt_string_char_count(s: String) -> Int
 
 // --- Type definition ---
 
