@@ -1,0 +1,28 @@
+// EXPECTED OUTPUT:
+// ok
+
+// Type overrides a default method — no duplicate error.
+
+interface Printable {
+  fn toString(ref self) -> String
+}
+
+fn Printable.debugPrint(ref self) -> String {
+  "default-debug"
+}
+
+data class Item(val id: Int) implements Printable
+
+fn Item.toString(ref self) -> String {
+  "item"
+}
+
+// Item overrides debugPrint — should take priority, no error.
+fn Item.debugPrint(ref self) -> String {
+  "custom-debug"
+}
+
+@entrypoint
+fn main() {
+  println("ok")
+}

@@ -826,15 +826,15 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
 
 > **Before starting:** Read Phase W5.3 implementation.
 
-- [ ] **W5.4.1** Detect default methods: extension method on interface name
+- [x] **W5.4.1** Detect default methods: extension method on interface name
       (e.g., `fn Printable.debugPrint(ref self)`) → register as default.
-- [ ] **W5.4.2** Store in `InterfaceInfo.default_methods`.
-- [ ] **W5.4.3** During conformance checking: if method missing but default
+- [x] **W5.4.2** Store in `InterfaceInfo.default_methods`.
+- [x] **W5.4.3** During conformance checking: if method missing but default
       exists, mark as satisfied.
-- [ ] **W5.4.4** Override resolution: type's own extension method takes
+- [x] **W5.4.4** Override resolution: type's own extension method takes
       priority over default. No duplicate error.
-- [ ] **W5.4.5** Test: `interface_default_method.fuse` — use default.
-- [ ] **W5.4.6** Test: `interface_default_override.fuse` — override default.
+- [x] **W5.4.5** Test: `interface_default_method.fuse` — use default.
+- [x] **W5.4.6** Test: `interface_default_override.fuse` — override default.
 
 ---
 

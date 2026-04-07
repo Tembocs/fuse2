@@ -37,6 +37,7 @@ struct InterfaceInfo {
     type_params: Vec<String>,
     parents: Vec<String>,
     methods: Vec<hir::InterfaceMethod>,
+    default_methods: Vec<hir::FunctionDecl>,
     span: Span,
 }
 
@@ -171,9 +172,16 @@ impl Checker {
                     type_params: iface.type_params.clone(),
                     parents: iface.parents.clone(),
                     methods: iface.methods.clone(),
+                    default_methods: Vec::new(),
                     span: iface.span,
                 },
             );
+        }
+        // Detect default methods: extension methods on interface names.
+        for ((receiver_type, _name), function) in &info.extension_functions {
+            if let Some(iface_info) = info.interfaces.get_mut(receiver_type) {
+                iface_info.default_methods.push(function.clone());
+            }
         }
         for data in &info.module.data_classes {
             if !data.implements.is_empty() {
@@ -288,18 +296,25 @@ impl Checker {
                 if required_methods.is_empty() {
                     continue;
                 }
+                // Collect default methods from the interface (own + inherited).
+                let defaults = self.collect_interface_defaults(&iface);
                 for method in &required_methods {
+                    // W5.4.4: type's own extension method takes priority over default.
                     let ext = self.resolve_extension(type_name, &method.name);
                     let Some(ext_fn) = ext else {
-                        self.add_error(
-                            &filename,
-                            type_span,
-                            format!(
-                                "type `{type_name}` declares `implements {iface_name}` but does not implement method `{}`",
-                                method.name
-                            ),
-                            None,
-                        );
+                        // W5.4.3: if method missing but default exists, mark as satisfied.
+                        let has_default = defaults.iter().any(|d| d.name == method.name);
+                        if !has_default {
+                            self.add_error(
+                                &filename,
+                                type_span,
+                                format!(
+                                    "type `{type_name}` declares `implements {iface_name}` but does not implement method `{}`",
+                                    method.name
+                                ),
+                                None,
+                            );
+                        }
                         continue;
                     };
                     // Check param count (interface params include self, extension params include self).
@@ -1313,6 +1328,18 @@ impl Checker {
             methods.extend(self.collect_interface_methods(&parent)?);
         }
         Some(methods)
+    }
+
+    /// Collect all default method implementations from an interface and its
+    /// parents (transitively).
+    fn collect_interface_defaults(&self, iface: &InterfaceInfo) -> Vec<hir::FunctionDecl> {
+        let mut defaults = iface.default_methods.clone();
+        for parent_name in &iface.parents {
+            if let Some(parent) = self.resolve_interface(parent_name) {
+                defaults.extend(self.collect_interface_defaults(&parent));
+            }
+        }
+        defaults
     }
 
     /// Look up which interfaces a type declares `implements`.

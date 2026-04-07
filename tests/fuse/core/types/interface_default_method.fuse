@@ -1,0 +1,25 @@
+// EXPECTED OUTPUT:
+// ok
+
+// Type relies on default method from interface — no own implementation needed.
+
+interface Printable {
+  fn toString(ref self) -> String
+}
+
+fn Printable.debugPrint(ref self) -> String {
+  "debug"
+}
+
+data class Point(val x: Int, val y: Int) implements Printable
+
+fn Point.toString(ref self) -> String {
+  "point"
+}
+
+// Point does NOT implement debugPrint — the default is used.
+
+@entrypoint
+fn main() {
+  println("ok")
+}
