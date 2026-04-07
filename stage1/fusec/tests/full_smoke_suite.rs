@@ -805,7 +805,7 @@ fn stress_destructor_order_fixture_compiles_and_runs() {
 fn full_fixture_files_are_present() {
     let root = harness::repo_root().join("tests").join("fuse").join("full");
     let count = walk(&root);
-    assert_eq!(count, 27, "unexpected full fixture count");
+    assert_eq!(count, 28, "unexpected full fixture count");
 }
 
 fn walk(path: &std::path::Path) -> usize {

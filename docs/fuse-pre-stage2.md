@@ -163,7 +163,7 @@ to the next wave.** Do not silently continue.
 | W5 | Interface System | 6 | 52 | W1 (structs, generics) | Not started |
 | W6 | Evaluator Robustness | 2 | 9 | — | Not started |
 | W7 | LSP Foundation | 4 | 20 | W0 + W1 | Done |
-| W8 | WASM Target | 4 | 16 | W0 + W1 + W2 | W8.1-W8.3 done |
+| W8 | WASM Target | 4 | 16 | W0 + W1 + W2 | Done |
 | **Total** | | **42** | **~289** | | |
 
 ---
@@ -969,10 +969,25 @@ block. Stack frame is several KB. Overflows after ~5 cross-module calls.
 > - `stage1/fuse-runtime/` — all source files
 > - `stage1/fusec/src/codegen/object_backend.rs` — ISA configuration
 >
+> **Prerequisites — install in this order:**
+>
+> ```bash
+> # 1. Add the WASI compilation target to Rust
+> rustup target add wasm32-wasip1
+>
+> # 2. Install the Wasmtime WASI runtime (used as the test runner)
+> cargo install wasmtime-cli
+>
+> # 3. Verify both are available
+> rustup target list --installed   # should include wasm32-wasip1
+> wasmtime --version               # should print version
+> ```
+>
 > **Usage:**
 > ```
 > fusec app.fuse -o app          --target native    # default
 > fusec app.fuse -o app.wasm     --target wasi      # WASI runtime
+> wasmtime run app.wasm                              # run via WASI
 > ```
 
 ---
@@ -1007,10 +1022,10 @@ block. Stack frame is several KB. Overflows after ~5 cross-module calls.
 
 ### Phase W8.4 — WASI Integration Test
 
-- [ ] **W8.4.1** Install `wasmtime` as test runner.
-- [ ] **W8.4.2** Compile and run `four_functions.fuse` via WASI.
-- [ ] **W8.4.3** Compile and run a stdlib test via WASI.
-- [ ] **W8.4.4** Add CI step for WASM validation.
+- [x] **W8.4.1** Install `wasmtime` as test runner.
+- [x] **W8.4.2** Compile and run `four_functions.fuse` via WASI.
+- [x] **W8.4.3** Compile and run a stdlib test via WASI.
+- [x] **W8.4.4** Add CI step for WASM validation.
 
 ---
 

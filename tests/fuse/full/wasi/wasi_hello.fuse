@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// hello wasi
+// 42
+// true
+
+@entrypoint
+fn main() {
+  println("hello wasi")
+  println(42)
+  println(true)
+}

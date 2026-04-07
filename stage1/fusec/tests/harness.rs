@@ -81,3 +81,39 @@ pub fn run_compiled_binary(binary: &Path) -> std::process::Output {
         .output()
         .expect("run compiled binary")
 }
+
+pub fn compile_fixture_wasi(fixture: &Path, output: &Path) -> std::process::Output {
+    Command::new(
+        repo_root()
+            .join("stage1")
+            .join("target")
+            .join("debug")
+            .join(format!("fusec{}", std::env::consts::EXE_SUFFIX)),
+    )
+        .arg(fixture)
+        .arg("-o")
+        .arg(output)
+        .arg("--target")
+        .arg("wasi")
+        .output()
+        .expect("run fusec compile --target wasi")
+}
+
+pub fn run_wasm(wasm_file: &Path) -> std::process::Output {
+    Command::new("wasmtime")
+        .arg("run")
+        .arg(wasm_file)
+        .output()
+        .expect("run wasmtime")
+}
+
+pub fn unique_wasm_path(stem: &str) -> PathBuf {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_millis();
+    repo_root()
+        .join("stage1")
+        .join("target")
+        .join(format!("{stem}-{stamp}.wasm"))
+}

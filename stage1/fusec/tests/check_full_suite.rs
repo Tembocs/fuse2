@@ -28,7 +28,7 @@ fn full_suite_fixtures_are_classified_for_output_error_and_warning() {
         }
     }
 
-    assert_eq!(output, 22, "unexpected number of full output fixtures");
+    assert_eq!(output, 23, "unexpected number of full output fixtures");
     assert_eq!(error, 5, "unexpected number of full error fixtures");
     assert_eq!(warning, 0, "unexpected number of full warning fixtures");
 }
