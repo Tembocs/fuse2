@@ -305,10 +305,18 @@ impl Checker {
     ) {
         match stmt {
             hir::Statement::VarDecl(var_decl) => {
-                let ty = var_decl
-                    .type_name
-                    .clone()
-                    .or_else(|| self.infer_expr_type(module, &var_decl.value, scope, owner_name));
+                let inferred = self.infer_expr_type(module, &var_decl.value, scope, owner_name);
+                let ty = var_decl.type_name.clone().or(inferred.clone());
+                if let (Some(declared), Some(actual)) = (&var_decl.type_name, &inferred) {
+                    if !types::type_matches(declared, actual) {
+                        self.add_error(
+                            &display_name(&module.path),
+                            var_decl.span,
+                            format!("type mismatch: `{}` declared as `{}`, initializer has type `{}`", var_decl.name, declared, actual),
+                            None,
+                        );
+                    }
+                }
                 self.check_expr(module, &var_decl.value, scope, owner_name, loop_depth);
                 let held = self.held_rank_from_expr(scope, &var_decl.value);
                 let held_rank = held.map(|(r, _)| r);
@@ -709,6 +717,20 @@ impl Checker {
             hir::Expr::Binary(binary) => {
                 self.check_expr(module, &binary.left, scope, owner_name, loop_depth);
                 self.check_expr(module, &binary.right, scope, owner_name, loop_depth);
+                if matches!(binary.op.as_str(), "+" | "-" | "*" | "/" | "%" | "<" | ">" | "<=" | ">=") {
+                    let left_ty = self.infer_expr_type(module, &binary.left, scope, owner_name);
+                    let right_ty = self.infer_expr_type(module, &binary.right, scope, owner_name);
+                    if let (Some(lt), Some(rt)) = (&left_ty, &right_ty) {
+                        if types::is_numeric_type(lt) && types::is_numeric_type(rt) && lt != rt {
+                            self.add_error(
+                                &display_name(&module.path),
+                                binary.span,
+                                format!("mismatched numeric types in `{}`: `{}` and `{}`", binary.op, lt, rt),
+                                Some(format!("convert explicitly — no implicit coercion between numeric types")),
+                            );
+                        }
+                    }
+                }
             }
             hir::Expr::Member(member) => {
                 self.check_expr(module, &member.object, scope, owner_name, loop_depth);

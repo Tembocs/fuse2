@@ -1,0 +1,16 @@
+// EXPECTED ERROR:
+// error: mismatched numeric types in `+`: `Int` and `Float`
+//   --> sized_int_cross_arith.fuse:10:17
+
+// Arithmetic between distinct numeric types must be a type error.
+
+extern fn fuse_rt_int32_new(n: Int) -> Int32
+extern fn fuse_rt_uint8_new(n: Int) -> UInt8
+
+@entrypoint
+fn main() {
+  val x: Int = 42
+  val y: Float = 3.14
+  val z = x + y
+  println(f"{z}")
+}

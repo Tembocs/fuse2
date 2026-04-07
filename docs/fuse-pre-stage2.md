@@ -532,13 +532,13 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
 
 ---
 
-### Phase W2.7 — Sized Integer Checker
+### Phase W2.7 — Sized Integer Checker [DONE]
 
-- [ ] **W2.7.1** Register all five types in checker's built-in type set.
-- [ ] **W2.7.2** Each type distinct from `Int` and each other. No coercion.
-- [ ] **W2.7.3** Add all five to valid arithmetic/comparison types.
-- [ ] **W2.7.4** Verify `SIMD<Int32, N>` and `SIMD<Int64, N>` work.
-- [ ] **W2.7.5** Test: type errors for cross-type assignment.
+- [x] **W2.7.1** Register all five types in checker's built-in type set.
+- [x] **W2.7.2** Each type distinct from `Int` and each other. No coercion.
+- [x] **W2.7.3** Add all five to valid arithmetic/comparison types.
+- [x] **W2.7.4** Verify `SIMD<Int32, N>` and `SIMD<Int64, N>` work.
+- [x] **W2.7.5** Test: type errors for cross-type assignment.
 
 ---
 
