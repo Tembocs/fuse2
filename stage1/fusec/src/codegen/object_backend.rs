@@ -449,6 +449,10 @@ struct RuntimeFns {
     simd_broadcast: FuncId,
     simd_get: FuncId,
     simd_len: FuncId,
+    simd_extract_raw_f64: FuncId,
+    simd_extract_raw_f32: FuncId,
+    simd_extract_raw_i64: FuncId,
+    simd_extract_raw_i32: FuncId,
     data_new: FuncId,
     data_set_field: FuncId,
     data_get_field: FuncId,
@@ -1315,6 +1319,10 @@ fn declare_runtime_functions(
         simd_broadcast: declare(module, "fuse_simd_runtime_broadcast", &[pointer_type, types::I64], &[pointer_type])?,
         simd_get: declare(module, "fuse_simd_runtime_get", &[pointer_type, pointer_type], &[pointer_type])?,
         simd_len: declare(module, "fuse_simd_runtime_len", &[pointer_type], &[pointer_type])?,
+        simd_extract_raw_f64: declare(module, "fuse_simd_extract_raw_f64", &[pointer_type], &[types::F64])?,
+        simd_extract_raw_f32: declare(module, "fuse_simd_extract_raw_f32", &[pointer_type], &[types::F32])?,
+        simd_extract_raw_i64: declare(module, "fuse_simd_extract_raw_i64", &[pointer_type], &[types::I64])?,
+        simd_extract_raw_i32: declare(module, "fuse_simd_extract_raw_i32", &[pointer_type], &[types::I32])?,
         data_new: declare(module, "fuse_data_new", &[pointer_type, pointer_type, pointer_type, pointer_type], &[pointer_type])?,
         data_set_field: declare(module, "fuse_data_set_field", &[pointer_type, pointer_type, pointer_type], &[])?,
         data_get_field: declare(module, "fuse_data_get_field", &[pointer_type, pointer_type], &[pointer_type])?,
@@ -2299,16 +2307,34 @@ impl<'a, 'b> LoweringState<'a, 'b> {
     ) -> Result<TypedValue, String> {
         let left = self.compile_expr(builder, &binary.left)?;
         let left_truthy = self.truthy_value(builder, left.value);
+
+        // Snapshot all live local variables so we can thread their SSA values
+        // explicitly through the merge block.  This prevents Cranelift's
+        // automatic SSA resolution from picking up stale values when
+        // and/or appears inside loops with mutref writebacks.
+        let live_vars: Vec<(String, Variable)> = self
+            .locals
+            .iter()
+            .map(|(name, binding)| (name.clone(), binding.var))
+            .collect();
+
         let rhs_block = builder.create_block();
         let fallback_block = builder.create_block();
         let done = builder.create_block();
+        // Block param 0: the boolean result.
         builder.append_block_param(done, self.compiler.pointer_type);
+        // Block params 1..N: each live local variable.
+        for _ in &live_vars {
+            builder.append_block_param(done, self.compiler.pointer_type);
+        }
+
         match binary.op.as_str() {
             "and" => builder.ins().brif(left_truthy, rhs_block, &[], fallback_block, &[]),
             "or" => builder.ins().brif(left_truthy, fallback_block, &[], rhs_block, &[]),
             _ => unreachable!(),
         };
 
+        // --- rhs_block: evaluate right operand ---
         builder.switch_to_block(rhs_block);
         let right = self.compile_expr(builder, &binary.right)?;
         let right_truthy = self.truthy_value(builder, right.value);
@@ -2318,8 +2344,13 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             &[right_truthy],
             self.compiler.pointer_type,
         );
-        self.jump_value(builder, done, right_bool);
+        let mut rhs_args: Vec<BlockArg> = vec![BlockArg::Value(right_bool)];
+        for (_, var) in &live_vars {
+            rhs_args.push(BlockArg::Value(builder.use_var(*var)));
+        }
+        builder.ins().jump(done, &rhs_args);
 
+        // --- fallback_block: produce constant boolean ---
         builder.switch_to_block(fallback_block);
         let raw = builder
             .ins()
@@ -2330,11 +2361,22 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             &[raw],
             self.compiler.pointer_type,
         );
-        self.jump_value(builder, done, fallback);
+        let mut fallback_args: Vec<BlockArg> = vec![BlockArg::Value(fallback)];
+        for (_, var) in &live_vars {
+            fallback_args.push(BlockArg::Value(builder.use_var(*var)));
+        }
+        builder.ins().jump(done, &fallback_args);
 
+        // --- done: merge block — rebind all live variables from block params ---
         builder.switch_to_block(done);
+        let done_params = builder.block_params(done).to_vec();
+        for (i, (name, _)) in live_vars.iter().enumerate() {
+            if let Some(binding) = self.locals.get(name) {
+                builder.def_var(binding.var, done_params[1 + i]);
+            }
+        }
         Ok(TypedValue {
-            value: builder.block_params(done)[0],
+            value: done_params[0],
             ty: Some("Bool".to_string()),
         })
     }
@@ -2346,10 +2388,22 @@ impl<'a, 'b> LoweringState<'a, 'b> {
     ) -> Result<TypedValue, String> {
         let left = self.compile_expr(builder, &binary.left)?;
         let some = self.runtime_value(builder, self.compiler.runtime.option_is_some, &[left.value], types::I8);
+
+        // Snapshot live locals for explicit SSA threading (same fix as
+        // compile_short_circuit — prevents stale values at merge point).
+        let live_vars: Vec<(String, Variable)> = self
+            .locals
+            .iter()
+            .map(|(name, binding)| (name.clone(), binding.var))
+            .collect();
+
         let then_block = builder.create_block();
         let else_block = builder.create_block();
         let done = builder.create_block();
         builder.append_block_param(done, self.compiler.pointer_type);
+        for _ in &live_vars {
+            builder.append_block_param(done, self.compiler.pointer_type);
+        }
         let cond = builder.ins().icmp_imm(IntCC::NotEqual, some, 0);
         builder.ins().brif(cond, then_block, &[], else_block, &[]);
 
@@ -2360,17 +2414,31 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             &[left.value],
             self.compiler.pointer_type,
         );
-        self.jump_value(builder, done, inner);
+        let mut then_args: Vec<BlockArg> = vec![BlockArg::Value(inner)];
+        for (_, var) in &live_vars {
+            then_args.push(BlockArg::Value(builder.use_var(*var)));
+        }
+        builder.ins().jump(done, &then_args);
 
         builder.switch_to_block(else_block);
         let right = self.compile_expr(builder, &binary.right)?;
         let right_value = right.value;
         let right_ty = right.ty.clone();
-        self.jump_value(builder, done, right_value);
+        let mut else_args: Vec<BlockArg> = vec![BlockArg::Value(right_value)];
+        for (_, var) in &live_vars {
+            else_args.push(BlockArg::Value(builder.use_var(*var)));
+        }
+        builder.ins().jump(done, &else_args);
 
         builder.switch_to_block(done);
+        let done_params = builder.block_params(done).to_vec();
+        for (i, (name, _)) in live_vars.iter().enumerate() {
+            if let Some(binding) = self.locals.get(name) {
+                builder.def_var(binding.var, done_params[1 + i]);
+            }
+        }
         Ok(TypedValue {
-            value: builder.block_params(done)[0],
+            value: done_params[0],
             ty: left
                 .ty
                 .as_deref()
@@ -2632,6 +2700,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 validate_simd_lanes(lane_count)?;
                 let scalar_type = if simd_type.starts_with("Float") { "Float" } else { "Int" };
                 let list_type = format!("List<{scalar_type}>");
+                let native = cranelift_simd_type(&simd_type, lane_count);
                 match method {
                     // Constructors: one list arg → list result
                     "fromList" => {
@@ -2643,22 +2712,64 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     "broadcast" => {
                         let value = self.compile_expr(builder, _args.first()
                             .ok_or_else(|| "SIMD.broadcast requires one argument".to_string())?)?;
-                        let lanes = builder.ins().iconst(types::I64, lane_count as i64);
-                        Ok(TypedValue {
-                            value: self.runtime(builder, self.compiler.runtime.simd_broadcast,
-                                &[value.value, lanes], self.compiler.pointer_type),
-                            ty: Some(list_type),
-                        })
+                        if let Some(vec_ty) = native {
+                            let lane_ty = simd_lane_type(vec_ty);
+                            let extract_fn = match lane_ty {
+                                types::F64 => self.compiler.runtime.simd_extract_raw_f64,
+                                types::F32 => self.compiler.runtime.simd_extract_raw_f32,
+                                types::I64 => self.compiler.runtime.simd_extract_raw_i64,
+                                types::I32 => self.compiler.runtime.simd_extract_raw_i32,
+                                _ => unreachable!(),
+                            };
+                            let scalar = self.runtime_value(builder, extract_fn, &[value.value], lane_ty);
+                            let vec = builder.ins().splat(vec_ty, scalar);
+                            let packed = self.simd_pack_to_list(builder, vec, vec_ty);
+                            Ok(TypedValue { value: packed, ty: Some(list_type) })
+                        } else {
+                            let lanes = builder.ins().iconst(types::I64, lane_count as i64);
+                            Ok(TypedValue {
+                                value: self.runtime(builder, self.compiler.runtime.simd_broadcast,
+                                    &[value.value, lanes], self.compiler.pointer_type),
+                                ty: Some(list_type),
+                            })
+                        }
                     }
                     // Reductions: one list arg → scalar result
                     "sum" => {
                         let list = self.compile_expr(builder, _args.first()
                             .ok_or_else(|| "SIMD.sum requires one argument".to_string())?)?;
-                        Ok(TypedValue {
-                            value: self.runtime(builder, self.compiler.runtime.simd_sum,
-                                &[list.value], self.compiler.pointer_type),
-                            ty: Some(scalar_type.to_string()),
-                        })
+                        if let Some(vec_ty) = native {
+                            let (native_block, fallback_block, done) =
+                                self.simd_length_guard(builder, list.value, lane_count);
+
+                            builder.switch_to_block(native_block);
+                            let v = self.simd_unpack_list(builder, list.value, vec_ty);
+                            let lane_ty = simd_lane_type(vec_ty);
+                            let is_float = simd_is_float(vec_ty);
+                            let count = simd_lane_count(vec_ty);
+                            let mut acc = builder.ins().extractlane(v, 0u8);
+                            for i in 1..count {
+                                let lane = builder.ins().extractlane(v, i);
+                                acc = if is_float { builder.ins().fadd(acc, lane) }
+                                      else { builder.ins().iadd(acc, lane) };
+                            }
+                            let boxed = self.simd_box_scalar(builder, acc, lane_ty);
+                            builder.ins().jump(done, &[BlockArg::Value(boxed)]);
+
+                            builder.switch_to_block(fallback_block);
+                            let rt = self.runtime(builder, self.compiler.runtime.simd_sum,
+                                &[list.value], self.compiler.pointer_type);
+                            builder.ins().jump(done, &[BlockArg::Value(rt)]);
+
+                            builder.switch_to_block(done);
+                            Ok(TypedValue { value: builder.block_params(done)[0], ty: Some(scalar_type.to_string()) })
+                        } else {
+                            Ok(TypedValue {
+                                value: self.runtime(builder, self.compiler.runtime.simd_sum,
+                                    &[list.value], self.compiler.pointer_type),
+                                ty: Some(scalar_type.to_string()),
+                            })
+                        }
                     }
                     // Two-list reductions: two list args → scalar result
                     "dot" => {
@@ -2666,11 +2777,41 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                             .ok_or_else(|| "SIMD.dot requires two arguments".to_string())?)?;
                         let b = self.compile_expr(builder, _args.get(1)
                             .ok_or_else(|| "SIMD.dot requires two arguments".to_string())?)?;
-                        Ok(TypedValue {
-                            value: self.runtime(builder, self.compiler.runtime.simd_dot,
-                                &[a.value, b.value], self.compiler.pointer_type),
-                            ty: Some(scalar_type.to_string()),
-                        })
+                        if let Some(vec_ty) = native {
+                            let (native_block, fallback_block, done) =
+                                self.simd_length_guard(builder, a.value, lane_count);
+
+                            builder.switch_to_block(native_block);
+                            let va = self.simd_unpack_list(builder, a.value, vec_ty);
+                            let vb = self.simd_unpack_list(builder, b.value, vec_ty);
+                            let is_float = simd_is_float(vec_ty);
+                            let product = if is_float { builder.ins().fmul(va, vb) }
+                                          else { builder.ins().imul(va, vb) };
+                            let lane_ty = simd_lane_type(vec_ty);
+                            let count = simd_lane_count(vec_ty);
+                            let mut acc = builder.ins().extractlane(product, 0u8);
+                            for i in 1..count {
+                                let lane = builder.ins().extractlane(product, i);
+                                acc = if is_float { builder.ins().fadd(acc, lane) }
+                                      else { builder.ins().iadd(acc, lane) };
+                            }
+                            let boxed = self.simd_box_scalar(builder, acc, lane_ty);
+                            builder.ins().jump(done, &[BlockArg::Value(boxed)]);
+
+                            builder.switch_to_block(fallback_block);
+                            let rt = self.runtime(builder, self.compiler.runtime.simd_dot,
+                                &[a.value, b.value], self.compiler.pointer_type);
+                            builder.ins().jump(done, &[BlockArg::Value(rt)]);
+
+                            builder.switch_to_block(done);
+                            Ok(TypedValue { value: builder.block_params(done)[0], ty: Some(scalar_type.to_string()) })
+                        } else {
+                            Ok(TypedValue {
+                                value: self.runtime(builder, self.compiler.runtime.simd_dot,
+                                    &[a.value, b.value], self.compiler.pointer_type),
+                                ty: Some(scalar_type.to_string()),
+                            })
+                        }
                     }
                     // Elementwise binary: two list args → list result
                     "add" | "sub" | "mul" | "div" | "min" | "max" => {
@@ -2678,7 +2819,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                             .ok_or_else(|| format!("SIMD.{method} requires two arguments"))?)?;
                         let b = self.compile_expr(builder, _args.get(1)
                             .ok_or_else(|| format!("SIMD.{method} requires two arguments"))?)?;
-                        let func = match method {
+                        let runtime_func = match method {
                             "add" => self.compiler.runtime.simd_add,
                             "sub" => self.compiler.runtime.simd_sub,
                             "mul" => self.compiler.runtime.simd_mul,
@@ -2687,30 +2828,121 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                             "max" => self.compiler.runtime.simd_max,
                             _ => unreachable!(),
                         };
-                        Ok(TypedValue {
-                            value: self.runtime(builder, func,
-                                &[a.value, b.value], self.compiler.pointer_type),
-                            ty: Some(list_type),
-                        })
+                        if let Some(vec_ty) = native {
+                            let is_float = simd_is_float(vec_ty);
+                            // Integer div has no vector instruction; always use runtime.
+                            if method == "div" && !is_float {
+                                return Ok(TypedValue {
+                                    value: self.runtime(builder, runtime_func,
+                                        &[a.value, b.value], self.compiler.pointer_type),
+                                    ty: Some(list_type),
+                                });
+                            }
+                            let (native_block, fallback_block, done) =
+                                self.simd_length_guard(builder, a.value, lane_count);
+
+                            builder.switch_to_block(native_block);
+                            let va = self.simd_unpack_list(builder, a.value, vec_ty);
+                            let vb = self.simd_unpack_list(builder, b.value, vec_ty);
+                            let result_vec = match (method, is_float) {
+                                ("add", true) => builder.ins().fadd(va, vb),
+                                ("add", false) => builder.ins().iadd(va, vb),
+                                ("sub", true) => builder.ins().fsub(va, vb),
+                                ("sub", false) => builder.ins().isub(va, vb),
+                                ("mul", true) => builder.ins().fmul(va, vb),
+                                ("mul", false) => builder.ins().imul(va, vb),
+                                ("div", true) => builder.ins().fdiv(va, vb),
+                                ("min", true) => builder.ins().fmin(va, vb),
+                                ("min", false) => builder.ins().smin(va, vb),
+                                ("max", true) => builder.ins().fmax(va, vb),
+                                ("max", false) => builder.ins().smax(va, vb),
+                                _ => unreachable!(),
+                            };
+                            let packed = self.simd_pack_to_list(builder, result_vec, vec_ty);
+                            builder.ins().jump(done, &[BlockArg::Value(packed)]);
+
+                            builder.switch_to_block(fallback_block);
+                            let rt = self.runtime(builder, runtime_func,
+                                &[a.value, b.value], self.compiler.pointer_type);
+                            builder.ins().jump(done, &[BlockArg::Value(rt)]);
+
+                            builder.switch_to_block(done);
+                            Ok(TypedValue { value: builder.block_params(done)[0], ty: Some(list_type) })
+                        } else {
+                            Ok(TypedValue {
+                                value: self.runtime(builder, runtime_func,
+                                    &[a.value, b.value], self.compiler.pointer_type),
+                                ty: Some(list_type),
+                            })
+                        }
                     }
                     // Unary list → list
                     "abs" => {
                         let list = self.compile_expr(builder, _args.first()
                             .ok_or_else(|| "SIMD.abs requires one argument".to_string())?)?;
-                        Ok(TypedValue {
-                            value: self.runtime(builder, self.compiler.runtime.simd_abs,
-                                &[list.value], self.compiler.pointer_type),
-                            ty: Some(list_type),
-                        })
+                        if let Some(vec_ty) = native {
+                            let (native_block, fallback_block, done) =
+                                self.simd_length_guard(builder, list.value, lane_count);
+
+                            builder.switch_to_block(native_block);
+                            let v = self.simd_unpack_list(builder, list.value, vec_ty);
+                            let result_vec = if simd_is_float(vec_ty) {
+                                builder.ins().fabs(v)
+                            } else {
+                                builder.ins().iabs(v)
+                            };
+                            let packed = self.simd_pack_to_list(builder, result_vec, vec_ty);
+                            builder.ins().jump(done, &[BlockArg::Value(packed)]);
+
+                            builder.switch_to_block(fallback_block);
+                            let rt = self.runtime(builder, self.compiler.runtime.simd_abs,
+                                &[list.value], self.compiler.pointer_type);
+                            builder.ins().jump(done, &[BlockArg::Value(rt)]);
+
+                            builder.switch_to_block(done);
+                            Ok(TypedValue { value: builder.block_params(done)[0], ty: Some(list_type) })
+                        } else {
+                            Ok(TypedValue {
+                                value: self.runtime(builder, self.compiler.runtime.simd_abs,
+                                    &[list.value], self.compiler.pointer_type),
+                                ty: Some(list_type),
+                            })
+                        }
                     }
                     "sqrt" => {
                         let list = self.compile_expr(builder, _args.first()
                             .ok_or_else(|| "SIMD.sqrt requires one argument".to_string())?)?;
-                        Ok(TypedValue {
-                            value: self.runtime(builder, self.compiler.runtime.simd_sqrt,
-                                &[list.value], self.compiler.pointer_type),
-                            ty: Some(list_type),
-                        })
+                        if let Some(vec_ty) = native {
+                            let (native_block, fallback_block, done) =
+                                self.simd_length_guard(builder, list.value, lane_count);
+
+                            builder.switch_to_block(native_block);
+                            // sqrt always produces float results
+                            let float_vec_ty = if simd_is_float(vec_ty) { vec_ty }
+                                else { match vec_ty {
+                                    types::I32X4 => types::F32X4,
+                                    types::I64X2 => types::F64X2,
+                                    _ => unreachable!(),
+                                }};
+                            let v = self.simd_unpack_list(builder, list.value, float_vec_ty);
+                            let result_vec = builder.ins().sqrt(v);
+                            let packed = self.simd_pack_to_list(builder, result_vec, float_vec_ty);
+                            builder.ins().jump(done, &[BlockArg::Value(packed)]);
+
+                            builder.switch_to_block(fallback_block);
+                            let rt = self.runtime(builder, self.compiler.runtime.simd_sqrt,
+                                &[list.value], self.compiler.pointer_type);
+                            builder.ins().jump(done, &[BlockArg::Value(rt)]);
+
+                            builder.switch_to_block(done);
+                            Ok(TypedValue { value: builder.block_params(done)[0], ty: Some("List<Float>".to_string()) })
+                        } else {
+                            Ok(TypedValue {
+                                value: self.runtime(builder, self.compiler.runtime.simd_sqrt,
+                                    &[list.value], self.compiler.pointer_type),
+                                ty: Some(list_type),
+                            })
+                        }
                     }
                     // toList: identity (SIMD vectors are already lists)
                     "toList" => {
@@ -2732,13 +2964,20 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     }
                     // len(list) → Int
                     "len" => {
-                        let list = self.compile_expr(builder, _args.first()
-                            .ok_or_else(|| "SIMD.len requires one argument".to_string())?)?;
-                        Ok(TypedValue {
-                            value: self.runtime(builder, self.compiler.runtime.simd_len,
-                                &[list.value], self.compiler.pointer_type),
-                            ty: Some("Int".to_string()),
-                        })
+                        if native.is_some() {
+                            let val = builder.ins().iconst(types::I64, lane_count as i64);
+                            let boxed = self.runtime(builder, self.compiler.runtime.int,
+                                &[val], self.compiler.pointer_type);
+                            Ok(TypedValue { value: boxed, ty: Some("Int".to_string()) })
+                        } else {
+                            let list = self.compile_expr(builder, _args.first()
+                                .ok_or_else(|| "SIMD.len requires one argument".to_string())?)?;
+                            Ok(TypedValue {
+                                value: self.runtime(builder, self.compiler.runtime.simd_len,
+                                    &[list.value], self.compiler.pointer_type),
+                                ty: Some("Int".to_string()),
+                            })
+                        }
                     }
                     _ => Err(format!("unsupported SIMD method `{method}`")),
                 }
@@ -4180,6 +4419,129 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         builder.ins().icmp_imm(IntCC::NotEqual, truthy, 0)
     }
 
+    /// Box a raw scalar lane value into a FuseHandle, widening if needed.
+    fn simd_box_scalar(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        scalar: Value,
+        lane_ty: cranelift_codegen::ir::Type,
+    ) -> Value {
+        match lane_ty {
+            types::F64 => self.runtime(builder, self.compiler.runtime.float,
+                &[scalar], self.compiler.pointer_type),
+            types::F32 => {
+                let wide = builder.ins().fpromote(types::F64, scalar);
+                self.runtime(builder, self.compiler.runtime.float,
+                    &[wide], self.compiler.pointer_type)
+            }
+            types::I64 => self.runtime(builder, self.compiler.runtime.int,
+                &[scalar], self.compiler.pointer_type),
+            types::I32 => {
+                let wide = builder.ins().sextend(types::I64, scalar);
+                self.runtime(builder, self.compiler.runtime.int,
+                    &[wide], self.compiler.pointer_type)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// Emit a runtime length check on a list.  Returns `(native_block,
+    /// fallback_block, done_block)`.  The caller must emit instructions in
+    /// `native_block`, jump to `done` with one `pointer_type` block-arg,
+    /// then do the same in `fallback_block`.  After both jumps, switch to
+    /// `done` and read `block_params(done)[0]` for the merged result.
+    fn simd_length_guard(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        list: Value,
+        lane_count: u64,
+    ) -> (cranelift_codegen::ir::Block, cranelift_codegen::ir::Block, cranelift_codegen::ir::Block) {
+        let len = self.runtime_value(
+            builder, self.compiler.runtime.list_len, &[list], types::I64,
+        );
+        let expected = builder.ins().iconst(types::I64, lane_count as i64);
+        let len_ok = builder.ins().icmp(IntCC::Equal, len, expected);
+        let native_block = builder.create_block();
+        let fallback_block = builder.create_block();
+        let done = builder.create_block();
+        builder.append_block_param(done, self.compiler.pointer_type);
+        builder.ins().brif(len_ok, native_block, &[], fallback_block, &[]);
+        (native_block, fallback_block, done)
+    }
+
+    /// Unpack a FuseHandle list into a Cranelift vector register.
+    /// Emits N `fuse_list_get` + `fuse_simd_extract_raw_*` calls, then
+    /// builds the vector via `scalar_to_vector` + `insertlane`.
+    fn simd_unpack_list(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        list_handle: Value,
+        vec_ty: cranelift_codegen::ir::Type,
+    ) -> Value {
+        let lane_ty = simd_lane_type(vec_ty);
+        let count = simd_lane_count(vec_ty);
+        let extract_fn = match lane_ty {
+            types::F64 => self.compiler.runtime.simd_extract_raw_f64,
+            types::F32 => self.compiler.runtime.simd_extract_raw_f32,
+            types::I64 => self.compiler.runtime.simd_extract_raw_i64,
+            types::I32 => self.compiler.runtime.simd_extract_raw_i32,
+            _ => unreachable!(),
+        };
+
+        // Extract lane 0 and seed the vector via scalar_to_vector.
+        let idx0 = builder.ins().iconst(types::I64, 0);
+        let item0 = self.runtime(builder, self.compiler.runtime.list_get,
+            &[list_handle, idx0], self.compiler.pointer_type);
+        let scalar0 = self.runtime_value(builder, extract_fn, &[item0], lane_ty);
+        let mut vec = builder.ins().scalar_to_vector(vec_ty, scalar0);
+
+        // Insert remaining lanes.
+        for i in 1..count {
+            let idx = builder.ins().iconst(types::I64, i as i64);
+            let item = self.runtime(builder, self.compiler.runtime.list_get,
+                &[list_handle, idx], self.compiler.pointer_type);
+            let scalar = self.runtime_value(builder, extract_fn, &[item], lane_ty);
+            vec = builder.ins().insertlane(vec, scalar, i);
+        }
+        vec
+    }
+
+    /// Pack a Cranelift vector register back into a FuseHandle list.
+    /// Emits N `extractlane` + boxing calls + `fuse_list_push`.
+    fn simd_pack_to_list(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        vec: Value,
+        vec_ty: cranelift_codegen::ir::Type,
+    ) -> Value {
+        let lane_ty = simd_lane_type(vec_ty);
+        let count = simd_lane_count(vec_ty);
+        let result = self.runtime_nullary(builder, self.compiler.runtime.list_new);
+        for i in 0..count {
+            let scalar = builder.ins().extractlane(vec, i);
+            // Widen to the boxing type and box.
+            let boxed = match lane_ty {
+                types::F64 => self.runtime(builder, self.compiler.runtime.float,
+                    &[scalar], self.compiler.pointer_type),
+                types::F32 => {
+                    let wide = builder.ins().fpromote(types::F64, scalar);
+                    self.runtime(builder, self.compiler.runtime.float,
+                        &[wide], self.compiler.pointer_type)
+                }
+                types::I64 => self.runtime(builder, self.compiler.runtime.int,
+                    &[scalar], self.compiler.pointer_type),
+                types::I32 => {
+                    let wide = builder.ins().sextend(types::I64, scalar);
+                    self.runtime(builder, self.compiler.runtime.int,
+                        &[wide], self.compiler.pointer_type)
+                }
+                _ => unreachable!(),
+            };
+            self.runtime_void(builder, self.compiler.runtime.list_push, &[result, boxed]);
+        }
+        result
+    }
+
     fn current_block_is_terminated(&self, builder: &FunctionBuilder) -> bool {
         let Some(block) = builder.current_block() else {
             return true;
@@ -4622,6 +4984,44 @@ fn validate_simd_lanes(n: u64) -> Result<(), String> {
             "unsupported SIMD lane count `{n}` — must be a power of 2 in {{2, 4, 8, 16}}"
         ))
     }
+}
+
+/// Map a Fuse SIMD element type + lane count to a Cranelift vector type.
+/// Returns `None` for combinations that have no native Cranelift vector type
+/// (e.g. 8 or 16 lanes on 128-bit ISAs), in which case the runtime fallback is used.
+fn cranelift_simd_type(element_type: &str, lanes: u64) -> Option<cranelift_codegen::ir::Type> {
+    match (element_type, lanes) {
+        ("Float32", 4) => Some(types::F32X4),
+        ("Float64" | "Float", 2) => Some(types::F64X2),
+        ("Int32", 4) => Some(types::I32X4),
+        ("Int64" | "Int", 2) => Some(types::I64X2),
+        _ => None,
+    }
+}
+
+/// Return the scalar lane type for a Cranelift vector type.
+fn simd_lane_type(vec_ty: cranelift_codegen::ir::Type) -> cranelift_codegen::ir::Type {
+    match vec_ty {
+        types::F32X4 => types::F32,
+        types::F64X2 => types::F64,
+        types::I32X4 => types::I32,
+        types::I64X2 => types::I64,
+        _ => unreachable!("unsupported vector type"),
+    }
+}
+
+/// Return the number of lanes in a Cranelift vector type.
+fn simd_lane_count(vec_ty: cranelift_codegen::ir::Type) -> u8 {
+    match vec_ty {
+        types::F32X4 | types::I32X4 => 4,
+        types::F64X2 | types::I64X2 => 2,
+        _ => unreachable!("unsupported vector type"),
+    }
+}
+
+/// Return true if the vector type has floating-point lanes.
+fn simd_is_float(vec_ty: cranelift_codegen::ir::Type) -> bool {
+    matches!(vec_ty, types::F32X4 | types::F64X2)
 }
 
 /// Find the closing `}` for an f-string interpolation, accounting for nested

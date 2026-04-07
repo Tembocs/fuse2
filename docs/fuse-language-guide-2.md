@@ -1340,12 +1340,13 @@ println(f"average: {avg}")
 - `SIMD<T, N>` where `T` is the element type and `N` is the lane count.
 - Supported types: `Float32`, `Float64`, `Int32`, `Int64`.
 - Lane counts must be powers of 2: 2, 4, 8, 16.
-- SIMD operations are mapped to platform intrinsics via Cranelift.
-- Fallback scalar implementation when hardware SIMD is unavailable.
+- For native-width combinations (I32x4, I64x2, F32x4, F64x2), the compiler emits inline Cranelift vector instructions (scalar_to_vector, insertlane, extractlane, fadd/iadd/fmul/etc.).
+- Other combinations fall back to scalar runtime loops with identical semantics.
+- A runtime list-length guard ensures that if the input list does not have exactly N elements, the operation falls back to the scalar runtime for correctness.
 
 ### Edge cases
 
-- If the input list length is not a multiple of the lane count, the trailing elements are processed with the scalar fallback.
+- If the input list length does not match the lane count, the scalar runtime processes all elements (or returns 0 for empty lists). The native SIMD path is only used when the list has exactly N elements.
 - `SIMD<T, N>` with an unsupported lane count (e.g., 3, 5) is a compile error.
 - `SIMD<String, 4>` is a compile error — only numeric primitive types are supported.
 - On platforms without SIMD hardware support, all operations silently fall back to scalar loops with no API change required.

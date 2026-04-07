@@ -1,0 +1,25 @@
+// EXPECTED OUTPUT:
+// result: true
+// iterations: 5
+
+data class State(var count: Int)
+
+fn tick(mutref s: State) {
+  s.count = s.count + 1
+}
+
+@entrypoint
+fn main() {
+  var s = State(0)
+  var result = false
+  while s.count < 5 {
+    tick(mutref s)
+    val at_three = s.count == 3
+    val at_five = s.count == 5
+    if at_three or at_five {
+      result = true
+    }
+  }
+  println(f"result: {result}")
+  println(f"iterations: {s.count}")
+}

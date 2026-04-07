@@ -810,6 +810,32 @@ pub unsafe extern "C" fn fuse_simd_len(list: FuseHandle) -> FuseHandle {
     }
 }
 
+// --- SIMD raw extraction helpers (used by inline Cranelift vector codegen) ---
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_simd_extract_raw_f64(h: FuseHandle) -> f64 {
+    if h.is_null() { return 0.0; }
+    unsafe { simd_extract_f64(h) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_simd_extract_raw_f32(h: FuseHandle) -> f32 {
+    if h.is_null() { return 0.0; }
+    unsafe { simd_extract_f64(h) as f32 }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_simd_extract_raw_i64(h: FuseHandle) -> i64 {
+    if h.is_null() { return 0; }
+    unsafe { simd_extract_i64(h) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_simd_extract_raw_i32(h: FuseHandle) -> i32 {
+    if h.is_null() { return 0; }
+    unsafe { simd_extract_i64(h) as i32 }
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_chan_new() -> FuseHandle {
     FuseValue::new(ValueKind::Channel(ChannelValue {

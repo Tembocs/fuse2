@@ -1,0 +1,25 @@
+// EXPECTED OUTPUT:
+// found: true
+// count: 10
+
+data class Counter(var value: Int)
+
+fn increment(mutref c: Counter) {
+  c.value = c.value + 1
+}
+
+@entrypoint
+fn main() {
+  var c = Counter(0)
+  var found = false
+  while c.value < 10 {
+    increment(mutref c)
+    val is_even = c.value % 2 == 0
+    val above_five = c.value > 5
+    if is_even and above_five {
+      found = true
+    }
+  }
+  println(f"found: {found}")
+  println(f"count: {c.value}")
+}

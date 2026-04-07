@@ -448,7 +448,7 @@ The following issues were discovered during the self-hosting attempt and must be
 
 **mutref_cells writeback timing.** The `mutref_cells` map, which tracks which Cranelift variables back `mutref` parameters, must be populated *before* the function body is compiled. If writeback entries are set after body compilation, the codegen emits stores to variables that do not yet exist. The fix is: allocate the writeback cell and insert into `mutref_cells` during function prologue generation, before `compile_block` is called on the body.
 
-**and/or short-circuit SSA corruption.** The short-circuit lowering of `and` and `or` expressions creates SSA merge blocks. In large functions with loops and `mutref` writebacks, the merge block can inherit stale SSA values from the wrong predecessor. This manifests as incorrect boolean results or crashes in programs with complex control flow. Until a full fix is in place, document the limitation and test with programs that combine `and`/`or` with loops and `mutref` parameters.
+**and/or short-circuit SSA corruption (fixed).** The short-circuit lowering of `and` and `or` expressions previously created SSA merge blocks without threading live mutable variables through as explicit block parameters. In large functions with loops and `mutref` writebacks, the merge block could inherit stale SSA values from the wrong predecessor. Fixed by explicitly passing all live SSA variables as block params to the merge block from both predecessors, then rebinding them after the merge. The same fix was applied to the elvis (`?:`) operator. Regression tests: `and_or_loop_mutref.fuse`, `or_loop_mutref.fuse`.
 
 **UTF-8 string API (resolved).** The runtime provides a dual API: `len()` returns byte length (O(1)), `charCount()` returns character count (O(n)), `charAt(i)` uses character indexing (O(n), safe for multi-byte), `byteAt(i)` returns byte at byte offset (O(1)). All stdlib modules use `charCount()`/`charAt()` for character iteration. `byteAt()` is available for performance-critical byte-level access (e.g., Stage 2 lexer).
 
@@ -590,7 +590,7 @@ The first self-hosting attempt revealed hard constraints on how the compiler mus
 
 **Use modules to split across files.** A monolithic single-file compiler is unmaintainable and exceeds the practical limits of what the Stage 1 compiler can handle in a single compilation unit. Split the compiler into modules using `import` and `pub`.
 
-**Avoid `and`/`or` in functions that combine loops with `mutref` parameters.** The SSA corruption bug in short-circuit lowering (see Phase 7 known pitfalls) means that `and`/`or` expressions inside functions containing both loops and `mutref` writebacks can produce incorrect code. Use nested `if`/`else` instead until the SSA bug is fixed.
+**~~Avoid `and`/`or` in functions that combine loops with `mutref` parameters.~~** This limitation has been resolved. The SSA corruption bug in short-circuit lowering was fixed by explicitly threading all live SSA variables through the merge block as block parameters.
 
 **Set stack size to 8MB.** The linker invocation for the self-hosted compiler binary must request 8MB of stack. The compiler compiling itself is a deep workload.
 

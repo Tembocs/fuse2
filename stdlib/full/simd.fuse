@@ -4,9 +4,11 @@
 // T must be Float32, Float64, Int32, Int64 (or aliases Int, Float).
 // N must be a power of 2 in {2, 4, 8, 16}.
 //
-// Stage 1 uses scalar fallback (no hardware SIMD). The public API is
-// designed so that Cranelift SIMD intrinsics can be layered underneath
-// without changing call sites.
+// Stage 1 emits native Cranelift vector instructions for supported
+// type+lane combinations (I32x4, I64x2, F32x4, F64x2).  Other
+// combinations fall back to scalar runtime loops.  A runtime length
+// guard ensures correctness when the list size does not match the
+// declared lane count.
 //
 // At runtime, SIMD vectors are represented as List<T>. All operations
 // accept and return lists. Type and lane validation happen at compile
