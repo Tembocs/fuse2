@@ -1226,8 +1226,18 @@ fn build_wrapper(_input: &Path, output: &Path, object: &[u8]) -> Result<(), Stri
     let src_dir = workdir.join("src");
     fs::create_dir_all(&src_dir)
         .map_err(|error| format!("failed to create wrapper directory: {error}"))?;
-    let object_name = if cfg!(windows) { "program.obj" } else { "program.o" };
-    let object_path = workdir.join(object_name);
+    // Use a unique object file name derived from the output path so that
+    // consecutive compilations each reference a different file in build.rs.
+    // This guarantees Cargo's rerun-if-changed check sees a content change
+    // in build.rs and always re-links — preventing stale-binary bugs when
+    // multiple fixtures compile in rapid succession (same-second mtime).
+    let obj_ext = if cfg!(windows) { "obj" } else { "o" };
+    let obj_stem = output
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("program");
+    let object_name = format!("{obj_stem}.{obj_ext}");
+    let object_path = workdir.join(&object_name);
     fs::write(&object_path, object)
         .map_err(|error| format!("failed to write object file: {error}"))?;
     let runtime_path = escape_path(&stage1_root.join("fuse-runtime"));
