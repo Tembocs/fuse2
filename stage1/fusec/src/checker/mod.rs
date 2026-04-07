@@ -10,6 +10,7 @@ use crate::common::resolve_import_path;
 use crate::error::{Diagnostic, Span};
 use crate::hir::{lower_program, Module};
 use crate::parser::parse_source;
+use crate::Target;
 
 #[derive(Clone, Debug)]
 struct BindingInfo {
@@ -58,7 +59,13 @@ pub struct Checker {
     diagnostics: Vec<Diagnostic>,
     current_file: PathBuf,
     warn_unused: bool,
+    target: Target,
 }
+
+/// Modules unavailable when compiling to `--target wasi`.
+static WASI_UNAVAILABLE_MODULES: &[&str] = &[
+    "io", "net", "http", "http_server", "process", "os", "env", "sys", "time", "timer", "path",
+];
 
 impl Checker {
     pub fn new() -> Self {
@@ -67,6 +74,7 @@ impl Checker {
             diagnostics: Vec::new(),
             current_file: PathBuf::from("<unknown>"),
             warn_unused: false,
+            target: Target::Native,
         }
     }
 
@@ -368,6 +376,20 @@ impl Checker {
     }
 
     fn check_import(&mut self, module: &ModuleInfo, import: &hir::ImportDecl) {
+        // Validate module availability for the current target.
+        if self.target == Target::Wasi {
+            let mod_name = import.module_path.rsplit('.').next().unwrap_or(&import.module_path);
+            if WASI_UNAVAILABLE_MODULES.contains(&mod_name) {
+                self.add_error(
+                    &display_name(&module.path),
+                    import.span,
+                    format!("module `{}` is not available on target `wasi`", import.module_path),
+                    Some(format!("the `{mod_name}` module requires OS features not supported by WASI")),
+                );
+                return;
+            }
+        }
+
         let Some(target_path) = resolve_import_path(&module.path, &import.module_path) else {
             self.add_error(
                 &display_name(&module.path),
@@ -1598,12 +1620,13 @@ impl Checker {
 }
 
 pub fn check_file(path: &Path) -> Vec<Diagnostic> {
-    check_file_with_options(path, false)
+    check_file_with_options(path, false, Target::Native)
 }
 
-pub fn check_file_with_options(path: &Path, warn_unused: bool) -> Vec<Diagnostic> {
+pub fn check_file_with_options(path: &Path, warn_unused: bool, target: Target) -> Vec<Diagnostic> {
     let mut checker = Checker::new();
     checker.warn_unused = warn_unused;
+    checker.target = target;
     checker.check_path(path)
 }
 

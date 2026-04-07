@@ -353,7 +353,11 @@ EXAMPLES:
 fn run_check(args: &Args) -> ExitCode {
     let path = args.file.as_ref().expect("file validated in parse_args");
     let source = fs::read_to_string(path).ok();
-    let diagnostics = fusec::check_path_with_options(path, args.warn_unused);
+    let target = match args.target {
+        Target::Native => fusec::Target::Native,
+        Target::Wasi => fusec::Target::Wasi,
+    };
+    let diagnostics = fusec::check_path_with_target(path, args.warn_unused, target);
 
     let has_errors = diagnostics.iter().any(|d| d.is_error());
     let has_warnings = diagnostics.iter().any(|d| d.is_warning());
@@ -381,7 +385,11 @@ fn run_compile(args: &Args) -> ExitCode {
     let output_path = args.output.as_ref().expect("output validated in parse_args");
 
     let source = fs::read_to_string(path).ok();
-    let diagnostics = fusec::check_path_with_options(path, args.warn_unused);
+    let target = match args.target {
+        Target::Native => fusec::Target::Native,
+        Target::Wasi => fusec::Target::Wasi,
+    };
+    let diagnostics = fusec::check_path_with_target(path, args.warn_unused, target);
     if !diagnostics.is_empty() {
         let rendered = render_diagnostics(&diagnostics, source.as_deref(), args);
         eprintln!("{rendered}");
