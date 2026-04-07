@@ -28,6 +28,7 @@
 1.16 FFI
 1.17 Concurrency (Fuse Full)
 1.18 SIMD (Fuse Full)
+1.19 Interfaces (Fuse Full)
 
 ### Part 2: Architecture
 2.1-2.7
@@ -95,7 +96,7 @@ Fuse is divided into two tiers. **Fuse Core** is the minimal subset sufficient t
 
 - `spawn`, `Chan<T>`, `Shared<T>`, `@rank`
 - `SIMD<T,N>`
-- `interface`/`trait` polymorphism
+- `interface`, `implements`, generic bounds (`<T: Interface>`), default methods
 
 **Rule:** Implement Core first. A working Core interpreter validates the language design before concurrency complexity is introduced.
 
@@ -1035,6 +1036,7 @@ struct Stack<T> {
 - Type parameters are written in angle brackets: `<T>`, `<T, E>`, `<A, B>`.
 - Generic types are monomorphized at compile time (no runtime cost).
 - The compiler infers type arguments where possible.
+- Type parameters can be constrained with interface bounds: `<T: Printable>`. See §1.19 Interfaces.
 
 ### Edge cases
 
@@ -1347,6 +1349,141 @@ println(f"average: {avg}")
 - `SIMD<T, N>` with an unsupported lane count (e.g., 3, 5) is a compile error.
 - `SIMD<String, 4>` is a compile error — only numeric primitive types are supported.
 - On platforms without SIMD hardware support, all operations silently fall back to scalar loops with no API change required.
+
+---
+
+## 1.19 Interfaces (Fuse Full)
+
+Interfaces define a contract — a set of method signatures that a type must implement. They enable polymorphism through static dispatch: the compiler verifies conformance at compile time. There are no vtables, no runtime cost, and no type erasure.
+
+```fuse
+interface Printable {
+  fn toString(ref self) -> String
+}
+
+data class Point(val x: Int, val y: Int) implements Printable
+
+fn Point.toString(ref self) -> String {
+  f"({self.x}, {self.y})"
+}
+```
+
+### Declaration
+
+An interface declares method signatures inside braces. Interfaces can have type parameters and can extend parent interfaces.
+
+```fuse
+// basic interface
+interface Printable {
+  fn toString(ref self) -> String
+}
+
+// generic interface
+interface Convertible<T> {
+  fn convert(ref self) -> T
+}
+
+// marker interface (no methods)
+interface Sendable {
+}
+```
+
+### Conformance
+
+Types declare conformance with the `implements` keyword. All required methods must be implemented as extension methods with matching signatures.
+
+```fuse
+data class Point(val x: Int, val y: Int) implements Printable
+
+fn Point.toString(ref self) -> String {
+  f"({self.x}, {self.y})"
+}
+
+// enums can implement interfaces
+enum Color implements Printable {
+  Red, Green, Blue
+}
+
+fn Color.toString(ref self) -> String {
+  "a color"
+}
+
+// multiple interfaces
+data class Widget(val id: Int) implements Printable, Sendable
+```
+
+### Default Methods
+
+Extension methods defined on the interface name provide default implementations. Types that don't override them inherit the default.
+
+```fuse
+interface Printable {
+  fn toString(ref self) -> String
+}
+
+// default method — types get this for free
+fn Printable.debugPrint(ref self) -> String {
+  f"[debug] {self.toString()}"
+}
+
+data class Widget(val name: String) implements Printable
+
+fn Widget.toString(ref self) -> String {
+  self.name
+}
+
+// Widget.debugPrint() uses the default — returns "[debug] Widget"
+// To override: define fn Widget.debugPrint(ref self) -> String { ... }
+```
+
+### Generic Bounds
+
+Type parameters can be constrained with interface bounds using `T: Interface`. The compiler verifies at the call site that the concrete type implements the required interface.
+
+```fuse
+fn printItem<T: Printable>(item: T) {
+  println(item.toString())
+}
+
+val p = Point(1, 2)
+printItem(p)  // ok — Point implements Printable
+```
+
+### Interface Composition
+
+Interfaces can extend other interfaces with `: Parent`. A type implementing a child interface must satisfy all methods from the entire parent chain.
+
+```fuse
+interface Printable {
+  fn toString(ref self) -> String
+}
+
+interface Debuggable : Printable {
+  fn debugString(ref self) -> String
+}
+
+// Item must implement both toString and debugString
+data class Item(val id: Int) implements Debuggable
+
+fn Item.toString(ref self) -> String { f"Item({self.id})" }
+fn Item.debugString(ref self) -> String { f"debug:Item({self.id})" }
+```
+
+### Rules
+
+- Interface methods must be satisfied by extension methods with explicit `self`. Free functions cannot satisfy interface methods.
+- The ownership convention must match exactly: `ref self` in the interface requires `ref self` in the implementation.
+- Marker interfaces (empty method list) are always satisfied — useful for future `Send`/`Sync` equivalents.
+- `interface` and `implements` are reserved keywords.
+- Static dispatch only — no vtables, no `dyn Interface` (deferred to post-Stage 2).
+- Default methods can call other interface methods on `self`.
+- A type's own extension method takes priority over a default — no duplicate error.
+
+### Edge cases
+
+- Calling an interface method through a generic bound (`<T: Printable>`) requires monomorphization at the codegen level. Stage 1 supports this for concrete dispatch; full generic dispatch is a post-Stage 2 feature.
+- Diamond inheritance (A extends B and C, both extend D) collects methods transitively. If the same method appears in multiple parents, one implementation satisfies all.
+- Runtime interface checks (`is Printable`) are deferred — they require RTTI which is not available in Stage 1.
 
 ---
 

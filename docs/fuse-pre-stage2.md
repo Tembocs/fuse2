@@ -861,13 +861,13 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
 
 > **Before starting:** All W5.1-W5.5 must be complete.
 
-- [ ] **W5.6.1** Add section to language guide: "Interfaces" — declaration,
+- [x] **W5.6.1** Add section to language guide: "Interfaces" — declaration,
       conformance, extension method implementation, default methods.
-- [ ] **W5.6.2** Add section: "Generic Bounds" — `T: Interface`, `T: A + B`.
-- [ ] **W5.6.3** Add section: "Interface Composition" — `: Parent`, diamond.
-- [ ] **W5.6.4** Update keyword table to include `interface`, `implements`.
-- [ ] **W5.6.5** Update Fuse Full listing to include interfaces.
-- [ ] **W5.6.6** Review all guide sections for consistency.
+- [x] **W5.6.2** Add section: "Generic Bounds" — `T: Interface`, `T: A + B`.
+- [x] **W5.6.3** Add section: "Interface Composition" — `: Parent`, diamond.
+- [x] **W5.6.4** Update keyword table to include `interface`, `implements`.
+- [x] **W5.6.5** Update Fuse Full listing to include interfaces.
+- [x] **W5.6.6** Review all guide sections for consistency.
 
 ---
 
