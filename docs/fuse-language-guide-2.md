@@ -40,7 +40,7 @@
 4.1-4.5
 
 ### Part 5: Design Decisions (ADRs)
-5.1-5.11
+5.1-5.13
 
 ---
 
@@ -1470,6 +1470,53 @@ fn Item.toString(ref self) -> String { f"Item({self.id})" }
 fn Item.debugString(ref self) -> String { f"debug:Item({self.id})" }
 ```
 
+### Stdlib Interfaces
+
+The following interfaces are defined in `stdlib/core/` and form the foundation for generic programming. When a `data class` or `@value struct` declares `implements`, the compiler auto-generates the required methods from field metadata. Users can always implement manually or override auto-generated methods. See `docs/adr/ADR-013-compile-time-reflection.md` for full details.
+
+```fuse
+interface Equatable {
+    fn eq(ref self, ref other: Self) -> Bool
+}
+// Default: fn Equatable.ne(ref self, ref other: Self) -> Bool { !self.eq(other) }
+
+interface Hashable : Equatable {
+    fn hash(ref self) -> Int
+}
+
+interface Comparable : Equatable {
+    fn compareTo(ref self, ref other: Self) -> Int
+}
+// Defaults: lt, gt, le, ge derived from compareTo
+
+interface Debuggable : Printable {
+    fn debugString(ref self) -> String
+}
+
+// Available via stdlib/ext or stdlib/full:
+interface Serializable {
+    fn toJSON(ref self) -> String
+}
+
+interface Encodable {
+    fn encode(ref self, mutref encoder: Encoder)
+}
+
+interface Decodable {
+    // static: fn Type.decode(mutref decoder: Decoder) -> Result<Type, Error>
+}
+```
+
+Auto-generation example:
+
+```fuse
+data class Key(name: String, id: Int) implements Hashable
+// Compiler generates eq() and hash() from fields — no decorator, no manual code.
+
+fn lookup<K: Hashable, V>(ref map: Map<K, V>, ref key: K) -> Option<V> { ... }
+lookup(myMap, Key("alice", 1))  // works — Key implements Hashable
+```
+
 ### Rules
 
 - Interface methods must be satisfied by extension methods with explicit `self`. Free functions cannot satisfy interface methods.
@@ -1479,6 +1526,8 @@ fn Item.debugString(ref self) -> String { f"debug:Item({self.id})" }
 - Static dispatch only — no vtables, no `dyn Interface` (deferred to post-Stage 2).
 - Default methods can call other interface methods on `self`.
 - A type's own extension method takes priority over a default — no duplicate error.
+- For `data class` and `@value struct`, `implements` triggers automatic method generation from field metadata. For plain `struct` without `@value`, the user must write the methods manually.
+- Auto-generated methods can be overridden by writing the method explicitly — the manual version takes precedence.
 
 ### Edge cases
 
@@ -2001,6 +2050,26 @@ Decision: Foreign functions use `extern fn`, not annotations.
 Rationale: `extern` is universally understood across C, Rust, Go, C#.
 
 Rejected: `@foreign` (implies body exists), `native fn` (ambiguous), `#[link]` (Rust-specific).
+
+## 5.12 ADR-013: Compile-time reflection — interfaces for behavior, decorators for directives
+
+Decision: No runtime reflection. Fuse uses two complementary mechanisms: **interfaces** define behavioral contracts (`Equatable`, `Hashable`, `Comparable`, `Serializable`, etc.) and the compiler auto-generates conforming methods from field metadata when a type says `implements`. **Decorators** (`@value`, `@entrypoint`, `@export`, `@test`, `@inline`, `@builder`, etc.) are compiler directives only — they do not define behavioral contracts. No type metadata is emitted in the binary.
+
+Rationale: `implements` is the single signal for behavioral codegen — no redundant decorator needed. The compiler already knows field names, types, and offsets at compile time. Auto-generation applies to `data class` and `@value struct`; plain structs implement manually. Users can always override auto-generated methods.
+
+Rejected: Runtime reflection (`@reflect`) — forces boxing; behavioral decorators (`@equatable`, `@hashable`) — redundant with `implements`; proc macros — toolchain complexity; structural typing — Fuse is nominal.
+
+See `docs/adr/ADR-013-compile-time-reflection.md` for the full decision, stdlib interface catalog, auto-generation rules, and implementation phases.
+
+## 5.13 ADR-014: Threading model
+
+Decision: Three-phase threading model. **Stage 1: single-threaded** — no real locks, no thread spawning; all concurrency safety is compile-time (`@rank`, ownership). **Stage 2: OS threads** — `spawn` creates real threads, `Shared<T>` gains `RwLock`, `Chan<T>` gains synchronization. **Post-Stage 2: green threads** — transparent swap to M:N scheduling behind the same `spawn` API.
+
+Rationale: Single-threaded Stage 1 is sufficient to validate concurrency design at compile time without runtime complexity. OS threads are simple, correct, and proven for Stage 2. Green threads are a performance optimization deferred until profiling data justifies them. The FFI surface (`fuse_shared_read`, `fuse_chan_send`, etc.) stays stable across all phases — no ABI breaks.
+
+Rejected: Async/await (function coloring), immediate OS threading in Stage 1 (`FuseHandle` is not thread-safe), green threads in Stage 2 (premature), actor model (channels are more flexible).
+
+See `docs/adr/ADR-014-threading-model.md` for the full decision, FFI stability contract, and deferred features (`select`, `SpawnHandle<T>`).
 
 ---
 
