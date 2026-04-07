@@ -1,0 +1,23 @@
+// EXPECTED OUTPUT:
+// from: 5000000000
+// min: 100
+// max: 5000000000
+// isZero: false
+// toInt: 5000000000
+// toString: 5000000000
+// MIN: 0
+
+import stdlib.core.uint64
+
+@entrypoint
+fn main() {
+  val a = UInt64.from(5000000000)
+  val b = UInt64.from(100)
+  println(f"from: {a}")
+  println(f"min: {a.min(b)}")
+  println(f"max: {a.max(b)}")
+  println(f"isZero: {a.isZero()}")
+  println(f"toInt: {a.toInt()}")
+  println(f"toString: {a.toString()}")
+  println(f"MIN: {UInt64.MIN()}")
+}

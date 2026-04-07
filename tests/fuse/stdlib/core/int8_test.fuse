@@ -1,0 +1,33 @@
+// EXPECTED OUTPUT:
+// from: -42
+// abs: 42
+// min: -42
+// max: 10
+// clamp: -10
+// isPositive: false
+// isNegative: true
+// isZero: false
+// toInt: -42
+// toString: -42
+// MIN: -128
+// MAX: 127
+
+import stdlib.core.int8
+
+@entrypoint
+fn main() {
+  val a = Int8.from(-42)
+  val b = Int8.from(10)
+  println(f"from: {a}")
+  println(f"abs: {a.abs()}")
+  println(f"min: {a.min(b)}")
+  println(f"max: {a.max(b)}")
+  println(f"clamp: {a.clamp(Int8.from(-10), Int8.from(10))}")
+  println(f"isPositive: {a.isPositive()}")
+  println(f"isNegative: {a.isNegative()}")
+  println(f"isZero: {a.isZero()}")
+  println(f"toInt: {a.toInt()}")
+  println(f"toString: {a.toString()}")
+  println(f"MIN: {Int8.MIN()}")
+  println(f"MAX: {Int8.MAX()}")
+}

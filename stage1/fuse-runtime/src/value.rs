@@ -1389,6 +1389,60 @@ pub unsafe extern "C" fn fuse_rt_u64_box(handle: FuseHandle) -> FuseHandle {
     FuseValue::new(ValueKind::UInt64(extract_u64(handle)))
 }
 
+// ---- Conversion functions: sized integers ↔ Int and between sizes ----
+
+// toInt: sized → Int (always lossless for all five types within i64 range)
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i8_to_int(handle: FuseHandle) -> FuseHandle {
+    fuse_int(extract_i8(handle) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_to_int(handle: FuseHandle) -> FuseHandle {
+    fuse_int(extract_u8(handle) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i32_to_int(handle: FuseHandle) -> FuseHandle {
+    fuse_int(extract_i32(handle) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u32_to_int(handle: FuseHandle) -> FuseHandle {
+    fuse_int(extract_u32(handle) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u64_to_int(handle: FuseHandle) -> FuseHandle {
+    fuse_int(extract_u64(handle) as i64)
+}
+
+// Widening: Int8 → Int32
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i8_to_i32(handle: FuseHandle) -> FuseHandle {
+    FuseValue::new(ValueKind::Int32(extract_i8(handle) as i32))
+}
+// Widening: UInt8 → Int32, UInt32, UInt64
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_to_i32(handle: FuseHandle) -> FuseHandle {
+    FuseValue::new(ValueKind::Int32(extract_u8(handle) as i32))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_to_u32(handle: FuseHandle) -> FuseHandle {
+    FuseValue::new(ValueKind::UInt32(extract_u8(handle) as u32))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_to_u64(handle: FuseHandle) -> FuseHandle {
+    FuseValue::new(ValueKind::UInt64(extract_u8(handle) as u64))
+}
+// Widening: Int32 → UInt64 (when non-negative, handled by caller)
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i32_to_u64(handle: FuseHandle) -> FuseHandle {
+    FuseValue::new(ValueKind::UInt64(extract_i32(handle) as u64))
+}
+// Widening: UInt32 → UInt64
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u32_to_u64(handle: FuseHandle) -> FuseHandle {
+    FuseValue::new(ValueKind::UInt64(extract_u32(handle) as u64))
+}
+
 // ---- Int8 ----
 
 #[unsafe(no_mangle)]

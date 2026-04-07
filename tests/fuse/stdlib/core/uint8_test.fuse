@@ -1,0 +1,27 @@
+// EXPECTED OUTPUT:
+// from: 200
+// min: 100
+// max: 200
+// clamp: 100
+// isZero: false
+// toInt: 200
+// toString: 200
+// MIN: 0
+// MAX: 255
+
+import stdlib.core.uint8
+
+@entrypoint
+fn main() {
+  val a = UInt8.from(200)
+  val b = UInt8.from(100)
+  println(f"from: {a}")
+  println(f"min: {a.min(b)}")
+  println(f"max: {a.max(b)}")
+  println(f"clamp: {a.clamp(UInt8.from(0), UInt8.from(100))}")
+  println(f"isZero: {a.isZero()}")
+  println(f"toInt: {a.toInt()}")
+  println(f"toString: {a.toString()}")
+  println(f"MIN: {UInt8.MIN()}")
+  println(f"MAX: {UInt8.MAX()}")
+}

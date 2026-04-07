@@ -1,0 +1,31 @@
+// EXPECTED OUTPUT:
+// from: -1000
+// abs: 1000
+// min: -1000
+// max: 500
+// isPositive: false
+// isNegative: true
+// isZero: false
+// toInt: -1000
+// toString: -1000
+// MIN: -2147483648
+// MAX: 2147483647
+
+import stdlib.core.int32
+
+@entrypoint
+fn main() {
+  val a = Int32.from(-1000)
+  val b = Int32.from(500)
+  println(f"from: {a}")
+  println(f"abs: {a.abs()}")
+  println(f"min: {a.min(b)}")
+  println(f"max: {a.max(b)}")
+  println(f"isPositive: {a.isPositive()}")
+  println(f"isNegative: {a.isNegative()}")
+  println(f"isZero: {a.isZero()}")
+  println(f"toInt: {a.toInt()}")
+  println(f"toString: {a.toString()}")
+  println(f"MIN: {Int32.MIN()}")
+  println(f"MAX: {Int32.MAX()}")
+}

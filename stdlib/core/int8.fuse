@@ -1,0 +1,58 @@
+// Fuse Core stdlib — Int8 extension methods.
+//
+// The Int8 type is a signed 8-bit integer (-128 to 127).
+// Arithmetic wraps on overflow (two's complement).
+// No implicit coercion to or from Int — all conversions are explicit.
+//
+// import stdlib.core.int8
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_i8_box(value: Int) -> Int8
+extern fn fuse_rt_i8_to_int(value: Int8) -> Int
+extern fn fuse_rt_i8_to_string(value: Int8) -> String
+extern fn fuse_rt_i8_to_i32(value: Int8) -> Int32
+
+// --- Conversion: constructors ---
+
+// Create an Int8 from an Int. Narrows to 8 bits.
+pub fn Int8.from(value: Int) -> Int8 {
+  fuse_rt_i8_box(value)
+}
+
+// --- Utility ---
+
+pub fn Int8.abs(ref self) -> Int8 {
+  if self < Int8.from(0) { Int8.from(0) - self } else { self }
+}
+
+pub fn Int8.min(ref self, other: Int8) -> Int8 {
+  if self < other { self } else { other }
+}
+
+pub fn Int8.max(ref self, other: Int8) -> Int8 {
+  if self > other { self } else { other }
+}
+
+pub fn Int8.clamp(ref self, low: Int8, high: Int8) -> Int8 {
+  if self < low { low }
+  else if self > high { high }
+  else { self }
+}
+
+// --- Predicates ---
+
+pub fn Int8.isPositive(ref self) -> Bool { self > Int8.from(0) }
+pub fn Int8.isNegative(ref self) -> Bool { self < Int8.from(0) }
+pub fn Int8.isZero(ref self) -> Bool { self == Int8.from(0) }
+
+// --- Constants (as functions — cross-module val not yet supported) ---
+
+pub fn Int8.MIN() -> Int8 { Int8.from(-128) }
+pub fn Int8.MAX() -> Int8 { Int8.from(127) }
+
+// --- Conversion: output ---
+
+pub fn Int8.toInt(ref self) -> Int { fuse_rt_i8_to_int(self) }
+pub fn Int8.toInt32(ref self) -> Int32 { fuse_rt_i8_to_i32(self) }
+pub fn Int8.toString(ref self) -> String { fuse_rt_i8_to_string(self) }

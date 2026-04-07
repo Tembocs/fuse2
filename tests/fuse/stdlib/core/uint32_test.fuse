@@ -1,0 +1,25 @@
+// EXPECTED OUTPUT:
+// from: 3000000000
+// min: 1000
+// max: 3000000000
+// isZero: false
+// toInt: 3000000000
+// toString: 3000000000
+// MIN: 0
+// MAX: 4294967295
+
+import stdlib.core.uint32
+
+@entrypoint
+fn main() {
+  val a = UInt32.from(3000000000)
+  val b = UInt32.from(1000)
+  println(f"from: {a}")
+  println(f"min: {a.min(b)}")
+  println(f"max: {a.max(b)}")
+  println(f"isZero: {a.isZero()}")
+  println(f"toInt: {a.toInt()}")
+  println(f"toString: {a.toString()}")
+  println(f"MIN: {UInt32.MIN()}")
+  println(f"MAX: {UInt32.MAX()}")
+}

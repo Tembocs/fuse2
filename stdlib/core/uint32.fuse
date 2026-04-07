@@ -1,0 +1,52 @@
+// Fuse Core stdlib — UInt32 extension methods.
+//
+// The UInt32 type is an unsigned 32-bit integer (0 to 4,294,967,295).
+// Arithmetic wraps on overflow.
+// No implicit coercion to or from Int — all conversions are explicit.
+//
+// import stdlib.core.uint32
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_u32_box(value: Int) -> UInt32
+extern fn fuse_rt_u32_to_int(value: UInt32) -> Int
+extern fn fuse_rt_u32_to_string(value: UInt32) -> String
+extern fn fuse_rt_u32_to_u64(value: UInt32) -> UInt64
+
+// --- Conversion: constructors ---
+
+// Create a UInt32 from an Int. Narrows to 32 bits unsigned.
+pub fn UInt32.from(value: Int) -> UInt32 {
+  fuse_rt_u32_box(value)
+}
+
+// --- Utility ---
+
+pub fn UInt32.min(ref self, other: UInt32) -> UInt32 {
+  if self < other { self } else { other }
+}
+
+pub fn UInt32.max(ref self, other: UInt32) -> UInt32 {
+  if self > other { self } else { other }
+}
+
+pub fn UInt32.clamp(ref self, low: UInt32, high: UInt32) -> UInt32 {
+  if self < low { low }
+  else if self > high { high }
+  else { self }
+}
+
+// --- Predicates ---
+
+pub fn UInt32.isZero(ref self) -> Bool { self == UInt32.from(0) }
+
+// --- Constants ---
+
+pub fn UInt32.MIN() -> UInt32 { UInt32.from(0) }
+pub fn UInt32.MAX() -> UInt32 { UInt32.from(4294967295) }
+
+// --- Conversion: output ---
+
+pub fn UInt32.toInt(ref self) -> Int { fuse_rt_u32_to_int(self) }
+pub fn UInt32.toUInt64(ref self) -> UInt64 { fuse_rt_u32_to_u64(self) }
+pub fn UInt32.toString(ref self) -> String { fuse_rt_u32_to_string(self) }

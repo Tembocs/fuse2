@@ -555,16 +555,16 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
 
 ---
 
-### Phase W2.9 — Sized Integer Stdlib
+### Phase W2.9 — Sized Integer Stdlib [DONE]
 
-- [ ] **W2.9.1** Create `stdlib/core/int8.fuse` (from, toInt, toString, MIN, MAX).
-- [ ] **W2.9.2** Create `stdlib/core/uint8.fuse`.
-- [ ] **W2.9.3** Create `stdlib/core/int32.fuse`.
-- [ ] **W2.9.4** Create `stdlib/core/uint32.fuse`.
-- [ ] **W2.9.5** Create `stdlib/core/uint64.fuse`.
-- [ ] **W2.9.6** Add safe widening conversions between types.
-- [ ] **W2.9.7** Test files for all five types.
-- [ ] **W2.9.8** Full test suite green.
+- [x] **W2.9.1** Create `stdlib/core/int8.fuse` (from, toInt, toString, MIN, MAX).
+- [x] **W2.9.2** Create `stdlib/core/uint8.fuse`.
+- [x] **W2.9.3** Create `stdlib/core/int32.fuse`.
+- [x] **W2.9.4** Create `stdlib/core/uint32.fuse`.
+- [x] **W2.9.5** Create `stdlib/core/uint64.fuse`.
+- [x] **W2.9.6** Add safe widening conversions between types.
+- [x] **W2.9.7** Test files for all five types.
+- [x] **W2.9.8** Full test suite green.
 
 ---
 

@@ -1,0 +1,58 @@
+// Fuse Core stdlib — Int32 extension methods.
+//
+// The Int32 type is a signed 32-bit integer (-2,147,483,648 to 2,147,483,647).
+// Arithmetic wraps on overflow (two's complement).
+// No implicit coercion to or from Int — all conversions are explicit.
+//
+// import stdlib.core.int32
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_i32_box(value: Int) -> Int32
+extern fn fuse_rt_i32_to_int(value: Int32) -> Int
+extern fn fuse_rt_i32_to_string(value: Int32) -> String
+extern fn fuse_rt_i32_to_u64(value: Int32) -> UInt64
+
+// --- Conversion: constructors ---
+
+// Create an Int32 from an Int. Narrows to 32 bits.
+pub fn Int32.from(value: Int) -> Int32 {
+  fuse_rt_i32_box(value)
+}
+
+// --- Utility ---
+
+pub fn Int32.abs(ref self) -> Int32 {
+  if self < Int32.from(0) { Int32.from(0) - self } else { self }
+}
+
+pub fn Int32.min(ref self, other: Int32) -> Int32 {
+  if self < other { self } else { other }
+}
+
+pub fn Int32.max(ref self, other: Int32) -> Int32 {
+  if self > other { self } else { other }
+}
+
+pub fn Int32.clamp(ref self, low: Int32, high: Int32) -> Int32 {
+  if self < low { low }
+  else if self > high { high }
+  else { self }
+}
+
+// --- Predicates ---
+
+pub fn Int32.isPositive(ref self) -> Bool { self > Int32.from(0) }
+pub fn Int32.isNegative(ref self) -> Bool { self < Int32.from(0) }
+pub fn Int32.isZero(ref self) -> Bool { self == Int32.from(0) }
+
+// --- Constants ---
+
+pub fn Int32.MIN() -> Int32 { Int32.from(-2147483648) }
+pub fn Int32.MAX() -> Int32 { Int32.from(2147483647) }
+
+// --- Conversion: output ---
+
+pub fn Int32.toInt(ref self) -> Int { fuse_rt_i32_to_int(self) }
+pub fn Int32.toUInt64(ref self) -> UInt64 { fuse_rt_i32_to_u64(self) }
+pub fn Int32.toString(ref self) -> String { fuse_rt_i32_to_string(self) }

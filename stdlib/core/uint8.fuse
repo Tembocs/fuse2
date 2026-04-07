@@ -1,0 +1,56 @@
+// Fuse Core stdlib — UInt8 extension methods.
+//
+// The UInt8 type is an unsigned 8-bit integer (0 to 255).
+// Arithmetic wraps on overflow.
+// No implicit coercion to or from Int — all conversions are explicit.
+//
+// import stdlib.core.uint8
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_u8_box(value: Int) -> UInt8
+extern fn fuse_rt_u8_to_int(value: UInt8) -> Int
+extern fn fuse_rt_u8_to_string(value: UInt8) -> String
+extern fn fuse_rt_u8_to_i32(value: UInt8) -> Int32
+extern fn fuse_rt_u8_to_u32(value: UInt8) -> UInt32
+extern fn fuse_rt_u8_to_u64(value: UInt8) -> UInt64
+
+// --- Conversion: constructors ---
+
+// Create a UInt8 from an Int. Narrows to 8 bits unsigned.
+pub fn UInt8.from(value: Int) -> UInt8 {
+  fuse_rt_u8_box(value)
+}
+
+// --- Utility ---
+
+pub fn UInt8.min(ref self, other: UInt8) -> UInt8 {
+  if self < other { self } else { other }
+}
+
+pub fn UInt8.max(ref self, other: UInt8) -> UInt8 {
+  if self > other { self } else { other }
+}
+
+pub fn UInt8.clamp(ref self, low: UInt8, high: UInt8) -> UInt8 {
+  if self < low { low }
+  else if self > high { high }
+  else { self }
+}
+
+// --- Predicates ---
+
+pub fn UInt8.isZero(ref self) -> Bool { self == UInt8.from(0) }
+
+// --- Constants ---
+
+pub fn UInt8.MIN() -> UInt8 { UInt8.from(0) }
+pub fn UInt8.MAX() -> UInt8 { UInt8.from(255) }
+
+// --- Conversion: output ---
+
+pub fn UInt8.toInt(ref self) -> Int { fuse_rt_u8_to_int(self) }
+pub fn UInt8.toInt32(ref self) -> Int32 { fuse_rt_u8_to_i32(self) }
+pub fn UInt8.toUInt32(ref self) -> UInt32 { fuse_rt_u8_to_u32(self) }
+pub fn UInt8.toUInt64(ref self) -> UInt64 { fuse_rt_u8_to_u64(self) }
+pub fn UInt8.toString(ref self) -> String { fuse_rt_u8_to_string(self) }
