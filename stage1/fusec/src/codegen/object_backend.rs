@@ -1521,10 +1521,11 @@ fn build_wrapper(_input: &Path, output: &Path, object: &[u8]) -> Result<(), Stri
     fs::write(&object_path, object)
         .map_err(|error| format!("failed to write object file: {error}"))?;
     let runtime_path = escape_path(&stage1_root.join("fuse-runtime"));
+    let cranelift_ffi_path = escape_path(&stage1_root.join("cranelift-ffi"));
     fs::write(
         workdir.join("Cargo.toml"),
         format!(
-            "[package]\nname = \"fuse_generated_wrapper\"\nversion = \"0.1.0\"\nedition = \"2024\"\nbuild = \"build.rs\"\n\n[workspace]\n\n[dependencies]\nfuse-runtime = {{ path = \"{runtime_path}\" }}\n"
+            "[package]\nname = \"fuse_generated_wrapper\"\nversion = \"0.1.0\"\nedition = \"2024\"\nbuild = \"build.rs\"\n\n[workspace]\n\n[dependencies]\nfuse-runtime = {{ path = \"{runtime_path}\" }}\ncranelift-ffi = {{ path = \"{cranelift_ffi_path}\" }}\n"
         ),
     )
     .map_err(|error| format!("failed to write wrapper Cargo.toml: {error}"))?;
@@ -1538,7 +1539,7 @@ fn build_wrapper(_input: &Path, output: &Path, object: &[u8]) -> Result<(), Stri
     .map_err(|error| format!("failed to write wrapper build.rs: {error}"))?;
     fs::write(
         src_dir.join("main.rs"),
-        "use fuse_runtime as _;\n\nunsafe extern \"C\" {\n    fn fuse_user_entry() -> i32;\n}\n\nfn main() {\n    std::process::exit(unsafe { fuse_user_entry() });\n}\n",
+        "use fuse_runtime as _;\nuse cranelift_ffi as _;\n\nunsafe extern \"C\" {\n    fn fuse_user_entry() -> i32;\n}\n\nfn main() {\n    std::process::exit(unsafe { fuse_user_entry() });\n}\n",
     )
     .map_err(|error| format!("failed to write wrapper main.rs: {error}"))?;
     let target_dir = stage1_root.join("target").join("generated-target");

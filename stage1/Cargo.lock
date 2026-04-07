@@ -208,7 +208,7 @@ dependencies = [
  "rustc-hash",
  "serde",
  "smallvec",
- "target-lexicon",
+ "target-lexicon 0.13.5",
  "wasmtime-internal-core",
 ]
 
@@ -254,9 +254,12 @@ name = "cranelift-ffi"
 version = "0.1.0"
 dependencies = [
  "cranelift-codegen",
+ "cranelift-frontend",
  "cranelift-module",
  "cranelift-native",
  "cranelift-object",
+ "fuse-runtime",
+ "target-lexicon 0.12.16",
 ]
 
 [[package]]
@@ -268,7 +271,7 @@ dependencies = [
  "cranelift-codegen",
  "log",
  "smallvec",
- "target-lexicon",
+ "target-lexicon 0.13.5",
 ]
 
 [[package]]
@@ -292,7 +295,7 @@ dependencies = [
  "libc",
  "log",
  "region",
- "target-lexicon",
+ "target-lexicon 0.13.5",
  "wasmtime-internal-jit-icache-coherence",
  "windows-sys 0.61.2",
 ]
@@ -316,7 +319,7 @@ checksum = "dc9598f02540e382e1772416eba18e93c5275b746adbbf06ac1f3cf149415270"
 dependencies = [
  "cranelift-codegen",
  "libc",
- "target-lexicon",
+ "target-lexicon 0.13.5",
 ]
 
 [[package]]
@@ -331,7 +334,7 @@ dependencies = [
  "cranelift-module",
  "log",
  "object",
- "target-lexicon",
+ "target-lexicon 0.13.5",
 ]
 
 [[package]]
@@ -1026,6 +1029,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "target-lexicon"
+version = "0.12.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 
 [[package]]
 name = "target-lexicon"

@@ -1,0 +1,27 @@
+// EXPECTED OUTPUT:
+// version: 2
+// pointer_bytes: 8
+// module created and freed
+
+extern fn cranelift_ffi_version() -> Int
+extern fn cranelift_ffi_module_new() -> Ptr
+extern fn cranelift_ffi_module_free(module: Ptr) -> Unit
+extern fn cranelift_ffi_module_target_pointer_type(module: Ptr) -> Int
+extern fn cranelift_ffi_context_new() -> Ptr
+extern fn cranelift_ffi_context_free(ctx: Ptr) -> Unit
+
+@entrypoint
+fn main() {
+  val version = cranelift_ffi_version()
+  println(f"version: {version}")
+
+  val module = cranelift_ffi_module_new()
+  val ptr_bytes = cranelift_ffi_module_target_pointer_type(module)
+  println(f"pointer_bytes: {ptr_bytes}")
+
+  val ctx = cranelift_ffi_context_new()
+  cranelift_ffi_context_free(ctx)
+
+  cranelift_ffi_module_free(module)
+  println("module created and freed")
+}
