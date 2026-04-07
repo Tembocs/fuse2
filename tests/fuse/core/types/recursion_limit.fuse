@@ -1,0 +1,15 @@
+// EXPECTED OUTPUT:
+// 500
+
+// Verify deep recursion works up to reasonable depth. The evaluator
+// enforces a 1000-call limit; this test stays well under it.
+
+fn countdown(n: Int) -> Int {
+  if n <= 0 { return 0 }
+  countdown(n - 1) + 1
+}
+
+@entrypoint
+fn main() {
+  println(countdown(500))
+}

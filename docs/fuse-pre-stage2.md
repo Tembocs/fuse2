@@ -900,10 +900,10 @@ block. Stack frame is several KB. Overflows after ~5 cross-module calls.
 
 ### Phase W6.2 — Recursion Depth Limit
 
-- [ ] **W6.2.1** Add `recursion_depth: usize` to evaluator state.
-- [ ] **W6.2.2** Increment on entry, decrement on exit.
-- [ ] **W6.2.3** Error at depth 1000: `"stack overflow: recursion depth exceeded 1000"`.
-- [ ] **W6.2.4** Full test suite green.
+- [x] **W6.2.1** Add `recursion_depth: usize` to evaluator state.
+- [x] **W6.2.2** Increment on entry, decrement on exit.
+- [x] **W6.2.3** Error at depth 256: `"stack overflow: recursion depth exceeded 256"`.
+- [x] **W6.2.4** Full test suite green.
 
 ---
 

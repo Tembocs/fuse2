@@ -393,8 +393,16 @@ fn run_interpret(args: &Args) -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    let path_str = path.to_string_lossy();
-    let exit_code = fusec::evaluator::run_embedded_source(&source, &path_str);
+    let path_str = path.to_string_lossy().to_string();
+    // The tree-walking evaluator uses ~20 KB per call frame (eval_expr →
+    // eval_block → call_user_function chain). A 4 MB stack allows ~200
+    // recursive calls before the 1000-depth limit fires a clean error.
+    let builder = std::thread::Builder::new().stack_size(64 * 1024 * 1024);
+    let exit_code = builder
+        .spawn(move || fusec::evaluator::run_embedded_source(&source, &path_str))
+        .expect("failed to spawn evaluator thread")
+        .join()
+        .unwrap_or(1);
     ExitCode::from(exit_code as u8)
 }
 
@@ -520,7 +528,12 @@ fn emit_ir(path: &PathBuf, args: &Args) -> ExitCode {
 // ---------------------------------------------------------------------------
 
 fn run_repl(_args: &Args) -> ExitCode {
-    let exit_code = fusec::evaluator::run_repl();
+    let builder = std::thread::Builder::new().stack_size(64 * 1024 * 1024);
+    let exit_code = builder
+        .spawn(fusec::evaluator::run_repl)
+        .expect("failed to spawn REPL thread")
+        .join()
+        .unwrap_or(1);
     ExitCode::from(exit_code as u8)
 }
 

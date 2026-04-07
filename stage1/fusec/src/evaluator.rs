@@ -376,6 +376,7 @@ struct Evaluator {
     modules: HashMap<PathBuf, ModuleRuntime>,
     module_envs: HashMap<PathBuf, Environment>,
     stdout: Vec<String>,
+    recursion_depth: usize,
 }
 
 impl Evaluator {
@@ -386,6 +387,7 @@ impl Evaluator {
             modules: HashMap::new(),
             module_envs: HashMap::new(),
             stdout: Vec::new(),
+            recursion_depth: 0,
         }
     }
 
@@ -2147,6 +2149,28 @@ impl Evaluator {
                 return result;
             }
         }
+        self.recursion_depth += 1;
+        if self.recursion_depth > 256 {
+            self.recursion_depth -= 1;
+            return Err(runtime_error(
+                "stack overflow: recursion depth exceeded 256",
+                &display_name(module_path),
+                function.span.line,
+                function.span.column,
+            ));
+        }
+        let result = self.call_user_function_body(module_path, function, args, caller_env);
+        self.recursion_depth -= 1;
+        result
+    }
+
+    fn call_user_function_body(
+        &mut self,
+        module_path: &Path,
+        function: &fa::FunctionDecl,
+        args: Vec<Value>,
+        caller_env: Option<Environment>,
+    ) -> Result<Value, RuntimeError> {
         let module = self.load_module(module_path)?;
         let base = if let Some(ce) = caller_env {
             ce
