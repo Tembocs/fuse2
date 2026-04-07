@@ -37,21 +37,19 @@ pub fn Command.new(program: String) -> Command {
   Command(program, [], "", "", [], [])
 }
 
-pub fn Command.arg(mutref self, arg: String) -> Int {
-  // Append arg — mutref allows in-place mutation in compiled mode.
-  // In evaluator mode, mutation may not propagate; use run() directly.
+pub fn Command.arg(mutref self, arg: String) -> mutref Self {
   self.argsList = self.argsList
-  0
+  self
 }
 
-pub fn Command.cwd(mutref self, dir: String) -> Int {
+pub fn Command.cwd(mutref self, dir: String) -> mutref Self {
   self.cwdDir = dir
-  0
+  self
 }
 
-pub fn Command.stdin(mutref self, input: String) -> Int {
+pub fn Command.stdin(mutref self, input: String) -> mutref Self {
   self.stdinData = input
-  0
+  self
 }
 
 pub fn Command.run(ref self) -> Result<Output, ProcessError> {

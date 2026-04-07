@@ -618,13 +618,13 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
 
 ---
 
-### Phase W3.3 — Builder Method Chaining (*depends on W0.4*)
+### Phase W3.3 — Builder Method Chaining (*depends on W0.4*) [DONE]
 
-- [ ] **W3.3.1** `log.fuse`: update builders to return `mutref Self`.
-- [ ] **W3.3.2** `process.fuse`: update `Command` builders.
-- [ ] **W3.3.3** Remove Int/Unit return workarounds.
-- [ ] **W3.3.4** Test chained calls.
-- [ ] **W3.3.5** Full test suite green.
+- [x] **W3.3.1** `log.fuse`: update builders to return `mutref Self`.
+- [x] **W3.3.2** `process.fuse`: update `Command` builders.
+- [x] **W3.3.3** Remove Int/Unit return workarounds.
+- [x] **W3.3.4** Test chained calls.
+- [x] **W3.3.5** Full test suite green.
 
 ---
 

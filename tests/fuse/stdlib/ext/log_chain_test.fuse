@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// --- chain ---
+// chain done
+// level: 0
+// prefix: test
+
+import stdlib.ext.log
+
+@entrypoint
+fn main() {
+  println("--- chain ---")
+  var logger = Logger.new()
+  logger.withLevel(Level.Trace).withPrefix("test")
+  println("chain done")
+  println(f"level: {logger.getLevel()}")
+  println(f"prefix: {logger.getPrefix()}")
+}

@@ -64,28 +64,28 @@ pub fn Logger.getLevel(ref self) -> Int { self.level }
 // Accessor: current prefix.
 pub fn Logger.getPrefix(ref self) -> String { self.prefix }
 
-// Set the minimum log level.
-pub fn Logger.withLevel(mutref self, level: Level) -> Int {
+// Set the minimum log level. Returns self for chaining.
+pub fn Logger.withLevel(mutref self, level: Level) -> mutref Self {
   self.level = levelToInt(level)
-  0
+  self
 }
 
-// Set a prefix for all messages.
-pub fn Logger.withPrefix(mutref self, prefix: String) -> Int {
+// Set a prefix for all messages. Returns self for chaining.
+pub fn Logger.withPrefix(mutref self, prefix: String) -> mutref Self {
   self.prefix = prefix
-  0
+  self
 }
 
-// Direct output to a file (appending).
-pub fn Logger.toFile(mutref self, path: String) -> Int {
+// Direct output to a file (appending). Returns self for chaining.
+pub fn Logger.toFile(mutref self, path: String) -> mutref Self {
   self.filePath = path
-  0
+  self
 }
 
-// Direct output to stderr (default).
-pub fn Logger.toStderr(mutref self) -> Int {
+// Direct output to stderr (default). Returns self for chaining.
+pub fn Logger.toStderr(mutref self) -> mutref Self {
   self.filePath = ""
-  0
+  self
 }
 
 // --- Internal logging helper ---
