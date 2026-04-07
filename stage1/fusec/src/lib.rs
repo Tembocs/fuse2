@@ -11,7 +11,9 @@ pub mod parser;
 
 use std::path::Path;
 
-use error::Diagnostic;
+pub use error::{Diagnostic, Severity, Span};
+pub use lexer::lex;
+pub use parser::parse_source;
 
 pub fn check_path(path: &Path) -> Vec<Diagnostic> {
     checker::check_file(path)

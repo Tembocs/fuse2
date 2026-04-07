@@ -101,6 +101,18 @@ impl Diagnostic {
         self
     }
 
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn filename(&self) -> &str {
+        &self.filename
+    }
+
+    pub fn hint(&self) -> Option<&str> {
+        self.hint.as_deref()
+    }
+
     pub fn is_error(&self) -> bool {
         self.severity == Severity::Error
     }
