@@ -1,3 +1,5 @@
+mod symbols;
+
 use std::collections::HashMap;
 use std::io::{self, BufRead, Read, Write};
 use std::path::PathBuf;
@@ -58,6 +60,8 @@ struct InitializeResult {
 #[serde(rename_all = "camelCase")]
 struct ServerCapabilities {
     text_document_sync: i32,
+    hover_provider: bool,
+    definition_provider: bool,
 }
 
 #[derive(Serialize)]
@@ -225,6 +229,8 @@ impl Server {
                 let result = InitializeResult {
                     capabilities: ServerCapabilities {
                         text_document_sync: 1, // Full
+                        hover_provider: true,
+                        definition_provider: true,
                     },
                     server_info: ServerInfo {
                         name: "fuse-lsp".into(),
@@ -281,6 +287,26 @@ impl Server {
                 }
             }
 
+            // --- Hover ---
+            "textDocument/hover" => {
+                let id = msg.id.unwrap_or(Value::Null);
+                if let Some(result) = self.handle_hover(&msg.params) {
+                    send_response(out, id, result)?;
+                } else {
+                    send_response(out, id, Value::Null)?;
+                }
+            }
+
+            // --- Go to Definition ---
+            "textDocument/definition" => {
+                let id = msg.id.unwrap_or(Value::Null);
+                if let Some(result) = self.handle_definition(&msg.params) {
+                    send_response(out, id, result)?;
+                } else {
+                    send_response(out, id, Value::Null)?;
+                }
+            }
+
             _ => {
                 if let Some(id) = msg.id {
                     send_error(out, id, -32601, &format!("method not found: {method}"))?;
@@ -289,6 +315,52 @@ impl Server {
         }
 
         Ok(false)
+    }
+
+    /// Extract (uri, line, character) from a textDocument/position request.
+    fn extract_position(params: &Option<Value>) -> Option<(String, usize, usize)> {
+        let params = params.as_ref()?;
+        let uri = params.pointer("/textDocument/uri")?.as_str()?.to_string();
+        let line = params.pointer("/position/line")?.as_u64()? as usize;
+        let character = params.pointer("/position/character")?.as_u64()? as usize;
+        // LSP is 0-based; fusec Span is 1-based
+        Some((uri, line + 1, character + 1))
+    }
+
+    /// Parse the document and find the symbol at the given position.
+    fn lookup_symbol(&self, uri: &str, line: usize, col: usize) -> Option<symbols::SymbolInfo> {
+        let content = self.documents.get(uri)?;
+        let filename = uri.rsplit('/').next().unwrap_or(uri);
+        let program = fusec::parse_source(content, filename).ok()?;
+        let name = symbols::find_name_at(&program, line, col)?;
+        let syms = symbols::collect_symbols(&program);
+        // Find the best matching symbol: prefer locals/params near cursor over top-level.
+        syms.into_iter().find(|s| s.name == name)
+    }
+
+    fn handle_hover(&self, params: &Option<Value>) -> Option<Value> {
+        let (uri, line, col) = Self::extract_position(params)?;
+        let sym = self.lookup_symbol(&uri, line, col)?;
+        Some(serde_json::json!({
+            "contents": {
+                "kind": "markdown",
+                "value": format!("```fuse\n{}\n```", sym.type_info)
+            }
+        }))
+    }
+
+    fn handle_definition(&self, params: &Option<Value>) -> Option<Value> {
+        let (uri, line, col) = Self::extract_position(params)?;
+        let sym = self.lookup_symbol(&uri, line, col)?;
+        let def_line = sym.def_span.line.saturating_sub(1) as u32;
+        let def_col = sym.def_span.column.saturating_sub(1) as u32;
+        Some(serde_json::json!({
+            "uri": uri,
+            "range": {
+                "start": { "line": def_line, "character": def_col },
+                "end": { "line": def_line, "character": def_col }
+            }
+        }))
     }
 
     /// Run the checker on a document and send `publishDiagnostics`.
