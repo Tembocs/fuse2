@@ -2023,7 +2023,21 @@ impl Evaluator {
                     }
                     return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("schema: expected value".into())) });
                 }
+                "fuse_rt_json_schema_compile_str" => {
+                    // Compile from JSON string — same stub as compile.
+                    thread_local! { static SCHEMAS_STR: std::cell::RefCell<std::collections::HashMap<i64, Value>> = std::cell::RefCell::new(std::collections::HashMap::new()); static NXT_STR: std::cell::Cell<i64> = const { std::cell::Cell::new(1000) }; }
+                    if let Some(Value::String(s)) = args.first() {
+                        let id = NXT_STR.with(|c| { let id = c.get(); c.set(id + 1); id });
+                        SCHEMAS_STR.with(|ss| ss.borrow_mut().insert(id, Value::String(s.clone())));
+                        return Ok(Value::Result { is_ok: true, value: Box::new(Value::Int(id)) });
+                    }
+                    return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("schema: expected string".into())) });
+                }
                 "fuse_rt_json_schema_validate" => {
+                    // Stub: always valid in evaluator mode.
+                    return Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) });
+                }
+                "fuse_rt_json_schema_validate_str" => {
                     // Stub: always valid in evaluator mode.
                     return Ok(Value::Result { is_ok: true, value: Box::new(Value::Unit) });
                 }

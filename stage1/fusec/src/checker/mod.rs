@@ -746,6 +746,21 @@ impl Checker {
                         }
                     }
                 }
+                // Struct field opaqueness: fields only accessible from methods of the same struct.
+                if let Some(object_ty) = self.infer_expr_type(module, &member.object, scope, owner_name) {
+                    if let Some(struct_decl) = self.find_struct_decl(&object_ty) {
+                        let is_field = struct_decl.fields.iter().any(|f| f.name == member.name);
+                        let inside_own_method = owner_name == Some(object_ty.as_str());
+                        if is_field && !inside_own_method {
+                            self.add_error(
+                                &display_name(&module.path),
+                                member.span,
+                                format!("cannot access field `{}` on struct `{}` — struct fields are private", member.name, object_ty),
+                                Some("use a method instead".to_string()),
+                            );
+                        }
+                    }
+                }
             }
             hir::Expr::Move(move_expr) => {
                 if let Some(root) = ownership::root_name(&move_expr.value) {
@@ -987,6 +1002,16 @@ impl Checker {
         })
     }
 
+    fn find_struct_decl(&self, type_name: &str) -> Option<hir::StructDecl> {
+        let base = type_name.split('<').next().unwrap_or(type_name);
+        self.module_cache.values().find_map(|module| {
+            module.symbols.get(base).and_then(|symbol| match symbol {
+                Symbol::Struct { node, .. } => Some(node.clone()),
+                _ => None,
+            })
+        })
+    }
+
     fn find_enum_decl(&self, type_name: &str) -> Option<hir::EnumDecl> {
         let base = type_name.split('<').next().unwrap_or(type_name);
         self.module_cache.values().find_map(|module| {
@@ -1075,7 +1100,7 @@ impl Checker {
                 if matches!(name.value.as_str(), "Some" | "Ok" | "Err") {
                     return None;
                 }
-                if self.find_data_decl(&name.value).is_some() {
+                if self.find_data_decl(&name.value).is_some() || self.find_struct_decl(&name.value).is_some() {
                     return Some(name.value.clone());
                 }
                 types::builtin_return_type(&name.value).map(str::to_string)
@@ -1127,7 +1152,7 @@ impl Checker {
                     "Ok" => self.infer_expr_type(module, call.args.first()?, scope, owner_name).map(|inner| format!("Result<{inner}, Any>")),
                     "Err" => self.infer_expr_type(module, call.args.first()?, scope, owner_name).map(|inner| format!("Result<Any, {inner}>")),
                     other => {
-                        if self.find_data_decl(other).is_some() {
+                        if self.find_data_decl(other).is_some() || self.find_struct_decl(other).is_some() {
                             return Some(other.to_string());
                         }
                         self.resolve_function(other).and_then(|function| function.return_type.clone())

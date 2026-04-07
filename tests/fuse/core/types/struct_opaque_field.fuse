@@ -1,0 +1,19 @@
+// EXPECTED ERROR:
+// error: cannot access field `count` on struct `Counter` — struct fields are private
+//   --> struct_opaque_field.fuse:14:11
+
+// Struct fields are not accessible outside methods. This is the
+// core distinction from data class. The checker must reject this.
+
+struct Counter {
+  var count: Int
+}
+
+fn Counter.new() -> Counter { Counter(0) }
+fn Counter.value(ref self) -> Int { self.count }
+
+@entrypoint
+fn main() {
+  val c = Counter(0)
+  println(c.count)
+}
