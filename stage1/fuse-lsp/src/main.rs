@@ -1,5 +1,8 @@
+use std::collections::HashMap;
 use std::io::{self, BufRead, Read, Write};
+use std::path::PathBuf;
 
+use fusec::{Diagnostic, Severity, Span};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -24,17 +27,24 @@ struct Response {
     #[serde(skip_serializing_if = "Option::is_none")]
     result: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<ResponseError>,
+    error: Option<RpcError>,
 }
 
 #[derive(Serialize)]
-struct ResponseError {
+struct RpcError {
     code: i32,
     message: String,
 }
 
+#[derive(Serialize)]
+struct Notification {
+    jsonrpc: String,
+    method: String,
+    params: Value,
+}
+
 // ---------------------------------------------------------------------------
-// LSP capability types (minimal)
+// LSP capability types
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
@@ -57,7 +67,31 @@ struct ServerInfo {
 }
 
 // ---------------------------------------------------------------------------
-// Transport: read/write LSP base-protocol messages on stdio
+// LSP diagnostic types
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct LspDiagnostic {
+    range: LspRange,
+    severity: i32,
+    message: String,
+    source: String,
+}
+
+#[derive(Serialize)]
+struct LspRange {
+    start: LspPosition,
+    end: LspPosition,
+}
+
+#[derive(Serialize)]
+struct LspPosition {
+    line: u32,
+    character: u32,
+}
+
+// ---------------------------------------------------------------------------
+// Transport
 // ---------------------------------------------------------------------------
 
 fn read_message(reader: &mut impl BufRead) -> io::Result<Option<String>> {
@@ -68,11 +102,11 @@ fn read_message(reader: &mut impl BufRead) -> io::Result<Option<String>> {
         header.clear();
         let n = reader.read_line(&mut header)?;
         if n == 0 {
-            return Ok(None); // EOF
+            return Ok(None);
         }
         let line = header.trim();
         if line.is_empty() {
-            break; // blank line terminates headers
+            break;
         }
         if let Some(value) = line.strip_prefix("Content-Length: ") {
             content_length = value.parse().ok();
@@ -110,12 +144,57 @@ fn send_error(writer: &mut impl Write, id: Value, code: i32, message: &str) -> i
         jsonrpc: "2.0".into(),
         id,
         result: None,
-        error: Some(ResponseError {
+        error: Some(RpcError {
             code,
             message: message.into(),
         }),
     };
     write_message(writer, &serde_json::to_string(&resp).unwrap())
+}
+
+fn send_notification(writer: &mut impl Write, method: &str, params: Value) -> io::Result<()> {
+    let notif = Notification {
+        jsonrpc: "2.0".into(),
+        method: method.into(),
+        params,
+    };
+    write_message(writer, &serde_json::to_string(&notif).unwrap())
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostic conversion: fusec → LSP
+// ---------------------------------------------------------------------------
+
+fn span_to_lsp_range(span: Span) -> LspRange {
+    // fusec Span is 1-based; LSP is 0-based.
+    let line = span.line.saturating_sub(1) as u32;
+    let col = span.column.saturating_sub(1) as u32;
+    LspRange {
+        start: LspPosition { line, character: col },
+        end: LspPosition { line, character: col },
+    }
+}
+
+fn severity_to_lsp(severity: Severity) -> i32 {
+    match severity {
+        Severity::Error => 1,
+        Severity::Warning => 2,
+        Severity::Note => 3,
+    }
+}
+
+fn convert_diagnostic(diag: &Diagnostic) -> LspDiagnostic {
+    let mut msg = diag.message().to_string();
+    if let Some(hint) = diag.hint() {
+        msg.push_str("\n");
+        msg.push_str(hint);
+    }
+    LspDiagnostic {
+        range: span_to_lsp_range(diag.span),
+        severity: severity_to_lsp(diag.severity),
+        message: msg,
+        source: "fusec".into(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -125,6 +204,7 @@ fn send_error(writer: &mut impl Write, id: Value, code: i32, message: &str) -> i
 struct Server {
     initialized: bool,
     shutdown_requested: bool,
+    documents: HashMap<String, String>, // uri → content
 }
 
 impl Server {
@@ -132,6 +212,7 @@ impl Server {
         Self {
             initialized: false,
             shutdown_requested: false,
+            documents: HashMap::new(),
         }
     }
 
@@ -143,7 +224,7 @@ impl Server {
                 let id = msg.id.unwrap_or(Value::Null);
                 let result = InitializeResult {
                     capabilities: ServerCapabilities {
-                        text_document_sync: 1, // Full sync
+                        text_document_sync: 1, // Full
                     },
                     server_info: ServerInfo {
                         name: "fuse-lsp".into(),
@@ -154,9 +235,7 @@ impl Server {
                 self.initialized = true;
                 eprintln!("[fuse-lsp] initialized");
             }
-            "initialized" => {
-                // Notification — no response required.
-            }
+            "initialized" => {}
             "shutdown" => {
                 let id = msg.id.unwrap_or(Value::Null);
                 send_response(out, id, Value::Null)?;
@@ -165,19 +244,120 @@ impl Server {
             }
             "exit" => {
                 eprintln!("[fuse-lsp] exit");
-                return Ok(true); // signal to stop the loop
+                return Ok(true);
             }
+
+            // --- Document sync ---
+            "textDocument/didOpen" => {
+                if let Some(params) = msg.params {
+                    if let (Some(uri), Some(text)) = (
+                        params.pointer("/textDocument/uri").and_then(Value::as_str),
+                        params.pointer("/textDocument/text").and_then(Value::as_str),
+                    ) {
+                        self.documents.insert(uri.to_string(), text.to_string());
+                        self.publish_diagnostics(uri, out)?;
+                    }
+                }
+            }
+            "textDocument/didChange" => {
+                if let Some(params) = msg.params {
+                    if let Some(uri) = params.pointer("/textDocument/uri").and_then(Value::as_str) {
+                        // Full sync: contentChanges[0].text is the entire document.
+                        if let Some(text) = params
+                            .pointer("/contentChanges/0/text")
+                            .and_then(Value::as_str)
+                        {
+                            self.documents.insert(uri.to_string(), text.to_string());
+                            self.publish_diagnostics(uri, out)?;
+                        }
+                    }
+                }
+            }
+            "textDocument/didClose" => {
+                if let Some(params) = msg.params {
+                    if let Some(uri) = params.pointer("/textDocument/uri").and_then(Value::as_str) {
+                        self.documents.remove(uri);
+                    }
+                }
+            }
+
             _ => {
                 if let Some(id) = msg.id {
-                    // Unknown request — reply with MethodNotFound.
                     send_error(out, id, -32601, &format!("method not found: {method}"))?;
                 }
-                // Unknown notification — silently ignore.
             }
         }
 
         Ok(false)
     }
+
+    /// Run the checker on a document and send `publishDiagnostics`.
+    fn publish_diagnostics(&self, uri: &str, out: &mut impl Write) -> io::Result<()> {
+        let lsp_diags = if let Some(content) = self.documents.get(uri) {
+            self.check_document(uri, content)
+        } else {
+            Vec::new()
+        };
+
+        let params = serde_json::json!({
+            "uri": uri,
+            "diagnostics": lsp_diags.iter().map(|d| serde_json::to_value(d).unwrap()).collect::<Vec<_>>(),
+        });
+        send_notification(out, "textDocument/publishDiagnostics", params)
+    }
+
+    /// Write content to a temp file, run fusec checker, return LSP diagnostics.
+    fn check_document(&self, uri: &str, content: &str) -> Vec<LspDiagnostic> {
+        let path = uri_to_path(uri);
+
+        // Write content to a temp file next to the original so imports resolve.
+        let temp_path = path
+            .parent()
+            .unwrap_or(&path)
+            .join(format!("__fuse_lsp_check__{}", path.file_name().unwrap_or_default().to_string_lossy()));
+
+        if std::fs::write(&temp_path, content).is_err() {
+            return Vec::new();
+        }
+
+        let diagnostics = fusec::check_path(&temp_path);
+        let _ = std::fs::remove_file(&temp_path);
+
+        diagnostics.iter().map(convert_diagnostic).collect()
+    }
+}
+
+/// Convert a `file:///...` URI to a local `PathBuf`.
+fn uri_to_path(uri: &str) -> PathBuf {
+    if let Some(rest) = uri.strip_prefix("file:///") {
+        // On Windows: file:///C:/foo → C:/foo
+        // On Unix:    file:///home/foo → /home/foo
+        let decoded = percent_decode(rest);
+        if cfg!(windows) {
+            PathBuf::from(decoded)
+        } else {
+            PathBuf::from(format!("/{decoded}"))
+        }
+    } else {
+        PathBuf::from(uri)
+    }
+}
+
+/// Minimal percent-decoding for file URIs (spaces, common chars).
+fn percent_decode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '%' {
+            let hi = chars.next().unwrap_or('0');
+            let lo = chars.next().unwrap_or('0');
+            let byte = u8::from_str_radix(&format!("{hi}{lo}"), 16).unwrap_or(b'?');
+            out.push(byte as char);
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -196,7 +376,7 @@ fn main() {
     loop {
         let body = match read_message(&mut reader) {
             Ok(Some(body)) => body,
-            Ok(None) => break, // EOF
+            Ok(None) => break,
             Err(e) => {
                 eprintln!("[fuse-lsp] read error: {e}");
                 break;
@@ -211,7 +391,7 @@ fn main() {
             }
         };
 
-        let _ = msg.jsonrpc; // acknowledged but not validated
+        let _ = msg.jsonrpc;
 
         match server.handle_message(msg, &mut writer) {
             Ok(true) => break,
