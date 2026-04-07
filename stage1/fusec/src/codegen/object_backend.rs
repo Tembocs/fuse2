@@ -109,9 +109,9 @@ impl BuildSession {
                     .values()
                     .find(|function| {
                         function
-                            .decorators
+                            .annotations
                             .iter()
-                            .any(|decorator| decorator == "entrypoint")
+                            .any(|a| a.is("entrypoint"))
                     })
                     .cloned()
             })
@@ -3820,7 +3820,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             return_type: lambda.return_type.clone(),
             body: lambda.body.clone(),
             is_pub: false,
-            decorators: Vec::new(),
+            annotations: Vec::new(),
             receiver_type: None,
             span: lambda.span,
         };

@@ -149,7 +149,7 @@ impl Checker {
                     span: extern_fn.span,
                 },
                 is_pub: extern_fn.is_pub,
-                decorators: Vec::new(),
+                annotations: Vec::new(),
                 receiver_type: None,
                 span: extern_fn.span,
             };
@@ -322,7 +322,7 @@ impl Checker {
                 let held_rank = held.map(|(r, _)| r);
                 let held_rank_is_write = held.map_or(false, |(_, w)| w);
                 if let Some(type_name) = ty.as_deref() {
-                    if type_name.starts_with("Shared") && var_decl.rank.is_none() {
+                    if type_name.starts_with("Shared") && var_decl.rank().is_none() {
                         self.add_error(
                             &display_name(&module.path),
                             var_decl.span,
@@ -351,7 +351,7 @@ impl Checker {
                         mutable: var_decl.mutable,
                         param_convention: None,
                         type_name: ty,
-                        rank: var_decl.rank,
+                        rank: var_decl.rank(),
                         held_rank,
                         held_rank_is_write,
                         moved: false,

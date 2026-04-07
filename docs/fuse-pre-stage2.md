@@ -642,15 +642,15 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
 
 ---
 
-### Phase W4.1 — Annotation AST Upgrade
+### Phase W4.1 — Annotation AST Upgrade [DONE]
 
-- [ ] **W4.1.1** Define `Annotation { name, args: Vec<AnnotationArg> }`.
-- [ ] **W4.1.2** Replace `decorators: Vec<String>` with
+- [x] **W4.1.1** Define `Annotation { name, args: Vec<AnnotationArg> }`.
+- [x] **W4.1.2** Replace `decorators: Vec<String>` with
       `annotations: Vec<Annotation>` on declarations.
-- [ ] **W4.1.3** Parse `@name` and `@name(args)` into `Annotation` structs.
-- [ ] **W4.1.4** Unify `@rank(N)` through general annotation path.
-- [ ] **W4.1.5** Update all code reading `.decorators` to `.annotations`.
-- [ ] **W4.1.6** Full test suite green.
+- [x] **W4.1.3** Parse `@name` and `@name(args)` into `Annotation` structs.
+- [x] **W4.1.4** Unify `@rank(N)` through general annotation path.
+- [x] **W4.1.5** Update all code reading `.decorators` to `.annotations`.
+- [x] **W4.1.6** Full test suite green.
 
 ---
 

@@ -1,6 +1,33 @@
 use crate::error::Span;
 
 #[derive(Clone, Debug)]
+pub enum AnnotationArg {
+    Int(i64),
+    String(String),
+    Name(String),
+}
+
+#[derive(Clone, Debug)]
+pub struct Annotation {
+    pub name: String,
+    pub args: Vec<AnnotationArg>,
+    pub span: Span,
+}
+
+impl Annotation {
+    pub fn is(&self, name: &str) -> bool {
+        self.name == name
+    }
+
+    pub fn int_arg(&self, index: usize) -> Option<i64> {
+        self.args.get(index).and_then(|a| match a {
+            AnnotationArg::Int(n) => Some(*n),
+            _ => None,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Program {
     pub declarations: Vec<Declaration>,
     pub filename: String,
@@ -33,7 +60,7 @@ pub struct StructDecl {
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<FunctionDecl>,
     pub is_pub: bool,
-    pub decorators: Vec<String>,
+    pub annotations: Vec<Annotation>,
     pub span: Span,
 }
 
@@ -78,7 +105,7 @@ pub struct FunctionDecl {
     pub return_type: Option<String>,
     pub body: Block,
     pub is_pub: bool,
-    pub decorators: Vec<String>,
+    pub annotations: Vec<Annotation>,
     pub receiver_type: Option<String>,
     pub span: Span,
 }
@@ -90,7 +117,7 @@ pub struct DataClassDecl {
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<FunctionDecl>,
     pub is_pub: bool,
-    pub decorators: Vec<String>,
+    pub annotations: Vec<Annotation>,
     pub span: Span,
 }
 
@@ -140,12 +167,18 @@ pub struct TupleDestructStmt {
 
 #[derive(Clone, Debug)]
 pub struct VarDecl {
-    pub rank: Option<i64>,
+    pub annotations: Vec<Annotation>,
     pub mutable: bool,
     pub name: String,
     pub type_name: Option<String>,
     pub value: Expr,
     pub span: Span,
+}
+
+impl VarDecl {
+    pub fn rank(&self) -> Option<i64> {
+        self.annotations.iter().find(|a| a.is("rank")).and_then(|a| a.int_arg(0))
+    }
 }
 
 #[derive(Clone, Debug)]

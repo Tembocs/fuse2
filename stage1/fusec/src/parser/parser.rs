@@ -68,25 +68,22 @@ impl Parser {
     }
 
     fn parse_top_level(&mut self) -> Result<Declaration, Diagnostic> {
-        let mut decorators = Vec::new();
+        let mut annotations = Vec::new();
         while self.match_kind(TokenKind::At).is_some() {
-            decorators.push(
-                self.expect(TokenKind::Identifier, "expected decorator name")?
-                    .text,
-            );
+            annotations.push(self.parse_annotation()?);
         }
         let is_pub = self.match_kind(TokenKind::Pub).is_some();
         match self.peek(0).kind {
             TokenKind::Import => Ok(Declaration::Import(self.parse_import()?)),
             TokenKind::Fn => {
                 let mut function = self.parse_function()?;
-                function.decorators = decorators;
+                function.annotations = annotations;
                 function.is_pub = is_pub;
                 Ok(Declaration::Function(function))
             }
             TokenKind::Data => {
                 let mut data_class = self.parse_data_class()?;
-                data_class.decorators = decorators;
+                data_class.annotations = annotations;
                 data_class.is_pub = is_pub;
                 Ok(Declaration::DataClass(data_class))
             }
@@ -102,7 +99,7 @@ impl Parser {
             }
             TokenKind::Struct => {
                 let mut struct_decl = self.parse_struct()?;
-                struct_decl.decorators = decorators;
+                struct_decl.annotations = annotations;
                 struct_decl.is_pub = is_pub;
                 Ok(Declaration::Struct(struct_decl))
             }
@@ -214,7 +211,7 @@ impl Parser {
             return_type,
             body,
             is_pub: false,
-            decorators: Vec::new(),
+            annotations: Vec::new(),
             receiver_type,
             span: start.span,
         })
@@ -329,16 +326,13 @@ impl Parser {
         let mut methods = Vec::new();
         if self.match_kind(TokenKind::LBrace).is_some() {
             while self.peek(0).kind != TokenKind::RBrace {
-                let mut decorators = Vec::new();
+                let mut annotations = Vec::new();
                 while self.match_kind(TokenKind::At).is_some() {
-                    decorators.push(
-                        self.expect(TokenKind::Identifier, "expected decorator name")?
-                            .text,
-                    );
+                    annotations.push(self.parse_annotation()?);
                 }
                 let is_pub = self.match_kind(TokenKind::Pub).is_some();
                 let mut function = self.parse_function()?;
-                function.decorators = decorators;
+                function.annotations = annotations;
                 function.is_pub = is_pub;
                 methods.push(function);
             }
@@ -350,7 +344,7 @@ impl Parser {
             fields,
             methods,
             is_pub: false,
-            decorators: Vec::new(),
+            annotations: Vec::new(),
             span: start.span,
         })
     }
@@ -446,16 +440,13 @@ impl Parser {
                     });
                 }
                 TokenKind::Fn | TokenKind::At | TokenKind::Pub => {
-                    let mut decorators = Vec::new();
+                    let mut annotations = Vec::new();
                     while self.match_kind(TokenKind::At).is_some() {
-                        decorators.push(
-                            self.expect(TokenKind::Identifier, "expected decorator name")?
-                                .text,
-                        );
+                        annotations.push(self.parse_annotation()?);
                     }
                     let is_pub = self.match_kind(TokenKind::Pub).is_some();
                     let mut function = self.parse_function()?;
-                    function.decorators = decorators;
+                    function.annotations = annotations;
                     function.is_pub = is_pub;
                     methods.push(function);
                 }
@@ -473,7 +464,7 @@ impl Parser {
             fields,
             methods,
             is_pub: false,
-            decorators: Vec::new(),
+            annotations: Vec::new(),
             span: start.span,
         })
     }
@@ -523,18 +514,18 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<Statement, Diagnostic> {
-        let rank = if self.peek(0).kind == TokenKind::At {
-            Some(self.parse_rank_decorator()?)
-        } else {
-            None
-        };
+        let mut annotations = Vec::new();
+        while self.peek(0).kind == TokenKind::At {
+            self.take(); // consume @
+            annotations.push(self.parse_annotation()?);
+        }
         let token = self.peek(0).clone();
         match token.kind {
             TokenKind::Val | TokenKind::Var => {
                 if self.peek(1).kind == TokenKind::LParen {
                     return Ok(Statement::TupleDestruct(self.parse_tuple_destruct()?));
                 }
-                Ok(Statement::VarDecl(self.parse_var_decl(rank)?))
+                Ok(Statement::VarDecl(self.parse_var_decl(annotations)?))
             }
             TokenKind::Return => {
                 self.take();
@@ -574,16 +565,45 @@ impl Parser {
         }
     }
 
-    fn parse_rank_decorator(&mut self) -> Result<i64, Diagnostic> {
-        self.expect(TokenKind::At, "expected `@`")?;
-        let name = self.expect(TokenKind::Identifier, "expected decorator name")?;
-        if name.text != "rank" {
-            return Err(self.syntax_error("only `@rank(...)` is supported on statements", name.span));
+    fn parse_annotation(&mut self) -> Result<Annotation, Diagnostic> {
+        let name_tok = self.expect(TokenKind::Identifier, "expected annotation name")?;
+        let mut args = Vec::new();
+        if self.match_kind(TokenKind::LParen).is_some() {
+            loop {
+                if self.peek(0).kind == TokenKind::RParen {
+                    break;
+                }
+                let tok = self.peek(0).clone();
+                let arg = match tok.kind {
+                    TokenKind::Int => {
+                        self.take();
+                        AnnotationArg::Int(tok.text.parse().unwrap_or_default())
+                    }
+                    TokenKind::String => {
+                        self.take();
+                        AnnotationArg::String(tok.text.clone())
+                    }
+                    TokenKind::Identifier => {
+                        self.take();
+                        AnnotationArg::Name(tok.text.clone())
+                    }
+                    _ => return Err(self.syntax_error(
+                        format!("unexpected token `{}` in annotation arguments", tok.text),
+                        tok.span,
+                    )),
+                };
+                args.push(arg);
+                if self.match_kind(TokenKind::Comma).is_none() {
+                    break;
+                }
+            }
+            self.expect(TokenKind::RParen, "expected `)` after annotation arguments")?;
         }
-        self.expect(TokenKind::LParen, "expected `(` after `@rank`")?;
-        let value = self.expect(TokenKind::Int, "expected rank integer")?;
-        self.expect(TokenKind::RParen, "expected `)` after rank value")?;
-        Ok(value.text.parse().unwrap_or_default())
+        Ok(Annotation {
+            name: name_tok.text,
+            args,
+            span: name_tok.span,
+        })
     }
 
     fn parse_tuple_destruct(&mut self) -> Result<TupleDestructStmt, Diagnostic> {
@@ -608,7 +628,7 @@ impl Parser {
         })
     }
 
-    fn parse_var_decl(&mut self, rank: Option<i64>) -> Result<VarDecl, Diagnostic> {
+    fn parse_var_decl(&mut self, annotations: Vec<Annotation>) -> Result<VarDecl, Diagnostic> {
         let start = self.take();
         let name = self.expect(TokenKind::Identifier, "expected binding name")?.text;
         let type_name = if self.match_kind(TokenKind::Colon).is_some() {
@@ -619,7 +639,7 @@ impl Parser {
         self.expect(TokenKind::Eq, "expected `=` in binding")?;
         let value = self.parse_expression()?;
         Ok(VarDecl {
-            rank,
+            annotations,
             mutable: start.kind == TokenKind::Var,
             name,
             type_name,

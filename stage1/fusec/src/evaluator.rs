@@ -401,7 +401,7 @@ impl Evaluator {
         let entry = module
             .functions
             .values()
-            .find(|function| function.decorators.iter().any(|decorator| decorator == "entrypoint"))
+            .find(|function| function.annotations.iter().any(|a| a.is("entrypoint")))
             .cloned()
             .ok_or_else(|| runtime_error("missing @entrypoint function", &display_name(path), 1, 1))?;
         let _ = self.call_user_function(&module.path, &entry, Vec::new(), Some(env))?;
@@ -484,7 +484,7 @@ impl Evaluator {
                             return_type: ext.return_type.clone(),
                             body: fa::Block { statements: Vec::new(), span: ext.span },
                             is_pub: ext.is_pub,
-                            decorators: Vec::new(),
+                            annotations: Vec::new(),
                             receiver_type: None,
                             span: ext.span,
                         });
@@ -499,7 +499,7 @@ impl Evaluator {
                         fields: struct_decl.fields.clone(),
                         methods: struct_decl.methods.clone(),
                         is_pub: struct_decl.is_pub,
-                        decorators: struct_decl.decorators.clone(),
+                        annotations: struct_decl.annotations.clone(),
                         span: struct_decl.span,
                     };
                     let methods = as_data
@@ -2581,7 +2581,7 @@ impl Evaluator {
                     return_type: lambda.return_type.clone(),
                     body: lambda.body.clone(),
                     is_pub: false,
-                    decorators: Vec::new(),
+                    annotations: Vec::new(),
                     receiver_type: None,
                     span: lambda.span,
                 };
