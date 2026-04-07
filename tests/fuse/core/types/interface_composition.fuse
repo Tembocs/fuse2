@@ -1,0 +1,25 @@
+// EXPECTED OUTPUT:
+// ok
+
+interface Printable {
+  fn toString(ref self) -> String
+}
+
+interface Debuggable : Printable {
+  fn debugString(ref self) -> String
+}
+
+data class Item(val id: Int) implements Debuggable
+
+fn Item.toString(ref self) -> String {
+  "item"
+}
+
+fn Item.debugString(ref self) -> String {
+  "debug:item"
+}
+
+@entrypoint
+fn main() {
+  println("ok")
+}

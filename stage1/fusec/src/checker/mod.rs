@@ -32,12 +32,24 @@ enum Symbol {
 }
 
 #[derive(Clone, Debug)]
+struct InterfaceInfo {
+    name: String,
+    type_params: Vec<String>,
+    parents: Vec<String>,
+    methods: Vec<hir::InterfaceMethod>,
+    span: Span,
+}
+
+#[derive(Clone, Debug)]
 struct ModuleInfo {
     path: PathBuf,
     module: Module,
     symbols: HashMap<String, Symbol>,
     extension_functions: HashMap<(String, String), hir::FunctionDecl>,
     static_functions: HashMap<(String, String), hir::FunctionDecl>,
+    interfaces: HashMap<String, InterfaceInfo>,
+    /// type name → list of interface names it declares `implements`
+    implements: HashMap<String, Vec<String>>,
 }
 
 pub struct Checker {
@@ -89,6 +101,8 @@ impl Checker {
             symbols: HashMap::new(),
             extension_functions: HashMap::new(),
             static_functions: HashMap::new(),
+            interfaces: HashMap::new(),
+            implements: HashMap::new(),
         };
 
         for function in &info.module.functions {
@@ -148,6 +162,28 @@ impl Checker {
                     is_pub: struct_decl.is_pub,
                 },
             );
+        }
+        for iface in &info.module.interfaces {
+            info.interfaces.insert(
+                iface.name.clone(),
+                InterfaceInfo {
+                    name: iface.name.clone(),
+                    type_params: iface.type_params.clone(),
+                    parents: iface.parents.clone(),
+                    methods: iface.methods.clone(),
+                    span: iface.span,
+                },
+            );
+        }
+        for data in &info.module.data_classes {
+            if !data.implements.is_empty() {
+                info.implements.insert(data.name.clone(), data.implements.clone());
+            }
+        }
+        for enum_decl in &info.module.enums {
+            if !enum_decl.implements.is_empty() {
+                info.implements.insert(enum_decl.name.clone(), enum_decl.implements.clone());
+            }
         }
         for extern_fn in &info.module.extern_fns {
             let synthetic = hir::FunctionDecl {
@@ -212,6 +248,8 @@ impl Checker {
                 self.check_function(module, &method, Some(&as_data));
             }
         }
+        // Check interface conformance for all types declaring `implements`.
+        self.check_interface_conformance(module);
         // Check extension and static functions (Type.method defined outside type body).
         for function in module.extension_functions.values() {
             self.validate_annotations(&function.annotations, types::AnnotationPosition::Function, &filename);
@@ -220,6 +258,97 @@ impl Checker {
         for function in module.static_functions.values() {
             self.validate_annotations(&function.annotations, types::AnnotationPosition::Function, &filename);
             self.check_function(module, function, None);
+        }
+    }
+
+    fn check_interface_conformance(&mut self, module: &ModuleInfo) {
+        let filename = display_name(&module.path);
+        for (type_name, iface_names) in &module.implements {
+            // Find the span for the type declaration (for error reporting).
+            let type_span = module.module.data_classes.iter()
+                .find(|d| d.name == *type_name).map(|d| d.span)
+                .or_else(|| module.module.enums.iter().find(|e| e.name == *type_name).map(|e| e.span))
+                .unwrap_or(Span::new(1, 1));
+            for iface_name in iface_names {
+                let Some(iface) = self.resolve_interface(iface_name) else {
+                    self.add_error(&filename, type_span, format!("unknown interface `{iface_name}`"), None);
+                    continue;
+                };
+                // Verify parents exist.
+                for parent_name in &iface.parents {
+                    if self.resolve_interface(parent_name).is_none() {
+                        self.add_error(&filename, iface.span, format!("unknown parent interface `{parent_name}`"), None);
+                    }
+                }
+                // Collect all required methods (own + inherited).
+                let Some(required_methods) = self.collect_interface_methods(&iface) else {
+                    continue; // parent resolution failed; error already emitted
+                };
+                // Marker interface (no methods) — always satisfied.
+                if required_methods.is_empty() {
+                    continue;
+                }
+                for method in &required_methods {
+                    let ext = self.resolve_extension(type_name, &method.name);
+                    let Some(ext_fn) = ext else {
+                        self.add_error(
+                            &filename,
+                            type_span,
+                            format!(
+                                "type `{type_name}` declares `implements {iface_name}` but does not implement method `{}`",
+                                method.name
+                            ),
+                            None,
+                        );
+                        continue;
+                    };
+                    // Check param count (interface params include self, extension params include self).
+                    if ext_fn.params.len() != method.params.len() {
+                        self.add_error(
+                            &filename,
+                            type_span,
+                            format!(
+                                "method `{}` on `{type_name}` has {} parameter(s), but interface `{iface_name}` requires {}",
+                                method.name, ext_fn.params.len(), method.params.len()
+                            ),
+                            None,
+                        );
+                        continue;
+                    }
+                    // Check return type match.
+                    if method.return_type.is_some() && ext_fn.return_type != method.return_type {
+                        self.add_error(
+                            &filename,
+                            type_span,
+                            format!(
+                                "method `{}` on `{type_name}` returns `{}`, but interface `{iface_name}` requires `{}`",
+                                method.name,
+                                ext_fn.return_type.as_deref().unwrap_or("Unit"),
+                                method.return_type.as_deref().unwrap_or("Unit"),
+                            ),
+                            None,
+                        );
+                    }
+                    // Check ownership convention on self parameter (W5.3.10-11).
+                    if let (Some(iface_self), Some(ext_self)) = (method.params.first(), ext_fn.params.first()) {
+                        if iface_self.name == "self" && ext_self.name == "self" {
+                            let iface_conv = iface_self.convention.as_deref().unwrap_or("owned");
+                            let ext_conv = ext_self.convention.as_deref().unwrap_or("owned");
+                            if iface_conv != ext_conv {
+                                self.add_error(
+                                    &filename,
+                                    type_span,
+                                    format!(
+                                        "method `{}` on `{type_name}` has `{ext_conv} self` but interface `{iface_name}` requires `{iface_conv} self`",
+                                        method.name
+                                    ),
+                                    None,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1029,9 +1158,52 @@ impl Checker {
                     )
                 );
             }
+            // Check generic bounds: <T: Interface> at call site.
+            self.check_generic_bounds(module, &function, call, scope, owner_name);
         } else if let Some(name) = callee_name {
             if types::builtin_return_type(&name).is_none() && self.find_data_decl(&name).is_none() {
                 let _ = owner_name;
+            }
+        }
+    }
+
+    fn check_generic_bounds(
+        &mut self,
+        module: &ModuleInfo,
+        function: &hir::FunctionDecl,
+        call: &hir::Call,
+        scope: &HashMap<String, BindingInfo>,
+        owner_name: Option<&str>,
+    ) {
+        // Build a map of type_param_name → bound_interface for bounded params.
+        let mut bounds: HashMap<&str, &str> = HashMap::new();
+        for tp in &function.type_params {
+            if let Some((name, bound)) = tp.split_once(':') {
+                bounds.insert(name.trim(), bound.trim());
+            }
+        }
+        if bounds.is_empty() {
+            return;
+        }
+        // For method calls, skip the implicit `self` parameter.
+        let is_method_call = matches!(call.callee.as_ref(), hir::Expr::Member(_))
+            && function.params.first().map_or(false, |p| p.name == "self");
+        let params = if is_method_call { &function.params[1..] } else { &function.params[..] };
+        for (param, arg) in params.iter().zip(call.args.iter()) {
+            let Some(param_type) = &param.type_name else { continue };
+            // Check if param type is a bounded type variable.
+            let Some(required_iface) = bounds.get(param_type.as_str()) else { continue };
+            let Some(actual_type) = self.infer_expr_type(module, arg, scope, owner_name) else { continue };
+            let type_ifaces = self.type_implements(&actual_type);
+            if !type_ifaces.iter().any(|i| i == required_iface) {
+                self.add_error(
+                    &display_name(&module.path),
+                    call.span,
+                    format!(
+                        "type `{actual_type}` does not implement interface `{required_iface}`",
+                    ),
+                    Some(format!("required by bound `{param_type}: {required_iface}` on `{}`", function.name)),
+                );
             }
         }
     }
@@ -1125,6 +1297,30 @@ impl Checker {
                 _ => None,
             })
         })
+    }
+
+    fn resolve_interface(&self, name: &str) -> Option<InterfaceInfo> {
+        self.module_cache.values().find_map(|module| module.interfaces.get(name).cloned())
+    }
+
+    /// Collect all required methods for an interface, including those inherited
+    /// from parent interfaces (transitively). Returns None if any parent cannot
+    /// be resolved.
+    fn collect_interface_methods(&self, iface: &InterfaceInfo) -> Option<Vec<hir::InterfaceMethod>> {
+        let mut methods = iface.methods.clone();
+        for parent_name in &iface.parents {
+            let parent = self.resolve_interface(parent_name)?;
+            methods.extend(self.collect_interface_methods(&parent)?);
+        }
+        Some(methods)
+    }
+
+    /// Look up which interfaces a type declares `implements`.
+    fn type_implements(&self, type_name: &str) -> Vec<String> {
+        self.module_cache
+            .values()
+            .find_map(|module| module.implements.get(type_name).cloned())
+            .unwrap_or_default()
     }
 
     fn check_match_exhaustiveness(

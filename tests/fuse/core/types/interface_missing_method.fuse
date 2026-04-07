@@ -1,0 +1,15 @@
+// EXPECTED ERROR:
+// error: type `Point` declares `implements Printable` but does not implement method `toString`
+//   --> interface_missing_method.fuse:9:1
+
+interface Printable {
+  fn toString(ref self) -> String
+}
+
+data class Point(val x: Int, val y: Int) implements Printable
+
+@entrypoint
+fn main() {
+  val p = Point(1, 2)
+  println("ok")
+}

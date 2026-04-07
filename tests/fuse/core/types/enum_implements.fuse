@@ -1,0 +1,19 @@
+// EXPECTED OUTPUT:
+// ok
+
+interface Describable {
+  fn describe(ref self) -> String
+}
+
+enum Color implements Describable {
+  Red, Green, Blue
+}
+
+fn Color.describe(ref self) -> String {
+  "a color"
+}
+
+@entrypoint
+fn main() {
+  println("ok")
+}

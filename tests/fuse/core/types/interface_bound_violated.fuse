@@ -1,0 +1,20 @@
+// EXPECTED ERROR:
+// error: type `Plain` does not implement interface `Printable`
+//        required by bound `T: Printable` on `show`
+//   --> interface_bound_violated.fuse:19:9
+
+interface Printable {
+  fn display(ref self) -> String
+}
+
+data class Plain(val x: Int)
+
+fn show<T: Printable>(item: T) {
+  println("shown")
+}
+
+@entrypoint
+fn main() {
+  val p = Plain(1)
+  show(p)
+}

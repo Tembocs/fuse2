@@ -1,0 +1,18 @@
+// EXPECTED OUTPUT:
+// hello
+
+interface Printable {
+  fn display(ref self) -> String
+}
+
+data class Greeting(val msg: String) implements Printable
+
+fn Greeting.display(ref self) -> String {
+  self.msg
+}
+
+@entrypoint
+fn main() {
+  val g = Greeting("hello")
+  println(g.display())
+}

@@ -781,7 +781,7 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
 > **Before starting:** Read `checker/mod.rs`, `checker/types.rs`,
 > `checker/ownership.rs`, and the interface design decisions above.
 
-- [ ] **W5.3.1** Add `InterfaceInfo` struct to checker:
+- [x] **W5.3.1** Add `InterfaceInfo` struct to checker:
       ```rust
       pub struct InterfaceInfo {
           pub name: String,
@@ -792,33 +792,33 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
           pub span: Span,
       }
       ```
-- [ ] **W5.3.2** Add `interfaces: HashMap<String, InterfaceInfo>` to
+- [x] **W5.3.2** Add `interfaces: HashMap<String, InterfaceInfo>` to
       `ModuleInfo`.
-- [ ] **W5.3.3** Add `implements: HashMap<String, Vec<String>>` to
+- [x] **W5.3.3** Add `implements: HashMap<String, Vec<String>>` to
       `ModuleInfo` (type name → interface names).
-- [ ] **W5.3.4** Register interfaces during declaration pass.
-- [ ] **W5.3.5** Register conformance for data classes and enums.
-- [ ] **W5.3.6** Add `resolve_interface(name)` lookup.
-- [ ] **W5.3.7** Implement parent resolution: verify parents exist,
+- [x] **W5.3.4** Register interfaces during declaration pass.
+- [x] **W5.3.5** Register conformance for data classes and enums.
+- [x] **W5.3.6** Add `resolve_interface(name)` lookup.
+- [x] **W5.3.7** Implement parent resolution: verify parents exist,
       collect inherited methods transitively.
-- [ ] **W5.3.8** Implement conformance checking: for each type with
+- [x] **W5.3.8** Implement conformance checking: for each type with
       `implements`, verify all required methods have matching extension
       methods. Match by name, param count, types, return type, ownership.
-- [ ] **W5.3.9** Error for missing methods: `"Type 'X' declares
+- [x] **W5.3.9** Error for missing methods: `"Type 'X' declares
       'implements Y' but does not implement method 'Z'"`.
-- [ ] **W5.3.10** Implement ownership convention checking:
+- [x] **W5.3.10** Implement ownership convention checking:
       `ref self` in interface → `ref self` in impl (not wider).
-- [ ] **W5.3.11** Error for ownership mismatch.
-- [ ] **W5.3.12** Implement generic bound checking: `<T: Interface>` at
+- [x] **W5.3.11** Error for ownership mismatch.
+- [x] **W5.3.12** Implement generic bound checking: `<T: Interface>` at
       call site verifies concrete type has `implements`.
-- [ ] **W5.3.13** Allow marker interfaces (empty method list = always satisfied).
-- [ ] **W5.3.14** Test: `interface_missing_method.fuse` — EXPECTED ERROR.
-- [ ] **W5.3.15** Test: `interface_wrong_ownership.fuse` — EXPECTED ERROR.
-- [ ] **W5.3.16** Test: `interface_bound_satisfied.fuse` — EXPECTED OUTPUT.
-- [ ] **W5.3.17** Test: `interface_bound_violated.fuse` — EXPECTED ERROR.
-- [ ] **W5.3.18** Test: `interface_composition.fuse` — inherited methods.
-- [ ] **W5.3.19** Test: `interface_marker.fuse` — empty interface accepted.
-- [ ] **W5.3.20** Test: `enum_implements.fuse` — enum with interface.
+- [x] **W5.3.13** Allow marker interfaces (empty method list = always satisfied).
+- [x] **W5.3.14** Test: `interface_missing_method.fuse` — EXPECTED ERROR.
+- [x] **W5.3.15** Test: `interface_wrong_ownership.fuse` — EXPECTED ERROR.
+- [x] **W5.3.16** Test: `interface_bound_satisfied.fuse` — EXPECTED OUTPUT.
+- [x] **W5.3.17** Test: `interface_bound_violated.fuse` — EXPECTED ERROR.
+- [x] **W5.3.18** Test: `interface_composition.fuse` — inherited methods.
+- [x] **W5.3.19** Test: `interface_marker.fuse` — empty interface accepted.
+- [x] **W5.3.20** Test: `enum_implements.fuse` — enum with interface.
 
 ---
 

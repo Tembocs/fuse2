@@ -172,10 +172,18 @@ impl Parser {
         let mut type_params = Vec::new();
         if self.match_kind(TokenKind::Lt).is_some() {
             loop {
-                type_params.push(
-                    self.expect(TokenKind::Identifier, "expected type parameter name")?
-                        .text,
-                );
+                let mut tp = self
+                    .expect(TokenKind::Identifier, "expected type parameter name")?
+                    .text;
+                if self.match_kind(TokenKind::Colon).is_some() {
+                    tp.push_str(": ");
+                    tp.push_str(
+                        &self
+                            .expect(TokenKind::Identifier, "expected interface bound")?
+                            .text,
+                    );
+                }
+                type_params.push(tp);
                 if self.match_kind(TokenKind::Comma).is_none() {
                     break;
                 }

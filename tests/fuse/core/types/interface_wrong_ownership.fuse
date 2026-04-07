@@ -1,0 +1,19 @@
+// EXPECTED ERROR:
+// error: method `toString` on `Point` has `owned self` but interface `Printable` requires `ref self`
+//   --> interface_wrong_ownership.fuse:9:1
+
+interface Printable {
+  fn toString(ref self) -> String
+}
+
+data class Point(val x: Int, val y: Int) implements Printable
+
+fn Point.toString(owned self) -> String {
+  "point"
+}
+
+@entrypoint
+fn main() {
+  val p = Point(1, 2)
+  println("ok")
+}

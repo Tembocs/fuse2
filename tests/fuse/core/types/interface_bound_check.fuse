@@ -1,0 +1,20 @@
+// EXPECTED ERROR:
+// error: type `Plain` does not implement interface `Describable`
+//        required by bound `T: Describable` on `show`
+//   --> interface_bound_check.fuse:19:9
+
+interface Describable {
+  fn describe(ref self) -> String
+}
+
+data class Plain(val x: Int)
+
+fn show<T: Describable>(item: T) {
+  println("shown")
+}
+
+@entrypoint
+fn main() {
+  val p = Plain(1)
+  show(p)
+}

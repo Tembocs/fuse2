@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// ok
+
+interface Sendable {
+}
+
+data class Packet(val id: Int) implements Sendable
+
+@entrypoint
+fn main() {
+  val p = Packet(1)
+  println("ok")
+}
