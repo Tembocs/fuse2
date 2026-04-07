@@ -750,16 +750,16 @@ impl Evaluator {
         }
     }
 
-    fn call_user_function(
-        &mut self,
-        module_path: &Path,
-        function: &fa::FunctionDecl,
-        args: Vec<Value>,
-        caller_env: Option<Environment>,
-    ) -> Result<Value, RuntimeError> {
-        // Handle known FFI functions in the evaluator (before args are moved).
-        if function.body.statements.is_empty() {
-            match function.name.as_str() {
+
+    /// FFI dispatch extracted from call_user_function to reduce stack frame
+    /// size (Bug #11 proper fix). Each branch handles one extern fn stub.
+    #[inline(never)]
+    fn dispatch_ffi(&self, name: &str, args: &[Value]) -> Option<Result<Value, RuntimeError>> {
+        // Use a closure so that `return Ok(...)` inside match arms
+        // exits the closure, not the outer function.
+        let mut handled = true;
+        let result = (|| {
+            match name {
                 "fuse_rt_int_to_float" => {
                     if let Some(Value::Int(n)) = args.first() {
                         return Ok(Value::Float(*n as f64));
@@ -1034,7 +1034,7 @@ impl Evaluator {
                 }
                 "fuse_rt_os_copy_dir" | "fuse_rt_os_rename" => {
                     if let (Some(Value::String(s)), Some(Value::String(d))) = (args.first(), args.get(1)) {
-                        let result = if function.name == "fuse_rt_os_rename" {
+                        let result = if name == "fuse_rt_os_rename" {
                             std::fs::rename(s.as_str(), d.as_str())
                         } else {
                             fn copy_rec(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
@@ -1171,7 +1171,7 @@ impl Evaluator {
                     // HTTP in evaluator: real requests via ureq
                     let url = if let Some(Value::String(u)) = args.first() { u.clone() } else { return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("http: expected url".to_string())) }); };
                     let body = args.get(1).and_then(|v| if let Value::String(s) = v { Some(s.clone()) } else { None });
-                    let method = match function.name.as_str() {
+                    let method = match name {
                         "fuse_rt_http_get" => "GET",
                         "fuse_rt_http_post" | "fuse_rt_http_post_json" => "POST",
                         "fuse_rt_http_put" => "PUT",
@@ -1185,7 +1185,7 @@ impl Evaluator {
                         "DELETE" => ureq::delete(&url),
                         _ => ureq::get(&url),
                     };
-                    if function.name == "fuse_rt_http_post_json" {
+                    if name == "fuse_rt_http_post_json" {
                         request = request.set("Content-Type", "application/json");
                     }
                     let result = if let Some(b) = &body { request.send_string(b) } else { request.call() };
@@ -1329,7 +1329,7 @@ impl Evaluator {
                         }
                         "null".to_string()
                     }
-                    let pretty = function.name == "fuse_rt_json_stringify_pretty";
+                    let pretty = name == "fuse_rt_json_stringify_pretty";
                     let indent = if pretty { if let Some(Value::Int(n)) = args.get(1) { *n as usize } else { 2 } } else { 0 };
                     if let Some(v) = args.first() {
                         return Ok(Value::String(stringify_jv(v, pretty, indent, 0)));
@@ -1563,10 +1563,10 @@ impl Evaluator {
                 "fuse_rt_os_temp_file" | "fuse_rt_os_temp_dir_create" => {
                     let pfx = if let Some(Value::String(s)) = args.first() { s.as_str() } else { "fuse" };
                     let dir = std::env::temp_dir();
-                    let name = format!("{pfx}{}", std::time::SystemTime::now()
+                    let temp_name = format!("{pfx}{}", std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
-                    let path = dir.join(&name);
-                    let result = if function.name == "fuse_rt_os_temp_dir_create" {
+                    let path = dir.join(&temp_name);
+                    let result = if name == "fuse_rt_os_temp_dir_create" {
                         std::fs::create_dir(&path).map(|_| ())
                     } else {
                         std::fs::File::create(&path).map(|_| ())
@@ -2018,9 +2018,9 @@ impl Evaluator {
                 "fuse_rt_json_schema_compile" => {
                     // Stub: store schema as-is, return handle.
                     thread_local! { static SCHEMAS: std::cell::RefCell<std::collections::HashMap<i64, Value>> = std::cell::RefCell::new(std::collections::HashMap::new()); static NXT: std::cell::Cell<i64> = const { std::cell::Cell::new(1) }; }
-                    if let Some(v) = args.into_iter().next() {
+                    if let Some(v) = args.first() {
                         let id = NXT.with(|c| { let id = c.get(); c.set(id + 1); id });
-                        SCHEMAS.with(|s| s.borrow_mut().insert(id, v));
+                        SCHEMAS.with(|s| s.borrow_mut().insert(id, v.clone()));
                         return Ok(Value::Result { is_ok: true, value: Box::new(Value::Int(id)) });
                     }
                     return Ok(Value::Result { is_ok: false, value: Box::new(Value::String("schema: expected value".into())) });
@@ -2089,7 +2089,7 @@ impl Evaluator {
                 | "fuse_rt_regex_split" | "fuse_rt_regex_captures" => {
                     // Regex operations in evaluator: stub implementations.
                     // Full support requires the compiled path.
-                    return match function.name.as_str() {
+                    return match name {
                         "fuse_rt_regex_is_match" => Ok(Value::Bool(false)),
                         "fuse_rt_regex_find" | "fuse_rt_regex_captures" => Ok(Value::Option(None)),
                         "fuse_rt_regex_find_all" | "fuse_rt_regex_split" => Ok(Value::List(vec![])),
@@ -2100,10 +2100,10 @@ impl Evaluator {
                         _ => Ok(Value::Unit),
                     };
                 }
-                _ => {}
+                _ => { handled = false; return Ok(Value::Unit); }
             }
             // Post-match handlers that need &self (for stringify).
-            match function.name.as_str() {
+            match name {
                 "fuse_rt_test_assert_eq" => {
                     let a_str = self.stringify(args.first().unwrap_or(&Value::Unit));
                     let b_str = self.stringify(args.get(1).unwrap_or(&Value::Unit));
@@ -2127,7 +2127,24 @@ impl Evaluator {
                     }
                     return Ok(Value::Unit);
                 }
-                _ => {}
+                _ => { handled = false; return Ok(Value::Unit); }
+
+            }
+        })();
+        if handled { Some(result) } else { None }
+    }
+
+    fn call_user_function(
+        &mut self,
+        module_path: &Path,
+        function: &fa::FunctionDecl,
+        args: Vec<Value>,
+        caller_env: Option<Environment>,
+    ) -> Result<Value, RuntimeError> {
+        // Handle known FFI functions in the evaluator (before args are moved).
+        if function.body.statements.is_empty() {
+            if let Some(result) = self.dispatch_ffi(&function.name, &args) {
+                return result;
             }
         }
         let module = self.load_module(module_path)?;

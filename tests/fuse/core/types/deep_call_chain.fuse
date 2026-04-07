@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// 500
+
+// Verify that deeply nested function calls do not overflow the stack.
+// Bug #11 caused overflow at ~5 cross-module calls due to oversized
+// stack frames. With dispatch_ffi extracted, the default stack handles
+// hundreds of recursive calls.
+
+fn countdown(n: Int) -> Int {
+  if n <= 0 { return 0 }
+  countdown(n - 1) + 1
+}
+
+@entrypoint
+fn main() {
+  println(countdown(500))
+}

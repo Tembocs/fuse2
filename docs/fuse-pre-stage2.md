@@ -889,12 +889,12 @@ block. Stack frame is several KB. Overflows after ~5 cross-module calls.
 
 **Fix:** Extract FFI match into `#[inline(never)]` `dispatch_ffi()`.
 
-- [ ] **W6.1.1** Extract FFI match block into `dispatch_ffi()`.
-- [ ] **W6.1.2** Update `call_user_function` to call `dispatch_ffi`.
-- [ ] **W6.1.3** Test cross-module nested calls at depth 20+.
-- [ ] **W6.1.4** Remove 8 MB stack size workaround.
-- [ ] **W6.1.5** Test: `deep_call_chain.fuse` — 500+ depth.
-- [ ] **W6.1.6** Full test suite green.
+- [x] **W6.1.1** Extract FFI match block into `dispatch_ffi()`.
+- [x] **W6.1.2** Update `call_user_function` to call `dispatch_ffi`.
+- [x] **W6.1.3** Test cross-module nested calls at depth 20+.
+- [x] **W6.1.4** Remove 8 MB stack size workaround.
+- [x] **W6.1.5** Test: `deep_call_chain.fuse` — 500+ depth.
+- [x] **W6.1.6** Full test suite green.
 
 ---
 
