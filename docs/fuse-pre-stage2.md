@@ -506,13 +506,13 @@ importing modules. `path.SEPARATOR` cannot be read after `import path`.
 
 ---
 
-### Phase W2.5 — Float32 Stdlib
+### Phase W2.5 — Float32 Stdlib [DONE]
 
-- [ ] **W2.5.1** Create `stdlib/core/float32.fuse` with conversions.
-- [ ] **W2.5.2** Add `Float32.toString`.
-- [ ] **W2.5.3** Add `Float32.abs`, `Float32.sqrt`.
-- [ ] **W2.5.4** Test: `float32_test.fuse`.
-- [ ] **W2.5.5** Full test suite green.
+- [x] **W2.5.1** Create `stdlib/core/float32.fuse` with conversions.
+- [x] **W2.5.2** Add `Float32.toString`.
+- [x] **W2.5.3** Add `Float32.abs`, `Float32.sqrt`.
+- [x] **W2.5.4** Test: `float32_test.fuse`.
+- [x] **W2.5.5** Full test suite green.
 
 ---
 

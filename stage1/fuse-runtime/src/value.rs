@@ -1276,6 +1276,32 @@ pub unsafe extern "C" fn fuse_rt_f32_to_string(handle: FuseHandle) -> FuseHandle
     fuse_string_new_utf8(s.as_ptr(), s.len())
 }
 
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_abs(handle: FuseHandle) -> FuseHandle {
+    fuse_rt_f32_new(extract_f32(handle).abs() as f64)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_sqrt(handle: FuseHandle) -> FuseHandle {
+    fuse_rt_f32_new(extract_f32(handle).sqrt() as f64)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_to_int(handle: FuseHandle) -> FuseHandle {
+    fuse_int(extract_f32(handle) as i64)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_to_float(handle: FuseHandle) -> FuseHandle {
+    fuse_float(extract_f32(handle) as f64)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_f32_from_int(handle: FuseHandle) -> FuseHandle {
+    let n = unsafe { match &(*handle).kind { ValueKind::Int(v) => *v, _ => 0 } };
+    fuse_rt_f32_new(n as f64)
+}
+
 // --- IO FFI helpers ---
 
 unsafe fn make_io_error(msg: &str, code: i64) -> FuseHandle {

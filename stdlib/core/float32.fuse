@@ -1,0 +1,86 @@
+// Fuse Core stdlib — Float32 extension methods.
+//
+// The Float32 type is built into the language. This module provides
+// conversions, math operations, predicates, and string formatting.
+// Float32 is a 32-bit IEEE 754 single-precision float. No implicit
+// coercion to or from Float (f64) — all conversions are explicit.
+//
+// import stdlib.core.float32
+
+// --- FFI declarations ---
+
+extern fn fuse_rt_f32_box(value: Float) -> Float32
+extern fn fuse_rt_f32_from_int(value: Int) -> Float32
+extern fn fuse_rt_f32_abs(value: Float32) -> Float32
+extern fn fuse_rt_f32_sqrt(value: Float32) -> Float32
+extern fn fuse_rt_f32_to_int(value: Float32) -> Int
+extern fn fuse_rt_f32_to_float(value: Float32) -> Float
+extern fn fuse_rt_f32_to_string(value: Float32) -> String
+
+// --- Conversion: constructors ---
+
+// Create a Float32 from a Float (f64). Narrows precision.
+pub fn Float32.from(value: Float) -> Float32 {
+  fuse_rt_f32_box(value)
+}
+
+// Create a Float32 from an Int.
+pub fn Float32.fromInt(value: Int) -> Float32 {
+  fuse_rt_f32_from_int(value)
+}
+
+// --- Arithmetic helpers ---
+
+// Absolute value.
+pub fn Float32.abs(ref self) -> Float32 {
+  fuse_rt_f32_abs(self)
+}
+
+// Square root.
+pub fn Float32.sqrt(ref self) -> Float32 {
+  fuse_rt_f32_sqrt(self)
+}
+
+// Minimum of self and other.
+pub fn Float32.min(ref self, other: Float32) -> Float32 {
+  if self < other { self } else { other }
+}
+
+// Maximum of self and other.
+pub fn Float32.max(ref self, other: Float32) -> Float32 {
+  if self > other { self } else { other }
+}
+
+// Clamp self to [low, high].
+pub fn Float32.clamp(ref self, low: Float32, high: Float32) -> Float32 {
+  if self < low { low }
+  else if self > high { high }
+  else { self }
+}
+
+// --- Predicates ---
+
+pub fn Float32.isPositive(ref self) -> Bool {
+  self > Float32.from(0.0)
+}
+
+pub fn Float32.isNegative(ref self) -> Bool {
+  self < Float32.from(0.0)
+}
+
+// --- Conversion: output ---
+
+// Truncate to integer.
+pub fn Float32.toInt(ref self) -> Int {
+  fuse_rt_f32_to_int(self)
+}
+
+// Widen to Float (f64). Lossless.
+pub fn Float32.toFloat(ref self) -> Float {
+  fuse_rt_f32_to_float(self)
+}
+
+// String representation.
+pub fn Float32.toString(ref self) -> String {
+  fuse_rt_f32_to_string(self)
+}

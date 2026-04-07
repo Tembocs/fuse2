@@ -1,0 +1,79 @@
+// EXPECTED OUTPUT:
+// === from / fromInt ===
+// 3.14
+// 5.0
+// === abs ===
+// 2.5
+// 7.0
+// === sqrt ===
+// 4.0
+// 3.0
+// === min / max / clamp ===
+// 1.5
+// 4.0
+// 3.0
+// 5.0
+// === predicates ===
+// isPositive: true
+// isNegative: true
+// === toInt ===
+// 3
+// -2
+// === toFloat ===
+// 3.5
+// === toString ===
+// 2.5
+
+import stdlib.core.float32
+
+@entrypoint
+fn main() {
+  // from / fromInt
+  println("=== from / fromInt ===")
+  val a = Float32.from(3.14)
+  println(a)
+  val b = Float32.fromInt(5)
+  println(b)
+
+  // abs
+  println("=== abs ===")
+  val neg = Float32.from(-2.5)
+  println(neg.abs())
+  println(Float32.from(7.0).abs())
+
+  // sqrt
+  println("=== sqrt ===")
+  println(Float32.from(16.0).sqrt())
+  println(Float32.from(9.0).sqrt())
+
+  // min / max / clamp
+  println("=== min / max / clamp ===")
+  val x = Float32.from(1.5)
+  val y = Float32.from(4.0)
+  println(x.min(y))
+  println(x.max(y))
+  val low = Float32.from(3.0)
+  println(Float32.from(0.5).clamp(low, y))
+  println(Float32.from(10.0).clamp(low, Float32.from(5.0)))
+
+  // predicates
+  println("=== predicates ===")
+  val isPos = Float32.from(1.0).isPositive()
+  println(f"isPositive: {isPos}")
+  val isNeg = Float32.from(-1.0).isNegative()
+  println(f"isNegative: {isNeg}")
+
+  // toInt
+  println("=== toInt ===")
+  println(Float32.from(3.7).toInt())
+  println(Float32.from(-2.9).toInt())
+
+  // toFloat
+  println("=== toFloat ===")
+  val wide = Float32.from(3.5).toFloat()
+  println(wide)
+
+  // toString
+  println("=== toString ===")
+  println(Float32.from(2.5).toString())
+}
