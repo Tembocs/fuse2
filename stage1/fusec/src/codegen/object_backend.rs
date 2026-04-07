@@ -25,11 +25,26 @@ pub fn backend_name() -> &'static str {
 /// Choose the correct linker symbol for a function declaration.
 /// Extension methods include the receiver type to avoid collisions with
 /// free functions of the same name in the same module.
+/// `@export("name")` overrides the symbol to the given name.
 fn symbol_for_function(module_path: &Path, function: &fa::FunctionDecl) -> String {
+    if let Some(export) = function.annotations.iter().find(|a| a.is("export")) {
+        if let Some(name) = export.string_arg(0) {
+            return name.to_string();
+        }
+    }
     if let Some(receiver) = &function.receiver_type {
         layout::extension_symbol(module_path, receiver, &function.name)
     } else {
         layout::function_symbol(module_path, &function.name)
+    }
+}
+
+/// Determine linkage for a function. `@export` uses Export linkage.
+fn linkage_for_function(function: &fa::FunctionDecl) -> Linkage {
+    if function.annotations.iter().any(|a| a.is("export")) {
+        Linkage::Export
+    } else {
+        Linkage::Local
     }
 }
 
@@ -559,26 +574,29 @@ impl<'a> BackendCompiler<'a> {
     fn declare_user_surface(&mut self) -> Result<(), String> {
         for loaded in self.session.modules.values() {
             for function in loaded.functions.values() {
-                let name = layout::function_symbol(loaded.path.as_path(), &function.name);
+                let name = symbol_for_function(loaded.path.as_path(), function);
+                let linkage = linkage_for_function(function);
                 let func_id = self
                     .module
-                    .declare_function(&name, Linkage::Local, &self.handle_signature(function.params.len()))
+                    .declare_function(&name, linkage, &self.handle_signature(function.params.len()))
                     .map_err(|error| error.to_string())?;
                 self.function_ids.insert(name, func_id);
             }
             for function in loaded.extensions.values() {
                 let name = symbol_for_function(loaded.path.as_path(), function);
+                let linkage = linkage_for_function(function);
                 let func_id = self
                     .module
-                    .declare_function(&name, Linkage::Local, &self.handle_signature(function.params.len()))
+                    .declare_function(&name, linkage, &self.handle_signature(function.params.len()))
                     .map_err(|error| error.to_string())?;
                 self.function_ids.insert(name, func_id);
             }
             for function in loaded.statics.values() {
                 let name = symbol_for_function(loaded.path.as_path(), function);
+                let linkage = linkage_for_function(function);
                 let func_id = self
                     .module
-                    .declare_function(&name, Linkage::Local, &self.handle_signature(function.params.len()))
+                    .declare_function(&name, linkage, &self.handle_signature(function.params.len()))
                     .map_err(|error| error.to_string())?;
                 self.function_ids.insert(name, func_id);
             }
@@ -937,7 +955,7 @@ impl<'a> BackendCompiler<'a> {
         function: &fa::FunctionDecl,
         captures: &[(String, Option<String>)],
     ) -> Result<(), String> {
-        let name = layout::function_symbol(module_path, &function.name);
+        let name = symbol_for_function(module_path, function);
         let func_id = *self
             .function_ids
             .get(&name)
@@ -1135,7 +1153,7 @@ impl<'a> BackendCompiler<'a> {
         builder.seal_block(entry);
         let target = *self
             .function_ids
-            .get(&layout::function_symbol(self.session.root_path.as_path(), &entry_func.name))
+            .get(&symbol_for_function(self.session.root_path.as_path(), &entry_func))
             .ok_or_else(|| format!("missing entrypoint function `{}`", entry_func.name))?;
         let local = self.module.declare_func_in_func(target, builder.func);
         let call = builder.ins().call(local, &[]);
@@ -2448,7 +2466,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             .session
             .resolve_function(name)
             .ok_or_else(|| format!("unknown function `{name}`"))?;
-        let symbol = layout::function_symbol(target_module, &function.name);
+        let symbol = symbol_for_function(target_module, function);
         let func_id = *self
             .compiler
             .function_ids

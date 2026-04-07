@@ -67,6 +67,7 @@ pub fn annotation_spec(name: &str) -> Option<AnnotationSpec> {
         "export"     => Some(AnnotationSpec { positions: &[Function], args: OneString }),
         "inline"     => Some(AnnotationSpec { positions: &[Function], args: None }),
         "unsafe"     => Some(AnnotationSpec { positions: &[Function], args: None }),
+        "test"       => Some(AnnotationSpec { positions: &[Function], args: None }),
         _ => Option::None,
     }
 }

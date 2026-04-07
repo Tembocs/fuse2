@@ -681,14 +681,15 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
 
 ---
 
-### Phase W4.3 — Codegen Annotation Support
+### Phase W4.3 — Codegen Annotation Support [DONE]
 
-- [ ] **W4.3.1** `@export("name")`: use as linker symbol.
-- [ ] **W4.3.2** `@inline`: set Cranelift inlining hint.
-- [ ] **W4.3.3** `@test`: mark for test runner discovery.
-- [ ] **W4.3.4** Verify `@entrypoint` and `@value` through new path.
-- [ ] **W4.3.5** Test: `export_custom_name.fuse`.
-- [ ] **W4.3.6** Full test suite green.
+- [x] **W4.3.1** `@export("name")`: use as linker symbol with `Linkage::Export`.
+- [x] **W4.3.2** `@inline`: accepted by checker; Cranelift lacks function-level
+      inlining hints — annotation ready for future optimization passes.
+- [x] **W4.3.3** `@test`: registered in annotation registry for test runner discovery.
+- [x] **W4.3.4** `@entrypoint` and `@value` verified through `annotations` path.
+- [x] **W4.3.5** Test: `export_custom_name.fuse`.
+- [x] **W4.3.6** Full test suite green.
 
 ---
 

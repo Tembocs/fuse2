@@ -25,6 +25,13 @@ impl Annotation {
             _ => None,
         })
     }
+
+    pub fn string_arg(&self, index: usize) -> Option<&str> {
+        self.args.get(index).and_then(|a| match a {
+            AnnotationArg::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+    }
 }
 
 #[derive(Clone, Debug)]

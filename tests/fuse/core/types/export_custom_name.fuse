@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// exported: 42
+
+// @export overrides the linker symbol for a function.
+
+@export("my_custom_add")
+fn add(a: Int, b: Int) -> Int {
+  a + b
+}
+
+@entrypoint
+fn main() {
+  println(f"exported: {add(20, 22)}")
+}
