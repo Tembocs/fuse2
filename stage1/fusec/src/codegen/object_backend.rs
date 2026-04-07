@@ -64,6 +64,7 @@ pub fn compile_path_to_ir_text(input: &Path) -> Result<String, String> {
 #[derive(Clone)]
 struct LoadedModule {
     path: PathBuf,
+    imports: Vec<fa::ImportDecl>,
     functions: HashMap<String, fa::FunctionDecl>,
     extensions: HashMap<(String, String), fa::FunctionDecl>,
     statics: HashMap<(String, String), fa::FunctionDecl>,
@@ -150,6 +151,27 @@ impl BuildSession {
                 .get(&key)
                 .map(|function| (module.path.as_path(), function))
         })
+    }
+
+    fn resolve_module_function(
+        &self,
+        calling_module: &Path,
+        alias: &str,
+        fn_name: &str,
+    ) -> Option<(&Path, &fa::FunctionDecl)> {
+        let calling = self.modules.get(calling_module)?;
+        for import in &calling.imports {
+            let import_alias = import.module_path.split('.').next_back()?;
+            if import_alias == alias {
+                let target = resolve_import_path(calling_module, &import.module_path)?;
+                let target = target.canonicalize().unwrap_or(target);
+                let target_module = self.modules.get(&target)?;
+                if let Some(function) = target_module.functions.get(fn_name) {
+                    return Some((target_module.path.as_path(), function));
+                }
+            }
+        }
+        None
     }
 
     fn find_data(&self, type_name: &str) -> Option<(&Path, &fa::DataClassDecl)> {
@@ -279,6 +301,7 @@ fn load_module_recursive(
     }
     let loaded = LoadedModule {
         path: path.clone(),
+        imports: module.imports.clone(),
         functions: module
             .functions
             .iter()
@@ -2679,6 +2702,26 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     .compiler
                     .session
                     .resolve_static(base, member)
+                {
+                    let symbol = symbol_for_function(target_module, function);
+                    let func_id = *self
+                        .compiler
+                        .function_ids
+                        .get(&symbol)
+                        .ok_or_else(|| format!("missing function id for `{symbol}`"))?;
+                    let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
+                    let lowered = self.lower_args_with_variadic(builder, &function.params, _args)?;
+                    let call = builder.ins().call(local, &lowered);
+                    return Ok(TypedValue {
+                        value: builder.inst_results(call)[0],
+                        ty: function.return_type.clone(),
+                    });
+                }
+                // Fallback: try module-qualified function call (e.g., string.fromChar).
+                if let Some((target_module, function)) = self
+                    .compiler
+                    .session
+                    .resolve_module_function(self.module_path, base, member)
                 {
                     let symbol = symbol_for_function(target_module, function);
                     let func_id = *self
