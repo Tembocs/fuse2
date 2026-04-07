@@ -19,6 +19,11 @@ enum ValueKind {
     Int(i64),
     Float(f64),
     Float32(f32),
+    Int8(i8),
+    UInt8(u8),
+    Int32(i32),
+    UInt32(u32),
+    UInt64(u64),
     Bool(bool),
     String(String),
     List(Vec<FuseHandle>),
@@ -86,6 +91,11 @@ unsafe fn clone_to_string(handle: FuseHandle) -> String {
         ValueKind::Int(value) => value.to_string(),
         ValueKind::Float(value) => { let s = value.to_string(); if s.contains('.') { s } else { format!("{s}.0") } },
         ValueKind::Float32(value) => { let s = value.to_string(); if s.contains('.') { s } else { format!("{s}.0") } },
+        ValueKind::Int8(value) => value.to_string(),
+        ValueKind::UInt8(value) => value.to_string(),
+        ValueKind::Int32(value) => value.to_string(),
+        ValueKind::UInt32(value) => value.to_string(),
+        ValueKind::UInt64(value) => value.to_string(),
         ValueKind::Bool(value) => {
             if *value {
                 "true".to_string()
@@ -312,6 +322,11 @@ pub unsafe extern "C" fn fuse_is_truthy(handle: FuseHandle) -> bool {
             ValueKind::Int(value) => *value != 0,
             ValueKind::Float(value) => *value != 0.0,
             ValueKind::Float32(value) => *value != 0.0,
+            ValueKind::Int8(value) => *value != 0,
+            ValueKind::UInt8(value) => *value != 0,
+            ValueKind::Int32(value) => *value != 0,
+            ValueKind::UInt32(value) => *value != 0,
+            ValueKind::UInt64(value) => *value != 0,
             ValueKind::String(value) => !value.is_empty(),
             ValueKind::List(value) => !value.is_empty(),
             ValueKind::Channel(value) => !value.items.is_empty(),
@@ -954,6 +969,11 @@ unsafe fn clone_value(handle: FuseHandle) -> FuseHandle {
         ValueKind::Int(v) => unsafe { fuse_int(*v) },
         ValueKind::Float(v) => unsafe { fuse_float(*v) },
         ValueKind::Float32(v) => unsafe { fuse_rt_f32_new(*v as f64) },
+        ValueKind::Int8(v) => FuseValue::new(ValueKind::Int8(*v)),
+        ValueKind::UInt8(v) => FuseValue::new(ValueKind::UInt8(*v)),
+        ValueKind::Int32(v) => FuseValue::new(ValueKind::Int32(*v)),
+        ValueKind::UInt32(v) => FuseValue::new(ValueKind::UInt32(*v)),
+        ValueKind::UInt64(v) => FuseValue::new(ValueKind::UInt64(*v)),
         ValueKind::Bool(v) => unsafe { fuse_bool(*v) },
         ValueKind::String(v) => FuseValue::new(ValueKind::String(v.clone())),
         ValueKind::Unit => unsafe { fuse_unit() },
@@ -1300,6 +1320,321 @@ pub unsafe extern "C" fn fuse_rt_f32_to_float(handle: FuseHandle) -> FuseHandle 
 pub unsafe extern "C" fn fuse_rt_f32_from_int(handle: FuseHandle) -> FuseHandle {
     let n = unsafe { match &(*handle).kind { ValueKind::Int(v) => *v, _ => 0 } };
     fuse_rt_f32_new(n as f64)
+}
+
+// --- Sized integer FFI ---
+//
+// Design: all sized integers cross the Cranelift ABI boundary as `i64`.
+// The runtime narrows on store (truncating cast) and widens on load (sign-
+// or zero-extending cast). Arithmetic uses wrapping semantics — overflow is
+// well-defined and never panics. Division and remainder by zero return 0.
+
+// ---- helpers ----
+
+fn extract_i8(handle: FuseHandle) -> i8 {
+    unsafe { match &(*handle).kind { ValueKind::Int8(v) => *v, ValueKind::Int(v) => *v as i8, _ => 0 } }
+}
+fn extract_u8(handle: FuseHandle) -> u8 {
+    unsafe { match &(*handle).kind { ValueKind::UInt8(v) => *v, ValueKind::Int(v) => *v as u8, _ => 0 } }
+}
+fn extract_i32(handle: FuseHandle) -> i32 {
+    unsafe { match &(*handle).kind { ValueKind::Int32(v) => *v, ValueKind::Int(v) => *v as i32, _ => 0 } }
+}
+fn extract_u32(handle: FuseHandle) -> u32 {
+    unsafe { match &(*handle).kind { ValueKind::UInt32(v) => *v, ValueKind::Int(v) => *v as u32, _ => 0 } }
+}
+fn extract_u64(handle: FuseHandle) -> u64 {
+    unsafe { match &(*handle).kind { ValueKind::UInt64(v) => *v, ValueKind::Int(v) => *v as u64, _ => 0 } }
+}
+
+// ---- Int8 ----
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i8_new(value: i64) -> FuseHandle {
+    FuseValue::new(ValueKind::Int8(value as i8))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i8_value(handle: FuseHandle) -> i64 {
+    extract_i8(handle) as i64
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i8_add(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_i8_new(extract_i8(lhs).wrapping_add(extract_i8(rhs)) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i8_sub(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_i8_new(extract_i8(lhs).wrapping_sub(extract_i8(rhs)) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i8_mul(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_i8_new(extract_i8(lhs).wrapping_mul(extract_i8(rhs)) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i8_div(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    let r = extract_i8(rhs);
+    fuse_rt_i8_new(if r == 0 { 0 } else { extract_i8(lhs).wrapping_div(r) } as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i8_mod(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    let r = extract_i8(rhs);
+    fuse_rt_i8_new(if r == 0 { 0 } else { extract_i8(lhs).wrapping_rem(r) } as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i8_eq(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_i8(lhs) == extract_i8(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i8_lt(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_i8(lhs) < extract_i8(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i8_le(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_i8(lhs) <= extract_i8(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i8_gt(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_i8(lhs) > extract_i8(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i8_ge(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_i8(lhs) >= extract_i8(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i8_to_string(handle: FuseHandle) -> FuseHandle {
+    let s = extract_i8(handle).to_string();
+    fuse_string_new_utf8(s.as_ptr(), s.len())
+}
+
+// ---- UInt8 ----
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_new(value: i64) -> FuseHandle {
+    FuseValue::new(ValueKind::UInt8(value as u8))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_value(handle: FuseHandle) -> i64 {
+    extract_u8(handle) as i64
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_add(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_u8_new(extract_u8(lhs).wrapping_add(extract_u8(rhs)) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_sub(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_u8_new(extract_u8(lhs).wrapping_sub(extract_u8(rhs)) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_mul(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_u8_new(extract_u8(lhs).wrapping_mul(extract_u8(rhs)) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_div(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    let r = extract_u8(rhs);
+    fuse_rt_u8_new(if r == 0 { 0 } else { extract_u8(lhs).wrapping_div(r) } as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_mod(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    let r = extract_u8(rhs);
+    fuse_rt_u8_new(if r == 0 { 0 } else { extract_u8(lhs).wrapping_rem(r) } as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_eq(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_u8(lhs) == extract_u8(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_lt(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_u8(lhs) < extract_u8(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_le(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_u8(lhs) <= extract_u8(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_gt(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_u8(lhs) > extract_u8(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_ge(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_u8(lhs) >= extract_u8(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_to_string(handle: FuseHandle) -> FuseHandle {
+    let s = extract_u8(handle).to_string();
+    fuse_string_new_utf8(s.as_ptr(), s.len())
+}
+
+// ---- Int32 ----
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i32_new(value: i64) -> FuseHandle {
+    FuseValue::new(ValueKind::Int32(value as i32))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i32_value(handle: FuseHandle) -> i64 {
+    extract_i32(handle) as i64
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i32_add(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_i32_new(extract_i32(lhs).wrapping_add(extract_i32(rhs)) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i32_sub(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_i32_new(extract_i32(lhs).wrapping_sub(extract_i32(rhs)) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i32_mul(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_i32_new(extract_i32(lhs).wrapping_mul(extract_i32(rhs)) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i32_div(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    let r = extract_i32(rhs);
+    fuse_rt_i32_new(if r == 0 { 0 } else { extract_i32(lhs).wrapping_div(r) } as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i32_mod(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    let r = extract_i32(rhs);
+    fuse_rt_i32_new(if r == 0 { 0 } else { extract_i32(lhs).wrapping_rem(r) } as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i32_eq(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_i32(lhs) == extract_i32(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i32_lt(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_i32(lhs) < extract_i32(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i32_le(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_i32(lhs) <= extract_i32(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i32_gt(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_i32(lhs) > extract_i32(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i32_ge(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_i32(lhs) >= extract_i32(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i32_to_string(handle: FuseHandle) -> FuseHandle {
+    let s = extract_i32(handle).to_string();
+    fuse_string_new_utf8(s.as_ptr(), s.len())
+}
+
+// ---- UInt32 ----
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u32_new(value: i64) -> FuseHandle {
+    FuseValue::new(ValueKind::UInt32(value as u32))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u32_value(handle: FuseHandle) -> i64 {
+    extract_u32(handle) as i64
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u32_add(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_u32_new(extract_u32(lhs).wrapping_add(extract_u32(rhs)) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u32_sub(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_u32_new(extract_u32(lhs).wrapping_sub(extract_u32(rhs)) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u32_mul(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_u32_new(extract_u32(lhs).wrapping_mul(extract_u32(rhs)) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u32_div(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    let r = extract_u32(rhs);
+    fuse_rt_u32_new(if r == 0 { 0 } else { extract_u32(lhs).wrapping_div(r) } as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u32_mod(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    let r = extract_u32(rhs);
+    fuse_rt_u32_new(if r == 0 { 0 } else { extract_u32(lhs).wrapping_rem(r) } as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u32_eq(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_u32(lhs) == extract_u32(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u32_lt(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_u32(lhs) < extract_u32(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u32_le(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_u32(lhs) <= extract_u32(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u32_gt(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_u32(lhs) > extract_u32(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u32_ge(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_u32(lhs) >= extract_u32(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u32_to_string(handle: FuseHandle) -> FuseHandle {
+    let s = extract_u32(handle).to_string();
+    fuse_string_new_utf8(s.as_ptr(), s.len())
+}
+
+// ---- UInt64 ----
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u64_new(value: i64) -> FuseHandle {
+    FuseValue::new(ValueKind::UInt64(value as u64))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u64_value(handle: FuseHandle) -> i64 {
+    extract_u64(handle) as i64
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u64_add(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_u64_new(extract_u64(lhs).wrapping_add(extract_u64(rhs)) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u64_sub(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_u64_new(extract_u64(lhs).wrapping_sub(extract_u64(rhs)) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u64_mul(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_rt_u64_new(extract_u64(lhs).wrapping_mul(extract_u64(rhs)) as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u64_div(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    let r = extract_u64(rhs);
+    fuse_rt_u64_new(if r == 0 { 0 } else { extract_u64(lhs).wrapping_div(r) } as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u64_mod(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    let r = extract_u64(rhs);
+    fuse_rt_u64_new(if r == 0 { 0 } else { extract_u64(lhs).wrapping_rem(r) } as i64)
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u64_eq(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_u64(lhs) == extract_u64(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u64_lt(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_u64(lhs) < extract_u64(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u64_le(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_u64(lhs) <= extract_u64(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u64_gt(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_u64(lhs) > extract_u64(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u64_ge(lhs: FuseHandle, rhs: FuseHandle) -> FuseHandle {
+    fuse_bool(extract_u64(lhs) >= extract_u64(rhs))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u64_to_string(handle: FuseHandle) -> FuseHandle {
+    let s = extract_u64(handle).to_string();
+    fuse_string_new_utf8(s.as_ptr(), s.len())
 }
 
 // --- IO FFI helpers ---
