@@ -206,6 +206,7 @@ impl Checker {
                     methods: struct_decl.methods.clone(),
                     is_pub: struct_decl.is_pub,
                     annotations: struct_decl.annotations.clone(),
+                    implements: Vec::new(),
                     span: struct_decl.span,
                 };
                 self.check_function(module, &method, Some(&as_data));

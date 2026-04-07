@@ -1,0 +1,15 @@
+// EXPECTED OUTPUT:
+// ok
+
+interface Printable {
+  fn toString(ref self) -> String
+}
+
+interface Debuggable : Printable {
+  fn debugString(ref self) -> String
+}
+
+@entrypoint
+fn main() {
+  println("ok")
+}

@@ -1,14 +1,14 @@
 // EXPECTED ERROR:
 // error: type mismatch: `a` declared as `Int32`, initializer has type `Int`
-//   --> sized_int_no_coercion.fuse:16:3
-// error: type mismatch: `b` declared as `UInt8`, initializer has type `Int`
-//   --> sized_int_no_coercion.fuse:17:3
-// error: type mismatch: `c` declared as `Int8`, initializer has type `Int`
 //   --> sized_int_no_coercion.fuse:18:3
-// error: type mismatch: `d` declared as `UInt32`, initializer has type `Int`
+// error: type mismatch: `b` declared as `UInt8`, initializer has type `Int`
 //   --> sized_int_no_coercion.fuse:19:3
-// error: type mismatch: `e` declared as `UInt64`, initializer has type `Int`
+// error: type mismatch: `c` declared as `Int8`, initializer has type `Int`
 //   --> sized_int_no_coercion.fuse:20:3
+// error: type mismatch: `d` declared as `UInt32`, initializer has type `Int`
+//   --> sized_int_no_coercion.fuse:21:3
+// error: type mismatch: `e` declared as `UInt64`, initializer has type `Int`
+//   --> sized_int_no_coercion.fuse:22:3
 
 // Int literal infers to Int. Assigning Int to a sized integer type
 // must be a type error — no implicit coercion.

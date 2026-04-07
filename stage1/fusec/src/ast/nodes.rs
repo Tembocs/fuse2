@@ -49,6 +49,7 @@ pub enum Declaration {
     ExternFn(ExternFnDecl),
     Struct(StructDecl),
     Const(ConstDecl),
+    Interface(InterfaceDecl),
 }
 
 #[derive(Clone, Debug)]
@@ -68,6 +69,24 @@ pub struct StructDecl {
     pub methods: Vec<FunctionDecl>,
     pub is_pub: bool,
     pub annotations: Vec<Annotation>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct InterfaceDecl {
+    pub name: String,
+    pub type_params: Vec<String>,
+    pub parents: Vec<String>,
+    pub methods: Vec<InterfaceMethod>,
+    pub is_pub: bool,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct InterfaceMethod {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub return_type: Option<String>,
     pub span: Span,
 }
 
@@ -125,6 +144,7 @@ pub struct DataClassDecl {
     pub methods: Vec<FunctionDecl>,
     pub is_pub: bool,
     pub annotations: Vec<Annotation>,
+    pub implements: Vec<String>,
     pub span: Span,
 }
 
@@ -140,6 +160,7 @@ pub struct EnumDecl {
     pub name: String,
     pub variants: Vec<EnumVariant>,
     pub is_pub: bool,
+    pub implements: Vec<String>,
     pub span: Span,
 }
 

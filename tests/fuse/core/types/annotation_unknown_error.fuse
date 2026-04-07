@@ -1,5 +1,6 @@
 // EXPECTED ERROR:
 // error: unknown annotation `@typo`
+//   --> annotation_unknown_error.fuse:5:2
 
 @typo
 fn broken() {

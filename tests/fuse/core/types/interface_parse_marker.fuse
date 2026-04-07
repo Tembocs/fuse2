@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// ok
+
+interface Sendable {
+}
+
+data class Packet(val id: Int) implements Sendable
+
+enum Color implements Sendable {
+  Red, Green, Blue
+}
+
+@entrypoint
+fn main() {
+  println("ok")
+}

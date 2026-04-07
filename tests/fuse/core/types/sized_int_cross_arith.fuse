@@ -1,6 +1,7 @@
 // EXPECTED ERROR:
 // error: mismatched numeric types in `+`: `Int` and `Float`
-//   --> sized_int_cross_arith.fuse:10:17
+//        convert explicitly — no implicit coercion between numeric types
+//   --> sized_int_cross_arith.fuse:15:13
 
 // Arithmetic between distinct numeric types must be a type error.
 

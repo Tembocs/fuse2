@@ -500,6 +500,7 @@ impl Evaluator {
                         methods: struct_decl.methods.clone(),
                         is_pub: struct_decl.is_pub,
                         annotations: struct_decl.annotations.clone(),
+                        implements: Vec::new(),
                         span: struct_decl.span,
                     };
                     let methods = as_data
@@ -521,6 +522,7 @@ impl Evaluator {
                     );
                 }
                 fa::Declaration::Const(_) => {}
+                fa::Declaration::Interface(_) => {}
             }
         }
         self.modules.insert(canonical, module.clone());

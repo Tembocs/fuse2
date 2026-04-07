@@ -103,6 +103,11 @@ impl Parser {
                 struct_decl.is_pub = is_pub;
                 Ok(Declaration::Struct(struct_decl))
             }
+            TokenKind::Interface => {
+                let mut iface = self.parse_interface()?;
+                iface.is_pub = is_pub;
+                Ok(Declaration::Interface(iface))
+            }
             TokenKind::Val => {
                 let mut const_decl = self.parse_const()?;
                 const_decl.is_pub = is_pub;
@@ -323,6 +328,18 @@ impl Parser {
             }
         }
         self.expect(TokenKind::RParen, "expected `)` after fields")?;
+        let mut implements = Vec::new();
+        if self.match_kind(TokenKind::Implements).is_some() {
+            loop {
+                implements.push(
+                    self.expect(TokenKind::Identifier, "expected interface name")?
+                        .text,
+                );
+                if self.match_kind(TokenKind::Comma).is_none() {
+                    break;
+                }
+            }
+        }
         let mut methods = Vec::new();
         if self.match_kind(TokenKind::LBrace).is_some() {
             while self.peek(0).kind != TokenKind::RBrace {
@@ -345,6 +362,7 @@ impl Parser {
             methods,
             is_pub: false,
             annotations: Vec::new(),
+            implements,
             span: start.span,
         })
     }
@@ -352,6 +370,18 @@ impl Parser {
     fn parse_enum(&mut self) -> Result<EnumDecl, Diagnostic> {
         let start = self.expect(TokenKind::Enum, "expected `enum`")?;
         let name = self.expect(TokenKind::Identifier, "expected enum name")?.text;
+        let mut implements = Vec::new();
+        if self.match_kind(TokenKind::Implements).is_some() {
+            loop {
+                implements.push(
+                    self.expect(TokenKind::Identifier, "expected interface name")?
+                        .text,
+                );
+                if self.match_kind(TokenKind::Comma).is_none() {
+                    break;
+                }
+            }
+        }
         self.expect(TokenKind::LBrace, "expected `{` after enum name")?;
         let mut variants = Vec::new();
         while self.peek(0).kind != TokenKind::RBrace {
@@ -380,6 +410,77 @@ impl Parser {
         Ok(EnumDecl {
             name,
             variants,
+            is_pub: false,
+            implements,
+            span: start.span,
+        })
+    }
+
+    fn parse_interface(&mut self) -> Result<InterfaceDecl, Diagnostic> {
+        let start = self.expect(TokenKind::Interface, "expected `interface`")?;
+        let name = self
+            .expect(TokenKind::Identifier, "expected interface name")?
+            .text;
+        let mut type_params = Vec::new();
+        if self.match_kind(TokenKind::Lt).is_some() {
+            loop {
+                type_params.push(
+                    self.expect(TokenKind::Identifier, "expected type parameter name")?
+                        .text,
+                );
+                if self.match_kind(TokenKind::Comma).is_none() {
+                    break;
+                }
+            }
+            self.expect(TokenKind::Gt, "expected `>` after type parameters")?;
+        }
+        let mut parents = Vec::new();
+        if self.match_kind(TokenKind::Colon).is_some() {
+            loop {
+                parents.push(
+                    self.expect(TokenKind::Identifier, "expected parent interface name")?
+                        .text,
+                );
+                if self.match_kind(TokenKind::Comma).is_none() {
+                    break;
+                }
+            }
+        }
+        self.expect(TokenKind::LBrace, "expected `{` after interface header")?;
+        let mut methods = Vec::new();
+        while self.peek(0).kind != TokenKind::RBrace {
+            let method_start = self.expect(TokenKind::Fn, "expected `fn` for interface method")?;
+            let method_name = self
+                .expect(TokenKind::Identifier, "expected method name")?
+                .text;
+            self.expect(TokenKind::LParen, "expected `(` after method name")?;
+            let mut params = Vec::new();
+            if self.peek(0).kind != TokenKind::RParen {
+                loop {
+                    params.push(self.parse_param()?);
+                    if self.match_kind(TokenKind::Comma).is_none() {
+                        break;
+                    }
+                }
+            }
+            self.expect(TokenKind::RParen, "expected `)` after method parameters")?;
+            let mut return_type = None;
+            if self.match_kind(TokenKind::Arrow).is_some() {
+                return_type = Some(self.parse_type_name(&[TokenKind::Fn, TokenKind::RBrace]));
+            }
+            methods.push(InterfaceMethod {
+                name: method_name,
+                params,
+                return_type,
+                span: method_start.span,
+            });
+        }
+        self.expect(TokenKind::RBrace, "expected `}` after interface body")?;
+        Ok(InterfaceDecl {
+            name,
+            type_params,
+            parents,
+            methods,
             is_pub: false,
             span: start.span,
         })
@@ -488,7 +589,7 @@ impl Parser {
         self.expect(TokenKind::RParen, "expected `)` after parameters")?;
         let mut return_type = None;
         if self.match_kind(TokenKind::Arrow).is_some() {
-            return_type = Some(self.parse_type_name(&[TokenKind::LBrace, TokenKind::FatArrow, TokenKind::Fn, TokenKind::Extern, TokenKind::Pub, TokenKind::Data, TokenKind::Enum, TokenKind::Import, TokenKind::At, TokenKind::Val, TokenKind::Var, TokenKind::Struct, TokenKind::Eof]));
+            return_type = Some(self.parse_type_name(&[TokenKind::LBrace, TokenKind::FatArrow, TokenKind::Fn, TokenKind::Extern, TokenKind::Pub, TokenKind::Data, TokenKind::Enum, TokenKind::Import, TokenKind::At, TokenKind::Val, TokenKind::Var, TokenKind::Struct, TokenKind::Interface, TokenKind::Eof]));
         }
         Ok(ExternFnDecl {
             name,

@@ -622,6 +622,22 @@ fn print_ast_decl(decl: &fusec::ast::nodes::Declaration, depth: usize) {
                 c.owner, c.name, c.span.line, c.span.column
             );
         }
+        fusec::ast::nodes::Declaration::Interface(iface) => {
+            let parents = if iface.parents.is_empty() {
+                String::new()
+            } else {
+                format!(" : {}", iface.parents.join(", "))
+            };
+            println!(
+                "{indent}Interface '{}'{parents} [{}:{}]",
+                iface.name, iface.span.line, iface.span.column
+            );
+            let inner = "  ".repeat(depth + 1);
+            for method in &iface.methods {
+                let ret = method.return_type.as_deref().unwrap_or("Unit");
+                println!("{inner}Method '{}' -> {ret}", method.name);
+            }
+        }
     }
 }
 

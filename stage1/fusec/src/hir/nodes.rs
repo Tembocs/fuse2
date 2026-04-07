@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::ast::nodes::{ConstDecl, DataClassDecl, EnumDecl, ExternFnDecl, FunctionDecl, ImportDecl, StructDecl};
+use crate::ast::nodes::{ConstDecl, DataClassDecl, EnumDecl, ExternFnDecl, FunctionDecl, ImportDecl, InterfaceDecl, StructDecl};
 
 #[derive(Clone, Debug)]
 pub struct Module {
@@ -14,5 +14,6 @@ pub struct Module {
     pub extern_fns: Vec<ExternFnDecl>,
     pub structs: Vec<StructDecl>,
     pub consts: Vec<ConstDecl>,
+    pub interfaces: Vec<InterfaceDecl>,
     pub extension_functions: HashMap<(String, String), FunctionDecl>,
 }

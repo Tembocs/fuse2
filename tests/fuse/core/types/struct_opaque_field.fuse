@@ -1,6 +1,7 @@
 // EXPECTED ERROR:
 // error: cannot access field `count` on struct `Counter` — struct fields are private
-//   --> struct_opaque_field.fuse:14:11
+//        use a method instead
+//   --> struct_opaque_field.fuse:19:13
 
 // Struct fields are not accessible outside methods. This is the
 // core distinction from data class. The checker must reject this.

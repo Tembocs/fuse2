@@ -1,5 +1,6 @@
 // EXPECTED WARNING:
 // warning: `oldWay` is deprecated: use newWay instead
+//   --> annotation_deprecated_warning.fuse:12:18
 
 @deprecated("use newWay instead")
 fn oldWay() -> Int { 42 }

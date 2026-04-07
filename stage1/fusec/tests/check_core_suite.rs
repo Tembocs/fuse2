@@ -13,7 +13,7 @@ fn core_suite_matches_expected_contract() {
         let (kind, expected) =
             common::extract_expected_block(&path).unwrap_or_else(|| panic!("missing expected block: {relative}"));
         let actual = check_path_output(&path);
-        if kind.contains("ERROR") {
+        if kind.contains("ERROR") || kind.contains("WARNING") {
             assert_eq!(actual.trim(), expected.trim(), "{relative}");
         } else {
             assert!(actual.trim().is_empty(), "{relative}: expected success, got `{actual}`");

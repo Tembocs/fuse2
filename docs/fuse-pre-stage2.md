@@ -725,9 +725,9 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
 > **Before starting:** Read `lexer/token.rs`, `parser/parser.rs`,
 > `ast/nodes.rs`.
 
-- [ ] **W5.1.1** Add `Interface` and `Implements` variants to `TokenKind`.
-- [ ] **W5.1.2** Add `"interface"` and `"implements"` to `keyword_kind()`.
-- [ ] **W5.1.3** Add `InterfaceDecl` struct to `ast/nodes.rs`:
+- [x] **W5.1.1** Add `Interface` and `Implements` variants to `TokenKind`.
+- [x] **W5.1.2** Add `"interface"` and `"implements"` to `keyword_kind()`.
+- [x] **W5.1.3** Add `InterfaceDecl` struct to `ast/nodes.rs`:
       ```rust
       pub struct InterfaceDecl {
           pub name: String,
@@ -744,21 +744,21 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
           pub span: Span,
       }
       ```
-- [ ] **W5.1.4** Add `Interface(InterfaceDecl)` to `Declaration` enum.
-- [ ] **W5.1.5** Add `implements: Vec<String>` to `DataClassDecl`.
-- [ ] **W5.1.6** Add `implements: Vec<String>` to `EnumDecl`.
-- [ ] **W5.1.7** Implement `parse_interface()`:
+- [x] **W5.1.4** Add `Interface(InterfaceDecl)` to `Declaration` enum.
+- [x] **W5.1.5** Add `implements: Vec<String>` to `DataClassDecl`.
+- [x] **W5.1.6** Add `implements: Vec<String>` to `EnumDecl`.
+- [x] **W5.1.7** Implement `parse_interface()`:
       consume `interface`, parse name, optional `<T, U>`,
       optional `: Parent1, Parent2`, `{` block of method signatures `}`.
-- [ ] **W5.1.8** Add `TokenKind::Interface` dispatch in `parse_top_level`.
-- [ ] **W5.1.9** Extend `parse_data_class()` to parse `implements X, Y`
+- [x] **W5.1.8** Add `TokenKind::Interface` dispatch in `parse_top_level`.
+- [x] **W5.1.9** Extend `parse_data_class()` to parse `implements X, Y`
       after field list and before body.
-- [ ] **W5.1.10** Extend `parse_enum()` to parse `implements X, Y` after
+- [x] **W5.1.10** Extend `parse_enum()` to parse `implements X, Y` after
       name and before `{`.
-- [ ] **W5.1.11** Test: `interface_parse_basic.fuse` — simple interface.
-- [ ] **W5.1.12** Test: `interface_parse_parents.fuse` — `: Parent`.
-- [ ] **W5.1.13** Test: `interface_parse_generic.fuse` — `Convertible<T>`.
-- [ ] **W5.1.14** Test: `interface_parse_marker.fuse` — empty interface.
+- [x] **W5.1.11** Test: `interface_parse_basic.fuse` — simple interface.
+- [x] **W5.1.12** Test: `interface_parse_parents.fuse` — `: Parent`.
+- [x] **W5.1.13** Test: `interface_parse_generic.fuse` — `Convertible<T>`.
+- [x] **W5.1.14** Test: `interface_parse_marker.fuse` — empty interface.
 
 ---
 
@@ -766,13 +766,13 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
 
 > **Before starting:** Read `hir/nodes.rs`, `hir/lower.rs`.
 
-- [ ] **W5.2.1** Add `InterfaceDecl` to HIR nodes (mirror AST or re-export).
-- [ ] **W5.2.2** Add `Interface(InterfaceDecl)` to HIR `Declaration` enum.
-- [ ] **W5.2.3** Add `implements: Vec<String>` to HIR `DataClassDecl`.
-- [ ] **W5.2.4** Add `implements: Vec<String>` to HIR `EnumDecl`.
-- [ ] **W5.2.5** Lower `Declaration::Interface` in `lower.rs`.
-- [ ] **W5.2.6** Propagate `implements` for data classes and enums.
-- [ ] **W5.2.7** `cargo build` succeeds. Existing tests green.
+- [x] **W5.2.1** Add `InterfaceDecl` to HIR nodes (mirror AST or re-export).
+- [x] **W5.2.2** Add `Interface(InterfaceDecl)` to HIR `Declaration` enum.
+- [x] **W5.2.3** Add `implements: Vec<String>` to HIR `DataClassDecl`.
+- [x] **W5.2.4** Add `implements: Vec<String>` to HIR `EnumDecl`.
+- [x] **W5.2.5** Lower `Declaration::Interface` in `lower.rs`.
+- [x] **W5.2.6** Propagate `implements` for data classes and enums.
+- [x] **W5.2.7** `cargo build` succeeds. Existing tests green.
 
 ---
 

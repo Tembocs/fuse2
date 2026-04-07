@@ -13,6 +13,7 @@ pub fn lower_program(program: &AstProgram, path: PathBuf) -> Module {
     let mut extern_fns = Vec::new();
     let mut structs = Vec::new();
     let mut consts = Vec::new();
+    let mut interfaces = Vec::new();
     let mut extension_functions = HashMap::new();
 
     for declaration in &program.declarations {
@@ -30,6 +31,7 @@ pub fn lower_program(program: &AstProgram, path: PathBuf) -> Module {
             Declaration::ExternFn(extern_fn) => extern_fns.push(extern_fn.clone()),
             Declaration::Struct(struct_decl) => structs.push(struct_decl.clone()),
             Declaration::Const(const_decl) => consts.push(const_decl.clone()),
+            Declaration::Interface(iface) => interfaces.push(iface.clone()),
         }
     }
 
@@ -43,6 +45,7 @@ pub fn lower_program(program: &AstProgram, path: PathBuf) -> Module {
         extern_fns,
         structs,
         consts,
+        interfaces,
         extension_functions,
     }
 }

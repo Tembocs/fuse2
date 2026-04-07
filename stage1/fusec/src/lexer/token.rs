@@ -40,6 +40,8 @@ pub enum TokenKind {
     Or,
     Not,
     Spawn,
+    Interface,
+    Implements,
     FatArrow,
     Arrow,
     QDot,
@@ -123,6 +125,8 @@ pub fn keyword_kind(text: &str) -> TokenKind {
         "or" => TokenKind::Or,
         "not" => TokenKind::Not,
         "spawn" => TokenKind::Spawn,
+        "interface" => TokenKind::Interface,
+        "implements" => TokenKind::Implements,
         _ => TokenKind::Identifier,
     }
 }

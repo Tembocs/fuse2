@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// ok
+
+interface Convertible<T> {
+  fn convert(ref self) -> T
+}
+
+@entrypoint
+fn main() {
+  println("ok")
+}
