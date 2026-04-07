@@ -1,0 +1,9 @@
+// EXPECTED OUTPUT:
+// hello from annotated
+
+// Valid annotations should be accepted without errors.
+
+@entrypoint
+fn main() {
+  println("hello from annotated")
+}

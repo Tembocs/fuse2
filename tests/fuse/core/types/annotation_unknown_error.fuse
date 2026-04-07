@@ -1,0 +1,12 @@
+// EXPECTED ERROR:
+// error: unknown annotation `@typo`
+
+@typo
+fn broken() {
+  println("unreachable")
+}
+
+@entrypoint
+fn main() {
+  broken()
+}

@@ -30,3 +30,43 @@ pub fn is_numeric_type(ty: &str) -> bool {
 pub fn is_primitive_type(ty: &str) -> bool {
     is_numeric_type(ty) || matches!(ty, "Bool" | "String" | "Unit")
 }
+
+// --- Annotation registry ---
+
+/// Where an annotation may appear.
+#[derive(Clone, Copy, PartialEq)]
+pub enum AnnotationPosition {
+    Function,
+    Type,       // data class or struct
+    Statement,  // var/val declarations
+}
+
+/// Expected argument shape for an annotation.
+#[derive(Clone, Copy)]
+pub enum AnnotationArgs {
+    None,
+    OneInt,      // @rank(1)
+    OneString,   // @deprecated("msg"), @export("name")
+}
+
+/// Registry entry for a known annotation.
+pub struct AnnotationSpec {
+    pub positions: &'static [AnnotationPosition],
+    pub args: AnnotationArgs,
+}
+
+/// Look up a known annotation by name. Returns None for unknown annotations.
+pub fn annotation_spec(name: &str) -> Option<AnnotationSpec> {
+    use AnnotationPosition::*;
+    use AnnotationArgs::*;
+    match name {
+        "entrypoint" => Some(AnnotationSpec { positions: &[Function], args: None }),
+        "value"      => Some(AnnotationSpec { positions: &[Type], args: None }),
+        "rank"       => Some(AnnotationSpec { positions: &[Statement], args: OneInt }),
+        "deprecated" => Some(AnnotationSpec { positions: &[Function, Type], args: OneString }),
+        "export"     => Some(AnnotationSpec { positions: &[Function], args: OneString }),
+        "inline"     => Some(AnnotationSpec { positions: &[Function], args: None }),
+        "unsafe"     => Some(AnnotationSpec { positions: &[Function], args: None }),
+        _ => Option::None,
+    }
+}

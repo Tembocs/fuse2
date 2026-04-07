@@ -1,0 +1,12 @@
+// EXPECTED ERROR:
+// error: `@entrypoint` cannot be used here — allowed on: function
+
+// @entrypoint on a data class is invalid — it only belongs on functions.
+
+@entrypoint
+data class Bad(val x: Int)
+
+@entrypoint
+fn main() {
+  println("unreachable")
+}

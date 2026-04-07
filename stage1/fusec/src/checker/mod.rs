@@ -183,17 +183,22 @@ impl Checker {
             self.check_import(module, &import);
         }
 
+        let filename = display_name(&module.path);
         for function in module.module.functions.clone() {
+            self.validate_annotations(&function.annotations, types::AnnotationPosition::Function, &filename);
             self.check_function(module, &function, None);
         }
         for data in module.module.data_classes.clone() {
+            self.validate_annotations(&data.annotations, types::AnnotationPosition::Type, &filename);
             for method in data.methods.clone() {
+                self.validate_annotations(&method.annotations, types::AnnotationPosition::Function, &filename);
                 self.check_function(module, &method, Some(&data));
             }
         }
         for struct_decl in module.module.structs.clone() {
+            self.validate_annotations(&struct_decl.annotations, types::AnnotationPosition::Type, &filename);
             for method in struct_decl.methods.clone() {
-                // Convert StructDecl to DataClassDecl for owner context.
+                self.validate_annotations(&method.annotations, types::AnnotationPosition::Function, &filename);
                 let as_data = hir::DataClassDecl {
                     name: struct_decl.name.clone(),
                     type_params: Vec::new(),
@@ -208,9 +213,11 @@ impl Checker {
         }
         // Check extension and static functions (Type.method defined outside type body).
         for function in module.extension_functions.values() {
+            self.validate_annotations(&function.annotations, types::AnnotationPosition::Function, &filename);
             self.check_function(module, function, None);
         }
         for function in module.static_functions.values() {
+            self.validate_annotations(&function.annotations, types::AnnotationPosition::Function, &filename);
             self.check_function(module, function, None);
         }
     }
@@ -249,6 +256,50 @@ impl Checker {
                         format!("cannot import non-pub item `{item}`"),
                         None,
                     );
+                }
+            }
+        }
+    }
+
+    fn validate_annotations(
+        &mut self,
+        annotations: &[hir::Annotation],
+        position: types::AnnotationPosition,
+        filename: &str,
+    ) {
+        for annotation in annotations {
+            let Some(spec) = types::annotation_spec(&annotation.name) else {
+                self.add_error(filename, annotation.span, format!("unknown annotation `@{}`", annotation.name), None);
+                continue;
+            };
+            if !spec.positions.contains(&position) {
+                let allowed = spec.positions.iter().map(|p| match p {
+                    types::AnnotationPosition::Function => "function",
+                    types::AnnotationPosition::Type => "type",
+                    types::AnnotationPosition::Statement => "statement",
+                }).collect::<Vec<_>>().join(", ");
+                self.add_error(
+                    filename,
+                    annotation.span,
+                    format!("`@{}` cannot be used here — allowed on: {}", annotation.name, allowed),
+                    None,
+                );
+            }
+            match spec.args {
+                types::AnnotationArgs::None => {
+                    if !annotation.args.is_empty() {
+                        self.add_error(filename, annotation.span, format!("`@{}` takes no arguments", annotation.name), None);
+                    }
+                }
+                types::AnnotationArgs::OneInt => {
+                    if annotation.args.len() != 1 || !matches!(annotation.args.first(), Some(hir::AnnotationArg::Int(_))) {
+                        self.add_error(filename, annotation.span, format!("`@{}` requires one integer argument", annotation.name), None);
+                    }
+                }
+                types::AnnotationArgs::OneString => {
+                    if annotation.args.len() != 1 || !matches!(annotation.args.first(), Some(hir::AnnotationArg::String(_))) {
+                        self.add_error(filename, annotation.span, format!("`@{}` requires one string argument", annotation.name), None);
+                    }
                 }
             }
         }
@@ -338,6 +389,7 @@ impl Checker {
     ) {
         match stmt {
             hir::Statement::VarDecl(var_decl) => {
+                self.validate_annotations(&var_decl.annotations, types::AnnotationPosition::Statement, &display_name(&module.path));
                 let inferred = self.infer_expr_type(module, &var_decl.value, scope, owner_name);
                 let ty = var_decl.type_name.clone().or(inferred.clone());
                 if let (Some(declared), Some(actual)) = (&var_decl.type_name, &inferred) {
@@ -960,6 +1012,21 @@ impl Checker {
                         None,
                     );
                 }
+            }
+            // Warn on use of @deprecated functions.
+            if let Some(dep) = function.annotations.iter().find(|a| a.is("deprecated")) {
+                let msg = dep.args.first().and_then(|a| match a {
+                    hir::AnnotationArg::String(s) => Some(s.as_str()),
+                    _ => None,
+                }).unwrap_or("this function is deprecated");
+                self.diagnostics.push(
+                    Diagnostic::warning(
+                        format!("`{}` is deprecated: {}", function.name, msg),
+                        display_name(&module.path),
+                        call.span,
+                        None,
+                    )
+                );
             }
         } else if let Some(name) = callee_name {
             if types::builtin_return_type(&name).is_none() && self.find_data_decl(&name).is_none() {

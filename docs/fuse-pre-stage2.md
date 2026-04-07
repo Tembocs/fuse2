@@ -654,7 +654,7 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
 
 ---
 
-### Phase W4.2 — Checker Annotation Validation
+### Phase W4.2 — Checker Annotation Validation [DONE]
 
 | Annotation | Position | Arguments | Purpose |
 |---|---|---|---|
@@ -668,16 +668,16 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
 | `@inline` | Function | none | Inlining hint |
 | `@unsafe` | Function, block | none | Bypass ownership for FFI |
 
-- [ ] **W4.2.1** Define annotation registry (name → valid positions + args).
-- [ ] **W4.2.2** Reject unknown annotations: `unknown annotation '@typo'`.
-- [ ] **W4.2.3** Validate argument count and types.
-- [ ] **W4.2.4** Validate annotation position.
-- [ ] **W4.2.5** `@deprecated`: emit warning on use.
-- [ ] **W4.2.6** Test: `annotation_valid.fuse`.
-- [ ] **W4.2.7** Test: `annotation_unknown_error.fuse`.
-- [ ] **W4.2.8** Test: `annotation_wrong_position_error.fuse`.
-- [ ] **W4.2.9** Test: `annotation_deprecated_warning.fuse`.
-- [ ] **W4.2.10** Full test suite green.
+- [x] **W4.2.1** Define annotation registry (name → valid positions + args).
+- [x] **W4.2.2** Reject unknown annotations: `unknown annotation '@typo'`.
+- [x] **W4.2.3** Validate argument count and types.
+- [x] **W4.2.4** Validate annotation position.
+- [x] **W4.2.5** `@deprecated`: emit warning on use.
+- [x] **W4.2.6** Test: `annotation_valid.fuse`.
+- [x] **W4.2.7** Test: `annotation_unknown_error.fuse`.
+- [x] **W4.2.8** Test: `annotation_wrong_position_error.fuse`.
+- [x] **W4.2.9** Test: `annotation_deprecated_warning.fuse`.
+- [x] **W4.2.10** Full test suite green.
 
 ---
 

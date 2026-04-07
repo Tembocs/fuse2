@@ -1,0 +1,12 @@
+// EXPECTED WARNING:
+// warning: `oldWay` is deprecated: use newWay instead
+
+@deprecated("use newWay instead")
+fn oldWay() -> Int { 42 }
+
+fn newWay() -> Int { 42 }
+
+@entrypoint
+fn main() {
+  println(oldWay())
+}
