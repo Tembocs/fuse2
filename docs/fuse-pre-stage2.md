@@ -600,15 +600,21 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
 
 ---
 
-### Phase W3.2 — Data Class → Struct Restoration (*depends on W1.1*)
+### Phase W3.2 — Data Class → Struct Restoration (*depends on W1.1*) [DONE]
 
-- [ ] **W3.2.1** `regex.fuse`: `data class Regex` → `struct Regex`.
-- [ ] **W3.2.2** `log.fuse`: `data class Logger` → `struct Logger`.
-- [ ] **W3.2.3** Review `io.fuse` — convert `File` if applicable.
-- [ ] **W3.2.4** Review `json_schema.fuse` — convert `Schema` if applicable.
-- [ ] **W3.2.5** Review `http_server.fuse` — convert `Router`/`Server`.
-- [ ] **W3.2.6** Update test files.
-- [ ] **W3.2.7** Full test suite green, behavior unchanged.
+- [x] **W3.2.1** `regex.fuse`: `data class Regex` → `struct Regex`;
+      promoted `compile` → `Regex.compile`.
+- [x] **W3.2.2** `log.fuse`: `data class Logger` → `struct Logger`;
+      added `getLevel()`/`getPrefix()` accessors.
+- [x] **W3.2.3** `io.fuse`: `File` already a struct. `IOError` kept as
+      data class (error DTO with public fields). No changes needed.
+- [x] **W3.2.4** `json_schema.fuse`: `data class Schema` → `struct Schema`;
+      promoted `compile`/`compileStr` → `Schema.compile`/`Schema.compileStr`.
+- [x] **W3.2.5** `http_server.fuse`: `Request`, `Response`, `Router`, `Server`
+      kept as data classes — all have fields accessed externally in tests.
+- [x] **W3.2.6** Updated test files (regex_test, log_test, json_schema_test).
+- [x] **W3.2.7** Full test suite green, behavior unchanged.
+      Also fixed evaluator to handle cross-module struct types (Declaration::Struct).
 
 ---
 

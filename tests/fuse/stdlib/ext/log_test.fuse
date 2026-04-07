@@ -33,8 +33,8 @@ fn main() {
   // --- Logger.new ---
   println("--- Logger.new ---")
   val logger = Logger.new()
-  println(f"level: {logger.level}")
-  val prefixEmpty = logger.prefix == ""
+  println(f"level: {logger.getLevel()}")
+  val prefixEmpty = logger.getPrefix() == ""
   println(f"prefix empty: {prefixEmpty}")
 
   // --- Logger builder ---

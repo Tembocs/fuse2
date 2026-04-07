@@ -45,14 +45,24 @@ fn levelLabel(n: Int) -> String {
   }
 }
 
-// --- Logger data class ---
+// --- Logger struct (opaque — use methods for access) ---
 
-pub data class Logger(var level: Int, var prefix: String, var filePath: String)
+pub struct Logger {
+  var level: Int
+  var prefix: String
+  var filePath: String
+}
 
 // Create a new Logger. Defaults to Info level, no prefix, stderr output.
 pub fn Logger.new() -> Logger {
   Logger(2, "", "")
 }
+
+// Accessor: current log level ordinal.
+pub fn Logger.getLevel(ref self) -> Int { self.level }
+
+// Accessor: current prefix.
+pub fn Logger.getPrefix(ref self) -> String { self.prefix }
 
 // Set the minimum log level.
 pub fn Logger.withLevel(mutref self, level: Level) -> Int {

@@ -18,12 +18,15 @@ extern fn fuse_rt_json_schema_validate_str(schemaId: Int, valueJson: String) -> 
 
 pub data class ValidationError(val path: String, val message: String)
 
-pub data class Schema(val handle: Int)
+// Opaque compiled schema. Fields not accessible outside methods.
+pub struct Schema {
+  val handle: Int
+}
 
 // --- Public API ---
 
 // Compile a JSON Schema from a JsonValue.
-pub fn compile(schema: Int) -> Result<Schema, String> {
+pub fn Schema.compile(schema: Int) -> Result<Schema, String> {
   val result = fuse_rt_json_schema_compile(schema)
   match result {
     Ok(id) => Ok(Schema(id))
@@ -32,7 +35,7 @@ pub fn compile(schema: Int) -> Result<Schema, String> {
 }
 
 // Compile a JSON Schema from a JSON string.
-pub fn compileStr(schemaJson: String) -> Result<Schema, String> {
+pub fn Schema.compileStr(schemaJson: String) -> Result<Schema, String> {
   val result = fuse_rt_json_schema_compile_str(schemaJson)
   match result {
     Ok(id) => Ok(Schema(id))

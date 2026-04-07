@@ -22,12 +22,15 @@ pub data class RegexError(val message: String)
 
 pub data class Match(val text: String, val start: Int, val end: Int)
 
-pub data class Regex(val handle: Int)
+// Opaque compiled regex. Fields not accessible outside methods.
+pub struct Regex {
+  val handle: Int
+}
 
 // --- Regex methods ---
 
 // Compile a regex pattern. Returns Err on invalid syntax.
-pub fn compile(pattern: String) -> Result<Regex, RegexError> {
+pub fn Regex.compile(pattern: String) -> Result<Regex, RegexError> {
   val result = fuse_rt_regex_compile(pattern)
   match result {
     Ok(handle) => Ok(Regex(handle))

@@ -490,7 +490,36 @@ impl Evaluator {
                         });
                     }
                 }
-                fa::Declaration::Struct(_) => {}
+                fa::Declaration::Struct(struct_decl) => {
+                    // Treat structs like data classes in the evaluator — same constructor
+                    // and method resolution. Opaqueness is enforced by the checker, not runtime.
+                    let as_data = fa::DataClassDecl {
+                        name: struct_decl.name.clone(),
+                        type_params: Vec::new(),
+                        fields: struct_decl.fields.clone(),
+                        methods: struct_decl.methods.clone(),
+                        is_pub: struct_decl.is_pub,
+                        decorators: struct_decl.decorators.clone(),
+                        span: struct_decl.span,
+                    };
+                    let methods = as_data
+                        .methods
+                        .iter()
+                        .map(|method| (method.name.clone(), method.clone()))
+                        .collect::<HashMap<_, _>>();
+                    if as_data.is_pub {
+                        module
+                            .exports
+                            .insert(as_data.name.clone(), ExportSymbol::Data(as_data.clone()));
+                    }
+                    module.data_defs.insert(
+                        as_data.name.clone(),
+                        DataDef {
+                            decl: as_data,
+                            methods,
+                        },
+                    );
+                }
                 fa::Declaration::Const(_) => {}
             }
         }

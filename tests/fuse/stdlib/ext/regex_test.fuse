@@ -30,13 +30,13 @@ import stdlib.ext.regex
 fn main() {
   // --- compile ---
   println("--- compile ---")
-  val result = compile("[0-9]+")
+  val result = Regex.compile("[0-9]+")
   val compiled = match result {
     Ok(re) => true
     Err(e) => false
   }
   println(f"compiled: {compiled}")
-  val bad = compile("[invalid")
+  val bad = Regex.compile("[invalid")
   val invalid = match bad {
     Ok(re) => false
     Err(e) => true
@@ -45,7 +45,7 @@ fn main() {
 
   // --- isMatch ---
   println("--- isMatch ---")
-  val re = match compile("[0-9]+") {
+  val re = match Regex.compile("[0-9]+") {
     Ok(r) => r
     Err(e) => Regex(0)
   }
@@ -70,7 +70,7 @@ fn main() {
 
   // --- findAll ---
   println("--- findAll ---")
-  val numRe = match compile("[0-9]+") {
+  val numRe = match Regex.compile("[0-9]+") {
     Ok(r) => r
     Err(e) => Regex(0)
   }
@@ -80,7 +80,7 @@ fn main() {
 
   // --- replace ---
   println("--- replace ---")
-  val worldRe = match compile("world") {
+  val worldRe = match Regex.compile("world") {
     Ok(r) => r
     Err(e) => Regex(0)
   }
@@ -94,7 +94,7 @@ fn main() {
 
   // --- split ---
   println("--- split ---")
-  val sepRe = match compile("[,;]+\\s*") {
+  val sepRe = match Regex.compile("[,;]+\\s*") {
     Ok(r) => r
     Err(e) => Regex(0)
   }
@@ -104,7 +104,7 @@ fn main() {
 
   // --- captures ---
   println("--- captures ---")
-  val dateRe = match compile("(\\d{4})-(\\d{2})-(\\d{2})") {
+  val dateRe = match Regex.compile("(\\d{4})-(\\d{2})-(\\d{2})") {
     Ok(r) => r
     Err(e) => Regex(0)
   }
