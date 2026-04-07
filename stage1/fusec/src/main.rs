@@ -33,6 +33,12 @@ enum ErrorFormat {
     Short,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Target {
+    Native,
+    Wasi,
+}
+
 #[derive(Debug)]
 struct Args {
     mode: Mode,
@@ -42,6 +48,7 @@ struct Args {
     error_format: ErrorFormat,
     warn_unused: bool,
     deny_warnings: bool,
+    target: Target,
 }
 
 // ---------------------------------------------------------------------------
@@ -60,6 +67,7 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
     let mut error_format = ErrorFormat::Long;
     let mut warn_unused = false;
     let mut deny_warnings = false;
+    let mut target = Target::Native;
 
     let mut i = 0;
     while i < raw.len() {
@@ -126,6 +134,21 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
                     }
                 };
             }
+            "--target" => {
+                i += 1;
+                let value = raw.get(i).ok_or_else(|| {
+                    "missing value after `--target`; expected: native, wasi".to_string()
+                })?;
+                target = match value.as_str() {
+                    "native" => Target::Native,
+                    "wasi" => Target::Wasi,
+                    other => {
+                        return Err(format!(
+                            "invalid target `{other}`; expected: native, wasi"
+                        ))
+                    }
+                };
+            }
             "--warn-unused" => warn_unused = true,
             "--deny-warnings" => deny_warnings = true,
             arg if arg.starts_with('-') => {
@@ -151,6 +174,7 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
             error_format,
             warn_unused,
             deny_warnings,
+            target,
         });
     }
     if raw.iter().any(|a| a == "--version" || a == "-V") {
@@ -162,6 +186,7 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
             error_format,
             warn_unused,
             deny_warnings,
+            target,
         });
     }
 
@@ -221,6 +246,7 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
         error_format,
         warn_unused,
         deny_warnings,
+        target,
     })
 }
 
@@ -301,6 +327,7 @@ EMIT STAGES:
 
 OPTIONS:
   -o <path>                     Output path for compiled binary (required in compile mode)
+  --target native|wasi          Compilation target (default: native)
   --color auto|always|never     Diagnostic colour output (default: auto)
   --error-format short|long     Diagnostic verbosity (default: long)
   --warn-unused                 Warn on unused bindings, parameters, and imports
@@ -361,7 +388,11 @@ fn run_compile(args: &Args) -> ExitCode {
         return ExitCode::from(1);
     }
 
-    match fusec::codegen::compile_path_to_native(path, output_path) {
+    let result = match args.target {
+        Target::Wasi => fusec::codegen::compile_path_to_wasm(path, output_path),
+        Target::Native => fusec::codegen::compile_path_to_native(path, output_path),
+    };
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("error: {error}");

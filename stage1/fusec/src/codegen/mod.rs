@@ -1,4 +1,5 @@
 pub mod object_backend;
+pub mod wasm_backend;
 pub mod layout;
 pub mod type_names;
 pub use object_backend as cranelift;
@@ -9,6 +10,10 @@ pub fn backend_name() -> &'static str {
 
 pub fn compile_path_to_native(input: &std::path::Path, output: &std::path::Path) -> Result<(), String> {
     object_backend::compile_path_to_native(input, output)
+}
+
+pub fn compile_path_to_wasm(input: &std::path::Path, output: &std::path::Path) -> Result<(), String> {
+    wasm_backend::compile_path_to_wasm(input, output)
 }
 
 pub fn compile_path_to_ir_text(input: &std::path::Path) -> Result<String, String> {

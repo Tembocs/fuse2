@@ -66,14 +66,14 @@ pub fn run_host_entry(entry: extern "C" fn() -> i32) -> Result<i32, String> {
 pub fn compile_path_to_native(input: &Path, output: &Path) -> Result<(), String> {
     let input = input.canonicalize().unwrap_or_else(|_| input.to_path_buf());
     let session = BuildSession::load(&input)?;
-    let object = BackendCompiler::new(&session)?.emit_object()?;
+    let object = BackendCompiler::new_native(&session)?.emit_object()?;
     build_wrapper(&input, output, &object)
 }
 
 pub fn compile_path_to_ir_text(input: &Path) -> Result<String, String> {
     let input = input.canonicalize().unwrap_or_else(|_| input.to_path_buf());
     let session = BuildSession::load(&input)?;
-    BackendCompiler::new(&session)?.collect_ir_text()
+    BackendCompiler::new_native(&session)?.collect_ir_text()
 }
 
 #[derive(Clone)]
@@ -547,7 +547,7 @@ struct LoopFrame {
 }
 
 impl<'a> BackendCompiler<'a> {
-    fn new(session: &'a BuildSession) -> Result<Self, String> {
+    fn new_native(session: &'a BuildSession) -> Result<Self, String> {
         let isa_builder = cranelift_native::builder().map_err(|error| error.to_string())?;
         let isa = isa_builder
             .finish(settings::Flags::new(settings::builder()))
