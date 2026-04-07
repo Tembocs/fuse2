@@ -1366,6 +1366,29 @@ fn extract_u64(handle: FuseHandle) -> u64 {
     unsafe { match &(*handle).kind { ValueKind::UInt64(v) => *v, ValueKind::Int(v) => *v as u64, _ => 0 } }
 }
 
+// ---- Box functions: convert a FuseHandle (boxed Int) to a sized integer ----
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i8_box(handle: FuseHandle) -> FuseHandle {
+    FuseValue::new(ValueKind::Int8(extract_i8(handle)))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u8_box(handle: FuseHandle) -> FuseHandle {
+    FuseValue::new(ValueKind::UInt8(extract_u8(handle)))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_i32_box(handle: FuseHandle) -> FuseHandle {
+    FuseValue::new(ValueKind::Int32(extract_i32(handle)))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u32_box(handle: FuseHandle) -> FuseHandle {
+    FuseValue::new(ValueKind::UInt32(extract_u32(handle)))
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_u64_box(handle: FuseHandle) -> FuseHandle {
+    FuseValue::new(ValueKind::UInt64(extract_u64(handle)))
+}
+
 // ---- Int8 ----
 
 #[unsafe(no_mangle)]

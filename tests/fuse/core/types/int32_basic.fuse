@@ -1,0 +1,33 @@
+// EXPECTED OUTPUT:
+// a: 100
+// b: -50
+// add: 50
+// sub: 150
+// mul: -5000
+// div: -2
+// mod: 0
+// eq: false
+// lt: false
+// gt: true
+// le: false
+// ge: true
+
+extern fn fuse_rt_i32_box(n: Int) -> Int32
+
+@entrypoint
+fn main() {
+  val a = fuse_rt_i32_box(100)
+  val b = fuse_rt_i32_box(-50)
+  println(f"a: {a}")
+  println(f"b: {b}")
+  println(f"add: {a + b}")
+  println(f"sub: {a - b}")
+  println(f"mul: {a * b}")
+  println(f"div: {a / b}")
+  println(f"mod: {a % b}")
+  println(f"eq: {a == b}")
+  println(f"lt: {a < b}")
+  println(f"gt: {a > b}")
+  println(f"le: {a <= b}")
+  println(f"ge: {a >= b}")
+}

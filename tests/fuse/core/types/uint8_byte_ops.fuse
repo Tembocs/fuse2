@@ -1,0 +1,29 @@
+// EXPECTED OUTPUT:
+// a: 200
+// b: 100
+// add: 44
+// sub: 100
+// mul: 32
+// eq: false
+// lt: false
+// max: 255
+
+// UInt8 wraps on overflow: 200 + 100 = 300 → 44 (wrapping)
+// UInt8 wraps on multiply: 200 * 100 = 20000 → 32 (wrapping)
+
+extern fn fuse_rt_u8_box(n: Int) -> UInt8
+
+@entrypoint
+fn main() {
+  val a = fuse_rt_u8_box(200)
+  val b = fuse_rt_u8_box(100)
+  println(f"a: {a}")
+  println(f"b: {b}")
+  println(f"add: {a + b}")
+  println(f"sub: {a - b}")
+  println(f"mul: {a * b}")
+  println(f"eq: {a == b}")
+  println(f"lt: {a < b}")
+  val max = fuse_rt_u8_box(255)
+  println(f"max: {max}")
+}

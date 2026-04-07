@@ -542,16 +542,16 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
 
 ---
 
-### Phase W2.8 — Sized Integer Codegen
+### Phase W2.8 — Sized Integer Codegen [DONE]
 
-- [ ] **W2.8.1** Register all runtime functions in codegen table.
-- [ ] **W2.8.2** Handle sized types in `compile_binary`.
-- [ ] **W2.8.3** Handle in type inference.
-- [ ] **W2.8.4** Test: `int32_basic.fuse`.
-- [ ] **W2.8.5** Test: `uint8_byte_ops.fuse`.
-- [ ] **W2.8.6** Test: `uint64_large.fuse`.
-- [ ] **W2.8.7** Test: `sized_int_no_coercion.fuse` (type error).
-- [ ] **W2.8.8** Full test suite green.
+- [x] **W2.8.1** Register all runtime functions in codegen table.
+- [x] **W2.8.2** Handle sized types in `compile_binary`.
+- [x] **W2.8.3** Handle in type inference.
+- [x] **W2.8.4** Test: `int32_basic.fuse`.
+- [x] **W2.8.5** Test: `uint8_byte_ops.fuse`.
+- [x] **W2.8.6** Test: `uint64_large.fuse`.
+- [x] **W2.8.7** Test: `sized_int_no_coercion.fuse` (type error).
+- [x] **W2.8.8** Full test suite green.
 
 ---
 

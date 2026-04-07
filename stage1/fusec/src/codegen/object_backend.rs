@@ -434,6 +434,26 @@ struct RuntimeFns {
     f32_gt: FuncId,
     f32_ge: FuncId,
     f32_to_string: FuncId,
+    i8: SizedIntFns,
+    u8: SizedIntFns,
+    i32: SizedIntFns,
+    u32: SizedIntFns,
+    u64: SizedIntFns,
+}
+
+struct SizedIntFns {
+    new: FuncId,
+    add: FuncId,
+    sub: FuncId,
+    mul: FuncId,
+    div: FuncId,
+    mod_: FuncId,
+    eq: FuncId,
+    lt: FuncId,
+    le: FuncId,
+    gt: FuncId,
+    ge: FuncId,
+    to_string: FuncId,
 }
 
 struct PendingLambda {
@@ -509,6 +529,26 @@ impl<'a> BackendCompiler<'a> {
             ("fuse_release", rt.release), ("fuse_asap_release", rt.asap_release),
             ("fuse_to_upper", rt.to_upper), ("fuse_string_is_empty", rt.string_is_empty),
             ("fuse_builtin_println", rt.println),
+            ("fuse_rt_i8_new", rt.i8.new), ("fuse_rt_i8_add", rt.i8.add), ("fuse_rt_i8_sub", rt.i8.sub),
+            ("fuse_rt_i8_mul", rt.i8.mul), ("fuse_rt_i8_div", rt.i8.div), ("fuse_rt_i8_mod", rt.i8.mod_),
+            ("fuse_rt_i8_eq", rt.i8.eq), ("fuse_rt_i8_lt", rt.i8.lt), ("fuse_rt_i8_le", rt.i8.le),
+            ("fuse_rt_i8_gt", rt.i8.gt), ("fuse_rt_i8_ge", rt.i8.ge), ("fuse_rt_i8_to_string", rt.i8.to_string),
+            ("fuse_rt_u8_new", rt.u8.new), ("fuse_rt_u8_add", rt.u8.add), ("fuse_rt_u8_sub", rt.u8.sub),
+            ("fuse_rt_u8_mul", rt.u8.mul), ("fuse_rt_u8_div", rt.u8.div), ("fuse_rt_u8_mod", rt.u8.mod_),
+            ("fuse_rt_u8_eq", rt.u8.eq), ("fuse_rt_u8_lt", rt.u8.lt), ("fuse_rt_u8_le", rt.u8.le),
+            ("fuse_rt_u8_gt", rt.u8.gt), ("fuse_rt_u8_ge", rt.u8.ge), ("fuse_rt_u8_to_string", rt.u8.to_string),
+            ("fuse_rt_i32_new", rt.i32.new), ("fuse_rt_i32_add", rt.i32.add), ("fuse_rt_i32_sub", rt.i32.sub),
+            ("fuse_rt_i32_mul", rt.i32.mul), ("fuse_rt_i32_div", rt.i32.div), ("fuse_rt_i32_mod", rt.i32.mod_),
+            ("fuse_rt_i32_eq", rt.i32.eq), ("fuse_rt_i32_lt", rt.i32.lt), ("fuse_rt_i32_le", rt.i32.le),
+            ("fuse_rt_i32_gt", rt.i32.gt), ("fuse_rt_i32_ge", rt.i32.ge), ("fuse_rt_i32_to_string", rt.i32.to_string),
+            ("fuse_rt_u32_new", rt.u32.new), ("fuse_rt_u32_add", rt.u32.add), ("fuse_rt_u32_sub", rt.u32.sub),
+            ("fuse_rt_u32_mul", rt.u32.mul), ("fuse_rt_u32_div", rt.u32.div), ("fuse_rt_u32_mod", rt.u32.mod_),
+            ("fuse_rt_u32_eq", rt.u32.eq), ("fuse_rt_u32_lt", rt.u32.lt), ("fuse_rt_u32_le", rt.u32.le),
+            ("fuse_rt_u32_gt", rt.u32.gt), ("fuse_rt_u32_ge", rt.u32.ge), ("fuse_rt_u32_to_string", rt.u32.to_string),
+            ("fuse_rt_u64_new", rt.u64.new), ("fuse_rt_u64_add", rt.u64.add), ("fuse_rt_u64_sub", rt.u64.sub),
+            ("fuse_rt_u64_mul", rt.u64.mul), ("fuse_rt_u64_div", rt.u64.div), ("fuse_rt_u64_mod", rt.u64.mod_),
+            ("fuse_rt_u64_eq", rt.u64.eq), ("fuse_rt_u64_lt", rt.u64.lt), ("fuse_rt_u64_le", rt.u64.le),
+            ("fuse_rt_u64_gt", rt.u64.gt), ("fuse_rt_u64_ge", rt.u64.ge), ("fuse_rt_u64_to_string", rt.u64.to_string),
         ] {
             compiler.function_ids.insert(name.to_string(), id);
         }
@@ -1237,6 +1277,26 @@ fn declare_runtime_functions(
         f32_gt: declare(module, "fuse_rt_f32_gt", &[pointer_type, pointer_type], &[pointer_type])?,
         f32_ge: declare(module, "fuse_rt_f32_ge", &[pointer_type, pointer_type], &[pointer_type])?,
         f32_to_string: declare(module, "fuse_rt_f32_to_string", &[pointer_type], &[pointer_type])?,
+        i8: {
+            let pp = &[pointer_type, pointer_type]; let p = &[pointer_type]; let r = &[pointer_type];
+            SizedIntFns { new: declare(module, "fuse_rt_i8_new", &[types::I64], r)?, add: declare(module, "fuse_rt_i8_add", pp, r)?, sub: declare(module, "fuse_rt_i8_sub", pp, r)?, mul: declare(module, "fuse_rt_i8_mul", pp, r)?, div: declare(module, "fuse_rt_i8_div", pp, r)?, mod_: declare(module, "fuse_rt_i8_mod", pp, r)?, eq: declare(module, "fuse_rt_i8_eq", pp, r)?, lt: declare(module, "fuse_rt_i8_lt", pp, r)?, le: declare(module, "fuse_rt_i8_le", pp, r)?, gt: declare(module, "fuse_rt_i8_gt", pp, r)?, ge: declare(module, "fuse_rt_i8_ge", pp, r)?, to_string: declare(module, "fuse_rt_i8_to_string", p, r)? }
+        },
+        u8: {
+            let pp = &[pointer_type, pointer_type]; let p = &[pointer_type]; let r = &[pointer_type];
+            SizedIntFns { new: declare(module, "fuse_rt_u8_new", &[types::I64], r)?, add: declare(module, "fuse_rt_u8_add", pp, r)?, sub: declare(module, "fuse_rt_u8_sub", pp, r)?, mul: declare(module, "fuse_rt_u8_mul", pp, r)?, div: declare(module, "fuse_rt_u8_div", pp, r)?, mod_: declare(module, "fuse_rt_u8_mod", pp, r)?, eq: declare(module, "fuse_rt_u8_eq", pp, r)?, lt: declare(module, "fuse_rt_u8_lt", pp, r)?, le: declare(module, "fuse_rt_u8_le", pp, r)?, gt: declare(module, "fuse_rt_u8_gt", pp, r)?, ge: declare(module, "fuse_rt_u8_ge", pp, r)?, to_string: declare(module, "fuse_rt_u8_to_string", p, r)? }
+        },
+        i32: {
+            let pp = &[pointer_type, pointer_type]; let p = &[pointer_type]; let r = &[pointer_type];
+            SizedIntFns { new: declare(module, "fuse_rt_i32_new", &[types::I64], r)?, add: declare(module, "fuse_rt_i32_add", pp, r)?, sub: declare(module, "fuse_rt_i32_sub", pp, r)?, mul: declare(module, "fuse_rt_i32_mul", pp, r)?, div: declare(module, "fuse_rt_i32_div", pp, r)?, mod_: declare(module, "fuse_rt_i32_mod", pp, r)?, eq: declare(module, "fuse_rt_i32_eq", pp, r)?, lt: declare(module, "fuse_rt_i32_lt", pp, r)?, le: declare(module, "fuse_rt_i32_le", pp, r)?, gt: declare(module, "fuse_rt_i32_gt", pp, r)?, ge: declare(module, "fuse_rt_i32_ge", pp, r)?, to_string: declare(module, "fuse_rt_i32_to_string", p, r)? }
+        },
+        u32: {
+            let pp = &[pointer_type, pointer_type]; let p = &[pointer_type]; let r = &[pointer_type];
+            SizedIntFns { new: declare(module, "fuse_rt_u32_new", &[types::I64], r)?, add: declare(module, "fuse_rt_u32_add", pp, r)?, sub: declare(module, "fuse_rt_u32_sub", pp, r)?, mul: declare(module, "fuse_rt_u32_mul", pp, r)?, div: declare(module, "fuse_rt_u32_div", pp, r)?, mod_: declare(module, "fuse_rt_u32_mod", pp, r)?, eq: declare(module, "fuse_rt_u32_eq", pp, r)?, lt: declare(module, "fuse_rt_u32_lt", pp, r)?, le: declare(module, "fuse_rt_u32_le", pp, r)?, gt: declare(module, "fuse_rt_u32_gt", pp, r)?, ge: declare(module, "fuse_rt_u32_ge", pp, r)?, to_string: declare(module, "fuse_rt_u32_to_string", p, r)? }
+        },
+        u64: {
+            let pp = &[pointer_type, pointer_type]; let p = &[pointer_type]; let r = &[pointer_type];
+            SizedIntFns { new: declare(module, "fuse_rt_u64_new", &[types::I64], r)?, add: declare(module, "fuse_rt_u64_add", pp, r)?, sub: declare(module, "fuse_rt_u64_sub", pp, r)?, mul: declare(module, "fuse_rt_u64_mul", pp, r)?, div: declare(module, "fuse_rt_u64_div", pp, r)?, mod_: declare(module, "fuse_rt_u64_mod", pp, r)?, eq: declare(module, "fuse_rt_u64_eq", pp, r)?, lt: declare(module, "fuse_rt_u64_lt", pp, r)?, le: declare(module, "fuse_rt_u64_le", pp, r)?, gt: declare(module, "fuse_rt_u64_gt", pp, r)?, ge: declare(module, "fuse_rt_u64_ge", pp, r)?, to_string: declare(module, "fuse_rt_u64_to_string", p, r)? }
+        },
     })
 }
 
@@ -2101,94 +2161,42 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             _ => {
                 let left = self.compile_expr(builder, &binary.left)?;
                 let right = self.compile_expr(builder, &binary.right)?;
-                let is_f32 = left.ty.as_deref() == Some("Float32");
+                let rt = &self.compiler.runtime;
+                // Dispatch arithmetic/comparison to the correct runtime functions based on operand type.
+                let (add, sub, mul, div, mod_fn, eq, lt, le, gt, ge, result_ty) =
+                    match left.ty.as_deref() {
+                        Some("Float32") => (rt.f32_add, rt.f32_sub, rt.f32_mul, rt.f32_div, rt.f32_div, rt.f32_eq, rt.f32_lt, rt.f32_le, rt.f32_gt, rt.f32_ge, "Float32"),
+                        Some("Int8") => (rt.i8.add, rt.i8.sub, rt.i8.mul, rt.i8.div, rt.i8.mod_, rt.i8.eq, rt.i8.lt, rt.i8.le, rt.i8.gt, rt.i8.ge, "Int8"),
+                        Some("UInt8") => (rt.u8.add, rt.u8.sub, rt.u8.mul, rt.u8.div, rt.u8.mod_, rt.u8.eq, rt.u8.lt, rt.u8.le, rt.u8.gt, rt.u8.ge, "UInt8"),
+                        Some("Int32") => (rt.i32.add, rt.i32.sub, rt.i32.mul, rt.i32.div, rt.i32.mod_, rt.i32.eq, rt.i32.lt, rt.i32.le, rt.i32.gt, rt.i32.ge, "Int32"),
+                        Some("UInt32") => (rt.u32.add, rt.u32.sub, rt.u32.mul, rt.u32.div, rt.u32.mod_, rt.u32.eq, rt.u32.lt, rt.u32.le, rt.u32.gt, rt.u32.ge, "UInt32"),
+                        Some("UInt64") => (rt.u64.add, rt.u64.sub, rt.u64.mul, rt.u64.div, rt.u64.mod_, rt.u64.eq, rt.u64.lt, rt.u64.le, rt.u64.gt, rt.u64.ge, "UInt64"),
+                        _ => (rt.add, rt.sub, rt.mul, rt.div, rt.mod_, rt.eq, rt.lt, rt.le, rt.gt, rt.ge, "Int"),
+                    };
                 let (value, ty) = match binary.op.as_str() {
                     "+" => (
-                        self.runtime(
-                            builder,
-                            if is_f32 { self.compiler.runtime.f32_add } else { self.compiler.runtime.add },
-                            &[left.value, right.value],
-                            self.compiler.pointer_type,
-                        ),
-                        if is_f32 {
-                            Some("Float32".to_string())
-                        } else if left.ty.as_deref() == Some("String")
-                            || right.ty.as_deref() == Some("String")
-                        {
+                        self.runtime(builder, add, &[left.value, right.value], self.compiler.pointer_type),
+                        if result_ty == "Int" && (left.ty.as_deref() == Some("String") || right.ty.as_deref() == Some("String")) {
                             Some("String".to_string())
                         } else {
-                            Some("Int".to_string())
+                            Some(result_ty.to_string())
                         },
                     ),
-                    "-" => (
-                        self.runtime(
-                            builder,
-                            if is_f32 { self.compiler.runtime.f32_sub } else { self.compiler.runtime.sub },
-                            &[left.value, right.value],
-                            self.compiler.pointer_type,
-                        ),
-                        if is_f32 { Some("Float32".to_string()) } else { Some("Int".to_string()) },
-                    ),
-                    "*" => (
-                        self.runtime(
-                            builder,
-                            if is_f32 { self.compiler.runtime.f32_mul } else { self.compiler.runtime.mul },
-                            &[left.value, right.value],
-                            self.compiler.pointer_type,
-                        ),
-                        if is_f32 { Some("Float32".to_string()) } else { Some("Int".to_string()) },
-                    ),
-                    "/" => (
-                        self.runtime(
-                            builder,
-                            if is_f32 { self.compiler.runtime.f32_div } else { self.compiler.runtime.div },
-                            &[left.value, right.value],
-                            self.compiler.pointer_type,
-                        ),
-                        if is_f32 { Some("Float32".to_string()) } else { Some("Int".to_string()) },
-                    ),
-                    "%" => (
-                        self.runtime(
-                            builder,
-                            self.compiler.runtime.mod_,
-                            &[left.value, right.value],
-                            self.compiler.pointer_type,
-                        ),
-                        Some("Int".to_string()),
-                    ),
-                    "==" => (
-                        self.runtime(
-                            builder,
-                            if is_f32 { self.compiler.runtime.f32_eq } else { self.compiler.runtime.eq },
-                            &[left.value, right.value],
-                            self.compiler.pointer_type,
-                        ),
-                        Some("Bool".to_string()),
-                    ),
+                    "-" => (self.runtime(builder, sub, &[left.value, right.value], self.compiler.pointer_type), Some(result_ty.to_string())),
+                    "*" => (self.runtime(builder, mul, &[left.value, right.value], self.compiler.pointer_type), Some(result_ty.to_string())),
+                    "/" => (self.runtime(builder, div, &[left.value, right.value], self.compiler.pointer_type), Some(result_ty.to_string())),
+                    "%" => (self.runtime(builder, mod_fn, &[left.value, right.value], self.compiler.pointer_type), Some(result_ty.to_string())),
+                    "==" => (self.runtime(builder, eq, &[left.value, right.value], self.compiler.pointer_type), Some("Bool".to_string())),
                     "!=" => {
-                        let eq_fn = if is_f32 { self.compiler.runtime.f32_eq } else { self.compiler.runtime.eq };
-                        let eq = self.runtime(
-                            builder,
-                            eq_fn,
-                            &[left.value, right.value],
-                            self.compiler.pointer_type,
-                        );
-                        let truthy = self.truthy_value(builder, eq);
+                        let eq_val = self.runtime(builder, eq, &[left.value, right.value], self.compiler.pointer_type);
+                        let truthy = self.truthy_value(builder, eq_val);
                         let inverted = builder.ins().bxor_imm(truthy, 1);
-                        (
-                            self.runtime(
-                                builder,
-                                self.compiler.runtime.bool_,
-                                &[inverted],
-                                self.compiler.pointer_type,
-                            ),
-                            Some("Bool".to_string()),
-                        )
+                        (self.runtime(builder, self.compiler.runtime.bool_, &[inverted], self.compiler.pointer_type), Some("Bool".to_string()))
                     }
-                    "<" => (self.compare(builder, if is_f32 { self.compiler.runtime.f32_lt } else { self.compiler.runtime.lt }, left.value, right.value), Some("Bool".to_string())),
-                    "<=" => (self.compare(builder, if is_f32 { self.compiler.runtime.f32_le } else { self.compiler.runtime.le }, left.value, right.value), Some("Bool".to_string())),
-                    ">" => (self.compare(builder, if is_f32 { self.compiler.runtime.f32_gt } else { self.compiler.runtime.gt }, left.value, right.value), Some("Bool".to_string())),
-                    ">=" => (self.compare(builder, if is_f32 { self.compiler.runtime.f32_ge } else { self.compiler.runtime.ge }, left.value, right.value), Some("Bool".to_string())),
+                    "<" => (self.compare(builder, lt, left.value, right.value), Some("Bool".to_string())),
+                    "<=" => (self.compare(builder, le, left.value, right.value), Some("Bool".to_string())),
+                    ">" => (self.compare(builder, gt, left.value, right.value), Some("Bool".to_string())),
+                    ">=" => (self.compare(builder, ge, left.value, right.value), Some("Bool".to_string())),
                     other => return Err(format!("unsupported binary operator `{other}`")),
                 };
                 Ok(TypedValue { value, ty })

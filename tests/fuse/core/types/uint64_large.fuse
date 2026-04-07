@@ -1,0 +1,21 @@
+// EXPECTED OUTPUT:
+// a: 1000000000
+// b: 2000000000
+// sum: 3000000000
+// product: 2000000000000000000
+// eq: false
+// lt: true
+
+extern fn fuse_rt_u64_box(n: Int) -> UInt64
+
+@entrypoint
+fn main() {
+  val a = fuse_rt_u64_box(1000000000)
+  val b = fuse_rt_u64_box(2000000000)
+  println(f"a: {a}")
+  println(f"b: {b}")
+  println(f"sum: {a + b}")
+  println(f"product: {a * b}")
+  println(f"eq: {a == b}")
+  println(f"lt: {a < b}")
+}
