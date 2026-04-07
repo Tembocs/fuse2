@@ -1,0 +1,22 @@
+// EXPECTED OUTPUT:
+// [debug] Widget
+
+interface Printable {
+  fn toString(ref self) -> String
+}
+
+fn Printable.debugPrint(ref self) -> String {
+  f"[debug] {self.toString()}"
+}
+
+data class Widget(val label: String) implements Printable
+
+fn Widget.toString(ref self) -> String {
+  self.label
+}
+
+@entrypoint
+fn main() {
+  val w = Widget("Widget")
+  println(w.debugPrint())
+}

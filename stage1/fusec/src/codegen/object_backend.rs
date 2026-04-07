@@ -88,6 +88,7 @@ struct LoadedModule {
     enums: HashMap<String, fa::EnumDecl>,
     extern_fns: HashMap<String, fa::ExternFnDecl>,
     consts: HashMap<(String, String), fa::ConstDecl>,
+    interface_names: HashSet<String>,
 }
 
 struct BuildSession {
@@ -314,6 +315,39 @@ fn load_module_recursive(
             }
         }
     }
+    // Inject default method forwarding: for each type that implements an
+    // interface, if the type doesn't have its own extension for a default
+    // method, create a synthetic extension entry pointing to the default body.
+    let interface_names: HashSet<String> = module.interfaces.iter().map(|i| i.name.clone()).collect();
+    // Collect default methods: extension functions whose receiver is an interface name.
+    let mut defaults: HashMap<String, Vec<fa::FunctionDecl>> = HashMap::new();
+    for ((receiver_type, _name), function) in extensions.iter().chain(statics.iter()) {
+        if interface_names.contains(receiver_type) {
+            defaults.entry(receiver_type.clone()).or_default().push(function.clone());
+        }
+    }
+    // Collect (type_name, interface_list) pairs from data classes and enums.
+    let implementors: Vec<(String, Vec<String>)> = module.data_classes.iter()
+        .filter(|d| !d.implements.is_empty())
+        .map(|d| (d.name.clone(), d.implements.clone()))
+        .chain(module.enums.iter()
+            .filter(|e| !e.implements.is_empty())
+            .map(|e| (e.name.clone(), e.implements.clone())))
+        .collect();
+    for (type_name, iface_names) in &implementors {
+        for iface_name in iface_names {
+            if let Some(default_fns) = defaults.get(iface_name) {
+                for default_fn in default_fns {
+                    let key = (type_name.clone(), default_fn.name.clone());
+                    if !extensions.contains_key(&key) {
+                        let mut forwarded = default_fn.clone();
+                        forwarded.receiver_type = Some(type_name.clone());
+                        extensions.insert(key, forwarded);
+                    }
+                }
+            }
+        }
+    }
     let loaded = LoadedModule {
         path: path.clone(),
         imports: module.imports.clone(),
@@ -345,6 +379,7 @@ fn load_module_recursive(
             .iter()
             .map(|c| ((c.owner.clone(), c.name.clone()), c.clone()))
             .collect(),
+        interface_names,
     };
     modules.insert(path.clone(), loaded);
     for import in &module.imports {
@@ -583,6 +618,11 @@ impl<'a> BackendCompiler<'a> {
                 self.function_ids.insert(name, func_id);
             }
             for function in loaded.extensions.values() {
+                // Skip interface-receiver extensions — they are only used as
+                // default method bodies and have been forwarded to concrete types.
+                if let Some(recv) = &function.receiver_type {
+                    if loaded.interface_names.contains(recv) { continue; }
+                }
                 let name = symbol_for_function(loaded.path.as_path(), function);
                 let linkage = linkage_for_function(function);
                 let func_id = self
@@ -592,6 +632,9 @@ impl<'a> BackendCompiler<'a> {
                 self.function_ids.insert(name, func_id);
             }
             for function in loaded.statics.values() {
+                if let Some(recv) = &function.receiver_type {
+                    if loaded.interface_names.contains(recv) { continue; }
+                }
                 let name = symbol_for_function(loaded.path.as_path(), function);
                 let linkage = linkage_for_function(function);
                 let func_id = self
@@ -670,6 +713,9 @@ impl<'a> BackendCompiler<'a> {
                 self.compile_function(loaded.path.as_path(), function)?;
             }
             for function in loaded.extensions.values() {
+                if let Some(recv) = &function.receiver_type {
+                    if loaded.interface_names.contains(recv) { continue; }
+                }
                 let mut function = function.clone();
                 if let Some(receiver_type) = &function.receiver_type {
                     if let Some(param) = function.params.first_mut() {
@@ -681,6 +727,9 @@ impl<'a> BackendCompiler<'a> {
                 self.compile_function(loaded.path.as_path(), &function)?;
             }
             for function in loaded.statics.values() {
+                if let Some(recv) = &function.receiver_type {
+                    if loaded.interface_names.contains(recv) { continue; }
+                }
                 self.compile_function(loaded.path.as_path(), function)?;
             }
             for data in loaded.data_classes.values() {
@@ -726,6 +775,9 @@ impl<'a> BackendCompiler<'a> {
                 }
             }
             for function in loaded.extensions.values() {
+                if let Some(recv) = &function.receiver_type {
+                    if loaded.interface_names.contains(recv) { continue; }
+                }
                 let mut function = function.clone();
                 if let Some(receiver_type) = &function.receiver_type {
                     if let Some(param) = function.params.first_mut() {
@@ -739,6 +791,9 @@ impl<'a> BackendCompiler<'a> {
                 }
             }
             for function in loaded.statics.values() {
+                if let Some(recv) = &function.receiver_type {
+                    if loaded.interface_names.contains(recv) { continue; }
+                }
                 if let Some(ir) = self.compile_function_to_ir(loaded.path.as_path(), function)? {
                     ir_parts.push(ir);
                 }

@@ -1,0 +1,18 @@
+// EXPECTED OUTPUT:
+// Point(1, 2)
+
+interface Printable {
+  fn toString(ref self) -> String
+}
+
+data class Point(val x: Int, val y: Int) implements Printable
+
+fn Point.toString(ref self) -> String {
+  f"Point({self.x}, {self.y})"
+}
+
+@entrypoint
+fn main() {
+  val p = Point(1, 2)
+  println(p.toString())
+}

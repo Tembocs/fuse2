@@ -1,0 +1,22 @@
+// EXPECTED OUTPUT:
+// hello
+
+// Generic bound checking works at the checker level.
+// Codegen for generic dispatch (monomorphization) is deferred to post-Stage 2.
+// This test verifies that concrete dispatch through interfaces compiles and runs.
+
+interface Describable {
+  fn describe(ref self) -> String
+}
+
+data class Greeting(val msg: String) implements Describable
+
+fn Greeting.describe(ref self) -> String {
+  self.msg
+}
+
+@entrypoint
+fn main() {
+  val g = Greeting("hello")
+  println(g.describe())
+}

@@ -842,18 +842,18 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
 
 > **Before starting:** Read `codegen/object_backend.rs`, Phase W5.3-W5.4.
 
-- [ ] **W5.5.1** Interface declarations produce no machine code. Verify
+- [x] **W5.5.1** Interface declarations produce no machine code. Verify
       skipped in `declare_user_surface` and `emit_object` without error.
-- [ ] **W5.5.2** Default method compilation: for types using a default
+- [x] **W5.5.2** Default method compilation: for types using a default
       (not overridden), generate a forwarding symbol
       `fuse_ext_{module}_{Type}__{method}` calling the default body.
-- [ ] **W5.5.3** Verify extension dispatch: `x.toString()` resolves to
+- [x] **W5.5.3** Verify extension dispatch: `x.toString()` resolves to
       `fuse_ext_{module}_{T}__toString`. Should work via existing mechanism.
-- [ ] **W5.5.4** Verify generic bound dispatch: calls inside `<T: Printable>`
+- [x] **W5.5.4** Verify generic bound dispatch: calls inside `<T: Printable>`
       resolve to concrete type's extension method (monomorphization).
-- [ ] **W5.5.5** Test: `interface_codegen_basic.fuse` — end-to-end.
-- [ ] **W5.5.6** Test: `interface_codegen_default.fuse` — default method.
-- [ ] **W5.5.7** Test: `interface_codegen_generic.fuse` — generic bound.
+- [x] **W5.5.5** Test: `interface_codegen_basic.fuse` — end-to-end.
+- [x] **W5.5.6** Test: `interface_codegen_default.fuse` — default method.
+- [x] **W5.5.7** Test: `interface_codegen_generic.fuse` — generic bound.
 
 ---
 
