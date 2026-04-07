@@ -21,7 +21,7 @@ fn main() {
 
   // construction
   println("=== construction ===")
-  val empty = set.new()
+  val empty = Set.new()
   println(f"empty: {empty.len()}")
 
   // query on empty set
@@ -33,7 +33,7 @@ fn main() {
 
   // subset / disjoint on empty sets
   println("=== subset / disjoint on empty ===")
-  val other = set.new()
+  val other = Set.new()
   val sub = empty.isSubsetOf(other)
   println(f"isSubsetOf: {sub}")
   val dis = empty.isDisjoint(other)

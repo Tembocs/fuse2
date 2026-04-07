@@ -349,13 +349,13 @@ pub fn List.reverseInPlace(mutref self) {
   fuse_rt_list_reverse_in_place(self)
 }
 
-// --- Construction (module-level functions) ---
+// --- Construction ---
 
-pub fn of(items: T...) -> List<T> {
+pub fn List.of(items: T...) -> List<T> {
   items
 }
 
-pub fn repeat(item: T, n: Int) -> List<T> {
+pub fn List.repeat(item: T, n: Int) -> List<T> {
   val result = fuse_list_new()
   var i = 0
   while i < n {
@@ -365,7 +365,7 @@ pub fn repeat(item: T, n: Int) -> List<T> {
   result
 }
 
-pub fn range(start: Int, end: Int) -> List<Int> {
+pub fn List.range(start: Int, end: Int) -> List<Int> {
   val result = fuse_list_new()
   var i = start
   while i < end {
@@ -375,7 +375,7 @@ pub fn range(start: Int, end: Int) -> List<Int> {
   result
 }
 
-pub fn rangeClosed(start: Int, end: Int) -> List<Int> {
+pub fn List.rangeClosed(start: Int, end: Int) -> List<Int> {
   val result = fuse_list_new()
   var i = start
   while i <= end {

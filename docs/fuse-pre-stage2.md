@@ -583,18 +583,20 @@ Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
 
 ---
 
-### Phase W3.1 — Static Method Promotion (*depends on W0.5*)
+### Phase W3.1 — Static Method Promotion (*depends on W0.5*) [DONE]
 
-- [ ] **W3.1.1** `int.fuse`: `pub fn parse(s)` → `pub fn Int.parse(s)`.
-- [ ] **W3.1.2** `float.fuse`: `pub fn parse(s)` → `pub fn Float.parse(s)`;
-      add `Float.PI()`, `Float.E()`.
-- [ ] **W3.1.3** `string.fuse`: `fromBytes` → `String.fromBytes`;
+- [x] **W3.1.1** `int.fuse`: `pub fn parse(s)` → `pub fn Int.parse(s)`.
+- [x] **W3.1.2** `float.fuse`: `pub fn parse(s)` → `pub fn Float.parse(s)`;
+      `Float.PI` and `Float.E` already exist as type-level constants.
+- [x] **W3.1.3** `string.fuse`: `fromBytes` → `String.fromBytes`;
       `fromChar` → `String.fromChar`.
-- [ ] **W3.1.4** `set.fuse`: `new()` → `Set.new()`; `of(...)` → `Set.of(...)`.
-- [ ] **W3.1.5** Review `map.fuse` and `list.fuse` for candidates.
-- [ ] **W3.1.6** Update test files for new signatures.
-- [ ] **W3.1.7** Update internal stdlib imports.
-- [ ] **W3.1.8** Full test suite green.
+- [x] **W3.1.4** `set.fuse`: `new()` → `Set.new()`; `of(...)` → `Set.of(...)`.
+- [x] **W3.1.5** `list.fuse`: `of` → `List.of`; `repeat` → `List.repeat`;
+      `range` → `List.range`; `rangeClosed` → `List.rangeClosed`.
+      `map.fuse` has no free functions — no changes needed.
+- [x] **W3.1.6** Update test files for new signatures.
+- [x] **W3.1.7** Update internal stdlib imports.
+- [x] **W3.1.8** Full test suite green.
 
 ---
 

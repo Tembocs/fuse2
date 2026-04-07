@@ -114,19 +114,19 @@ fn main() {
   println(255.toOctal())
   println(42.toOctal())
 
-  // parse (module-level functions)
+  // parse
   println("=== parse ===")
-  println(int.parse("42"))
-  println(int.parse("-7"))
-  println(int.parse("hello"))
+  println(Int.parse("42"))
+  println(Int.parse("-7"))
+  println(Int.parse("hello"))
 
   // parseHex
   println("=== parseHex ===")
-  println(int.parseHex("ff"))
-  println(int.parseHex("1a"))
+  println(Int.parseHex("ff"))
+  println(Int.parseHex("1a"))
 
   // parseBinary
   println("=== parseBinary ===")
-  println(int.parseBinary("101010"))
-  println(int.parseBinary("111"))
+  println(Int.parseBinary("101010"))
+  println(Int.parseBinary("111"))
 }

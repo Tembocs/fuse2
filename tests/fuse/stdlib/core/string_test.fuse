@@ -88,6 +88,6 @@ fn main() {
 
   // construction
   println("=== construction ===")
-  println(string.fromChar(65))
-  println(string.fromBytes([104, 105]))
+  println(String.fromChar(65))
+  println(String.fromBytes([104, 105]))
 }

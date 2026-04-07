@@ -139,9 +139,8 @@ pub fn Float.toStringFixed(ref self, decimals: Int) -> String {
 }
 
 // --- Parsing ---
-// Module-level function (same reason as int.fuse — checker limitation).
 
 // Parse a decimal float string.
-pub fn parse(s: String) -> Result<Float, String> {
+pub fn Float.parse(s: String) -> Result<Float, String> {
   fuse_rt_float_parse(s)
 }

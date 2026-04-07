@@ -186,12 +186,12 @@ pub fn String.compareTo(ref self, other: String) -> Int {
   fuse_rt_string_compare(self, other)
 }
 
-// --- Construction (module-level functions) ---
+// --- Construction ---
 
-pub fn fromBytes(bytes: List<Int>) -> Result<String, String> {
+pub fn String.fromBytes(bytes: List<Int>) -> Result<String, String> {
   fuse_rt_string_from_bytes(bytes)
 }
 
-pub fn fromChar(code: Int) -> String {
+pub fn String.fromChar(code: Int) -> String {
   fuse_rt_string_from_char_code(code)
 }

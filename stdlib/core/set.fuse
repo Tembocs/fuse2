@@ -24,13 +24,13 @@ extern fn fuse_list_push(list: List<T>, item: T)
 
 pub data class Set(val inner: Map<T, Bool>)
 
-// --- Constructors (module-level functions) ---
+// --- Constructors ---
 
-pub fn new() -> Set {
+pub fn Set.new() -> Set {
   Set(fuse_map_new())
 }
 
-pub fn of(items: T...) -> Set {
+pub fn Set.of(items: T...) -> Set {
   val m = fuse_map_new()
   val len = fuse_rt_list_len(items)
   var i = 0

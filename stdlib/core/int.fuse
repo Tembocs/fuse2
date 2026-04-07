@@ -149,17 +149,14 @@ pub fn Int.toOctal(ref self) -> String {
 }
 
 // --- Parsing ---
-// Note: These are module-level functions (not Int.method) because the
-// checker does not yet support Type.staticMethod() call syntax.
-// When the checker is updated, these can be changed to Int.parse etc.
 
 // Parse a decimal integer string.
-pub fn parse(s: String) -> Result<Int, String> {
+pub fn Int.parse(s: String) -> Result<Int, String> {
   fuse_rt_int_parse(s)
 }
 
 // Parse a hexadecimal string (without "0x" prefix).
-pub fn parseHex(s: String) -> Result<Int, String> {
+pub fn Int.parseHex(s: String) -> Result<Int, String> {
   val len = fuse_rt_string_char_count(s)
   if len == 0 { return Err("int: empty hex string") }
   var result = 0
@@ -175,7 +172,7 @@ pub fn parseHex(s: String) -> Result<Int, String> {
 }
 
 // Parse a binary string (without "0b" prefix).
-pub fn parseBinary(s: String) -> Result<Int, String> {
+pub fn Int.parseBinary(s: String) -> Result<Int, String> {
   val len = fuse_rt_string_char_count(s)
   if len == 0 { return Err("int: empty binary string") }
   var result = 0
