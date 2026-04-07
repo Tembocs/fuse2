@@ -1,3 +1,4 @@
+mod completion;
 mod symbols;
 
 use std::collections::HashMap;
@@ -62,6 +63,13 @@ struct ServerCapabilities {
     text_document_sync: i32,
     hover_provider: bool,
     definition_provider: bool,
+    completion_provider: CompletionOptions,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CompletionOptions {
+    trigger_characters: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -231,6 +239,9 @@ impl Server {
                         text_document_sync: 1, // Full
                         hover_provider: true,
                         definition_provider: true,
+                        completion_provider: CompletionOptions {
+                            trigger_characters: vec![".".into()],
+                        },
                     },
                     server_info: ServerInfo {
                         name: "fuse-lsp".into(),
@@ -297,6 +308,13 @@ impl Server {
                 }
             }
 
+            // --- Completion ---
+            "textDocument/completion" => {
+                let id = msg.id.unwrap_or(Value::Null);
+                let result = self.handle_completion(&msg.params);
+                send_response(out, id, result)?;
+            }
+
             // --- Go to Definition ---
             "textDocument/definition" => {
                 let id = msg.id.unwrap_or(Value::Null);
@@ -347,6 +365,62 @@ impl Server {
                 "value": format!("```fuse\n{}\n```", sym.type_info)
             }
         }))
+    }
+
+    fn handle_completion(&self, params: &Option<Value>) -> Value {
+        let params = match params { Some(p) => p, None => return Value::Null };
+        let uri = match params.pointer("/textDocument/uri").and_then(Value::as_str) {
+            Some(u) => u, None => return Value::Null,
+        };
+        let line_0 = params.pointer("/position/line").and_then(Value::as_u64).unwrap_or(0) as usize;
+        let col_0 = params.pointer("/position/character").and_then(Value::as_u64).unwrap_or(0) as usize;
+        let line_1 = line_0 + 1;
+
+        let content = match self.documents.get(uri) {
+            Some(c) => c, None => return Value::Null,
+        };
+        let filename = uri.rsplit('/').next().unwrap_or(uri);
+
+        // Get the text of the current line to detect dot-trigger.
+        let current_line = content.lines().nth(line_0).unwrap_or("");
+        let is_dot = col_0 > 0 && current_line.as_bytes().get(col_0 - 1) == Some(&b'.');
+
+        // The source may not parse because the user is mid-typing.
+        // Comment out the cursor line and any other incomplete lines to
+        // allow the parser to succeed on the rest of the file.
+        let patched: String = content.lines().enumerate().map(|(i, l)| {
+            let trimmed = l.trim();
+            if i == line_0 || trimmed.ends_with('.') || trimmed.ends_with('(') {
+                format!("// {l}")
+            } else {
+                l.to_string()
+            }
+        }).collect::<Vec<_>>().join("\n");
+        let program = fusec::parse_source(&patched, filename)
+            .or_else(|_| fusec::parse_source(content, filename));
+
+        let items = match program {
+            Ok(ref prog) if is_dot => {
+                completion::dot_completions(prog, line_1, current_line, col_0)
+            }
+            Ok(ref prog) => {
+                completion::general_completions(prog, line_1, col_0)
+            }
+            Err(_) => Vec::new(),
+        };
+
+        let lsp_items: Vec<Value> = items.iter().map(|item| {
+            let mut obj = serde_json::json!({
+                "label": item.label,
+                "kind": item.kind.lsp_kind(),
+            });
+            if let Some(ref detail) = item.detail {
+                obj["detail"] = Value::String(detail.clone());
+            }
+            obj
+        }).collect();
+
+        serde_json::json!(lsp_items)
     }
 
     fn handle_definition(&self, params: &Option<Value>) -> Option<Value> {
