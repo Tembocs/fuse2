@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// Point { x: 1, y: 2 }
+
+data class Point(val x: Int, val y: Int) implements Debuggable
+
+fn Point.toString(ref self) -> String {
+  f"Point({self.x}, {self.y})"
+}
+
+@entrypoint
+fn main() {
+  val p = Point(1, 2)
+  println(p.debugString())
+}

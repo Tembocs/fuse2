@@ -1,0 +1,10 @@
+// Hashable — hash code contract (extends Equatable).
+//
+// Types implementing Hashable must also satisfy Equatable.
+// Equal values must produce equal hash codes.
+
+import core.equatable
+
+pub interface Hashable : Equatable {
+  fn hash(ref self) -> Int
+}

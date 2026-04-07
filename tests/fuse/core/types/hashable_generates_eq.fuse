@@ -1,0 +1,19 @@
+// EXPECTED OUTPUT:
+// true
+// false
+
+data class Pair(val x: Int, val y: Int) implements Hashable
+
+fn Pair.hash(ref self) -> Int {
+  self.x * 31 + self.y
+}
+
+@entrypoint
+fn main() {
+  val a = Pair(1, 2)
+  val b = Pair(1, 2)
+  val c = Pair(3, 4)
+  // eq() should be auto-generated from parent Equatable
+  println(a == b)
+  println(a == c)
+}

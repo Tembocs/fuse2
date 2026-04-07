@@ -11,6 +11,7 @@ use cranelift_module::{default_libcall_names, DataDescription, FuncId, Linkage, 
 use cranelift_object::{ObjectBuilder, ObjectModule};
 
 use crate::ast::nodes as fa;
+use crate::autogen;
 use crate::common::{repo_root, resolve_import_path};
 use crate::hir::lower_program;
 use crate::parser::parse_source;
@@ -20,6 +21,39 @@ use super::type_names::{chan_inner_type, option_inner_type, result_err_type, res
 
 pub fn backend_name() -> &'static str {
     "cranelift-object"
+}
+
+/// Map well-known stdlib interface names to their parent interfaces.
+fn stdlib_interface_parents(name: &str) -> &'static [&'static str] {
+    match name {
+        "Hashable" => &["Equatable"],
+        "Comparable" => &["Equatable"],
+        "Debuggable" => &["Printable"],
+        _ => &[],
+    }
+}
+
+/// Collect an interface and all its ancestor stdlib interfaces.
+fn collect_interface_hierarchy(name: &str, out: &mut Vec<String>) {
+    if out.iter().any(|n| n == name) {
+        return;
+    }
+    out.push(name.to_string());
+    for parent in stdlib_interface_parents(name) {
+        collect_interface_hierarchy(parent, out);
+    }
+}
+
+/// Map well-known stdlib interface names to their module paths.
+fn stdlib_interface_module(name: &str) -> Option<&'static str> {
+    match name {
+        "Equatable" => Some("core.equatable"),
+        "Hashable" => Some("core.hashable"),
+        "Comparable" => Some("core.comparable"),
+        "Printable" => Some("core.printable"),
+        "Debuggable" => Some("core.debuggable"),
+        _ => None,
+    }
 }
 
 /// Choose the correct linker symbol for a function declaration.
@@ -248,14 +282,22 @@ fn load_module_recursive(
     let filename = display_name(&path);
     let parsed = parse_source(&source, &filename).map_err(|diag| diag.render())?;
     let module = lower_program(&parsed, path.clone());
-    // Resolve `Self` in return types and split extension functions into
-    // instance methods (first param is self) and static functions (no self).
+    // Resolve `Self` → concrete type in return types and parameter types,
+    // then split extension functions into instance methods (first param is
+    // self) and static functions (no self).
     let mut extensions = HashMap::new();
     let mut statics = HashMap::new();
     for ((receiver_type, name), mut function) in module.extension_functions.clone() {
         if let Some(ref mut rt) = function.return_type {
             if rt.contains("Self") {
                 *rt = rt.replace("Self", &receiver_type);
+            }
+        }
+        for param in function.params.iter_mut() {
+            if let Some(ref mut tn) = param.type_name {
+                if tn.contains("Self") {
+                    *tn = tn.replace("Self", &receiver_type);
+                }
             }
         }
         let is_static = function.params.first().map_or(true, |p| p.name != "self");
@@ -277,6 +319,13 @@ fn load_module_recursive(
                     *rt = rt.replace("Self", name);
                 }
             }
+            for param in method.params.iter_mut() {
+                if let Some(ref mut tn) = param.type_name {
+                    if tn.contains("Self") {
+                        *tn = tn.replace("Self", name);
+                    }
+                }
+            }
         }
     }
     // Register struct methods as extensions/statics so member calls resolve.
@@ -287,6 +336,13 @@ fn load_module_recursive(
             if let Some(ref mut rt) = function.return_type {
                 if rt.contains("Self") {
                     *rt = rt.replace("Self", &s.name);
+                }
+            }
+            for param in function.params.iter_mut() {
+                if let Some(ref mut tn) = param.type_name {
+                    if tn.contains("Self") {
+                        *tn = tn.replace("Self", &s.name);
+                    }
                 }
             }
             let is_static = function.params.first().map_or(true, |p| p.name != "self");
@@ -326,13 +382,16 @@ fn load_module_recursive(
             defaults.entry(receiver_type.clone()).or_default().push(function.clone());
         }
     }
-    // Collect (type_name, interface_list) pairs from data classes and enums.
+    // Collect (type_name, interface_list) pairs from data classes, enums, and structs.
     let implementors: Vec<(String, Vec<String>)> = module.data_classes.iter()
         .filter(|d| !d.implements.is_empty())
         .map(|d| (d.name.clone(), d.implements.clone()))
         .chain(module.enums.iter()
             .filter(|e| !e.implements.is_empty())
             .map(|e| (e.name.clone(), e.implements.clone())))
+        .chain(module.structs.iter()
+            .filter(|s| !s.implements.is_empty())
+            .map(|s| (s.name.clone(), s.implements.clone())))
         .collect();
     for (type_name, iface_names) in &implementors {
         for iface_name in iface_names {
@@ -344,6 +403,44 @@ fn load_module_recursive(
                         forwarded.receiver_type = Some(type_name.clone());
                         extensions.insert(key, forwarded);
                     }
+                }
+            }
+        }
+    }
+    // Auto-generate interface methods from field metadata for types that
+    // declare `implements` but don't provide the method manually.
+    for (type_name, iface_names) in &implementors {
+        // Determine type kind and get fields.
+        let (type_kind, fields) = if let Some(data) = data_classes.get(type_name) {
+            let kind = autogen::classify_type(&data.annotations, false);
+            (kind, data.fields.clone())
+        } else if let Some(s) = module.structs.iter().find(|s| s.name == *type_name) {
+            let kind = autogen::classify_type(&s.annotations, true);
+            (kind, s.fields.clone())
+        } else {
+            continue; // enum auto-gen handled in Phase 6
+        };
+        // Collect all interfaces to generate for, including parents.
+        let mut all_ifaces: Vec<String> = Vec::new();
+        for iface_name in iface_names {
+            collect_interface_hierarchy(iface_name, &mut all_ifaces);
+        }
+        for iface_name in &all_ifaces {
+            if !autogen::can_auto_generate(type_kind, iface_name) {
+                continue;
+            }
+            let generated: Vec<fa::FunctionDecl> = match iface_name.as_str() {
+                "Equatable" => vec![autogen::generate_eq(type_name, &fields)],
+                "Hashable" => vec![autogen::generate_hash(type_name, &fields)],
+                "Comparable" => vec![autogen::generate_compare_to(type_name, &fields)],
+                "Printable" => vec![autogen::generate_to_string(type_name, &fields)],
+                "Debuggable" => vec![autogen::generate_debug_string(type_name, &fields)],
+                _ => Vec::new(),
+            };
+            for func in generated {
+                let key = (type_name.clone(), func.name.clone());
+                if !extensions.contains_key(&key) {
+                    extensions.insert(key, func);
                 }
             }
         }
@@ -387,6 +484,23 @@ fn load_module_recursive(
             .ok_or_else(|| format!("cannot resolve import `{}`", import.module_path))?;
         load_module_recursive(&target, modules)?;
     }
+    // Auto-load stdlib interface modules referenced via `implements`,
+    // including parent interfaces (e.g., Hashable → Equatable).
+    for (_type_name, iface_names) in &implementors {
+        let mut all_ifaces = Vec::new();
+        for iface_name in iface_names {
+            collect_interface_hierarchy(iface_name, &mut all_ifaces);
+        }
+        for iface_name in &all_ifaces {
+            if let Some(module_path) = stdlib_interface_module(iface_name) {
+                if let Some(target) = resolve_import_path(&path, module_path) {
+                    if !modules.contains_key(&target) {
+                        load_module_recursive(&target, modules)?;
+                    }
+                }
+            }
+        }
+    }
     Ok(())
 }
 
@@ -409,6 +523,7 @@ struct RuntimeFns {
     gt: FuncId,
     ge: FuncId,
     truthy: FuncId,
+    extract_int: FuncId,
     println: FuncId,
     none: FuncId,
     some: FuncId,
@@ -1279,6 +1394,7 @@ fn declare_runtime_functions(
         gt: declare(module, "fuse_gt", &[pointer_type, pointer_type], &[pointer_type])?,
         ge: declare(module, "fuse_ge", &[pointer_type, pointer_type], &[pointer_type])?,
         truthy: declare(module, "fuse_is_truthy", &[pointer_type], &[types::I8])?,
+        extract_int: declare(module, "fuse_extract_int", &[pointer_type], &[types::I64])?,
         println: declare(module, "fuse_builtin_println", &[pointer_type], &[])?,
         none: declare(module, "fuse_none", &[], &[pointer_type])?,
         some: declare(module, "fuse_some", &[pointer_type], &[pointer_type])?,
@@ -2267,17 +2383,63 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     "*" => (self.runtime(builder, mul, &[left.value, right.value], self.compiler.pointer_type), Some(result_ty.to_string())),
                     "/" => (self.runtime(builder, div, &[left.value, right.value], self.compiler.pointer_type), Some(result_ty.to_string())),
                     "%" => (self.runtime(builder, mod_fn, &[left.value, right.value], self.compiler.pointer_type), Some(result_ty.to_string())),
-                    "==" => (self.runtime(builder, eq, &[left.value, right.value], self.compiler.pointer_type), Some("Bool".to_string())),
+                    "==" => {
+                        // Dispatch to eq() extension if available.
+                        if let Some(recv_ty) = &left.ty {
+                            if let Some(result) = self.try_extension_call(builder, recv_ty, "eq", &[left.value, right.value]) {
+                                (result.value, Some("Bool".to_string()))
+                            } else {
+                                (self.runtime(builder, eq, &[left.value, right.value], self.compiler.pointer_type), Some("Bool".to_string()))
+                            }
+                        } else {
+                            (self.runtime(builder, eq, &[left.value, right.value], self.compiler.pointer_type), Some("Bool".to_string()))
+                        }
+                    }
                     "!=" => {
-                        let eq_val = self.runtime(builder, eq, &[left.value, right.value], self.compiler.pointer_type);
+                        // Dispatch to eq() extension + negate if available.
+                        let eq_val = if let Some(recv_ty) = &left.ty {
+                            if let Some(result) = self.try_extension_call(builder, recv_ty, "eq", &[left.value, right.value]) {
+                                result.value
+                            } else {
+                                self.runtime(builder, eq, &[left.value, right.value], self.compiler.pointer_type)
+                            }
+                        } else {
+                            self.runtime(builder, eq, &[left.value, right.value], self.compiler.pointer_type)
+                        };
                         let truthy = self.truthy_value(builder, eq_val);
                         let inverted = builder.ins().bxor_imm(truthy, 1);
                         (self.runtime(builder, self.compiler.runtime.bool_, &[inverted], self.compiler.pointer_type), Some("Bool".to_string()))
                     }
-                    "<" => (self.compare(builder, lt, left.value, right.value), Some("Bool".to_string())),
-                    "<=" => (self.compare(builder, le, left.value, right.value), Some("Bool".to_string())),
-                    ">" => (self.compare(builder, gt, left.value, right.value), Some("Bool".to_string())),
-                    ">=" => (self.compare(builder, ge, left.value, right.value), Some("Bool".to_string())),
+                    "<" | "<=" | ">" | ">=" => {
+                        // Try compareTo() extension dispatch for user types.
+                        let cmp_result = left.ty.as_deref().and_then(|recv_ty| {
+                            let r = self.try_extension_call(builder, recv_ty, "compareTo", &[left.value, right.value])?;
+                            Some(r.value)
+                        });
+                        if let Some(cmp_val) = cmp_result {
+                            let int_val = self.extract_int(builder, cmp_val);
+                            let zero = builder.ins().iconst(types::I64, 0);
+                            let cc = match binary.op.as_str() {
+                                "<" => IntCC::SignedLessThan,
+                                "<=" => IntCC::SignedLessThanOrEqual,
+                                ">" => IntCC::SignedGreaterThan,
+                                ">=" => IntCC::SignedGreaterThanOrEqual,
+                                _ => unreachable!(),
+                            };
+                            let cmp = builder.ins().icmp(cc, int_val, zero);
+                            let cmp_ext = builder.ins().sextend(types::I64, cmp);
+                            (self.runtime(builder, self.compiler.runtime.bool_, &[cmp_ext], self.compiler.pointer_type), Some("Bool".to_string()))
+                        } else {
+                            let fallback = match binary.op.as_str() {
+                                "<" => lt,
+                                "<=" => le,
+                                ">" => gt,
+                                ">=" => ge,
+                                _ => unreachable!(),
+                            };
+                            (self.compare(builder, fallback, left.value, right.value), Some("Bool".to_string()))
+                        }
+                    }
                     other => return Err(format!("unsupported binary operator `{other}`")),
                 };
                 Ok(TypedValue { value, ty })
@@ -2293,6 +2455,31 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         right: Value,
     ) -> Value {
         self.runtime(builder, func_id, &[left, right], self.compiler.pointer_type)
+    }
+
+    /// Extract the raw i64 value from a FuseHandle wrapping an Int.
+    fn extract_int(&mut self, builder: &mut FunctionBuilder, handle: Value) -> Value {
+        self.runtime_value(builder, self.compiler.runtime.extract_int, &[handle], types::I64)
+    }
+
+    /// Try to call an extension method on a type. Returns None if the method
+    /// doesn't exist as an extension.
+    fn try_extension_call(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        receiver_type: &str,
+        method: &str,
+        args: &[Value],
+    ) -> Option<TypedValue> {
+        let (target_module, function) = self.compiler.session.resolve_extension(receiver_type, method)?;
+        let symbol = symbol_for_function(target_module, function);
+        let func_id = *self.compiler.function_ids.get(&symbol)?;
+        let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
+        let call = builder.ins().call(local, args);
+        Some(TypedValue {
+            value: builder.inst_results(call)[0],
+            ty: function.return_type.clone(),
+        })
     }
 
     fn jump_value(&mut self, builder: &mut FunctionBuilder, block: cranelift_codegen::ir::Block, value: Value) {

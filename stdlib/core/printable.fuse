@@ -1,0 +1,7 @@
+// Printable — string representation contract.
+//
+// Types implementing Printable provide a human-readable string representation.
+
+pub interface Printable {
+  fn toString(ref self) -> String
+}

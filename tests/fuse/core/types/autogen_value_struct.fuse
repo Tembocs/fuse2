@@ -1,0 +1,18 @@
+// EXPECTED OUTPUT:
+// true
+// false
+
+@value
+struct Pair implements Equatable {
+  val a: Int
+  val b: Int
+}
+
+@entrypoint
+fn main() {
+  val x = Pair(1, 2)
+  val y = Pair(1, 2)
+  val z = Pair(3, 4)
+  println(x.eq(ref y))
+  println(x.eq(ref z))
+}

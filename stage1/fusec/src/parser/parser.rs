@@ -525,6 +525,18 @@ impl Parser {
         let name = self
             .expect(TokenKind::Identifier, "expected struct name")?
             .text;
+        let mut implements = Vec::new();
+        if self.match_kind(TokenKind::Implements).is_some() {
+            loop {
+                implements.push(
+                    self.expect(TokenKind::Identifier, "expected interface name")?
+                        .text,
+                );
+                if self.match_kind(TokenKind::Comma).is_none() {
+                    break;
+                }
+            }
+        }
         self.expect(TokenKind::LBrace, "expected `{` after struct name")?;
         let mut fields = Vec::new();
         let mut methods = Vec::new();
@@ -574,6 +586,7 @@ impl Parser {
             methods,
             is_pub: false,
             annotations: Vec::new(),
+            implements,
             span: start.span,
         })
     }

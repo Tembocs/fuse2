@@ -339,6 +339,12 @@ pub unsafe extern "C" fn fuse_is_truthy(handle: FuseHandle) -> bool {
     }
 }
 
+/// Extract the raw i64 value from an Int handle. Returns 0 for non-Int values.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_extract_int(handle: FuseHandle) -> i64 {
+    extract_int(handle)
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_println(handle: FuseHandle) {
     println!("{}", unsafe { clone_to_string(handle) });

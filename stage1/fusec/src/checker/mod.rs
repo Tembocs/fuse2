@@ -6,6 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::ast::nodes as hir;
+use crate::autogen;
 use crate::common::resolve_import_path;
 use crate::error::{Diagnostic, Span};
 use crate::hir::{lower_program, Module};
@@ -201,6 +202,11 @@ impl Checker {
                 info.implements.insert(enum_decl.name.clone(), enum_decl.implements.clone());
             }
         }
+        for struct_decl in &info.module.structs {
+            if !struct_decl.implements.is_empty() {
+                info.implements.insert(struct_decl.name.clone(), struct_decl.implements.clone());
+            }
+        }
         for extern_fn in &info.module.extern_fns {
             let synthetic = hir::FunctionDecl {
                 name: extern_fn.name.clone(),
@@ -258,7 +264,7 @@ impl Checker {
                     methods: struct_decl.methods.clone(),
                     is_pub: struct_decl.is_pub,
                     annotations: struct_decl.annotations.clone(),
-                    implements: Vec::new(),
+                    implements: struct_decl.implements.clone(),
                     span: struct_decl.span,
                 };
                 self.check_function(module, &method, Some(&as_data));
@@ -279,19 +285,29 @@ impl Checker {
 
     fn check_interface_conformance(&mut self, module: &ModuleInfo) {
         let filename = display_name(&module.path);
-        for (type_name, iface_names) in &module.implements {
+        let module_path = module.path.clone();
+        let implements = module.implements.clone();
+        // Auto-load stdlib interface modules before checking conformance.
+        for iface_names in implements.values() {
+            for iface_name in iface_names {
+                self.ensure_stdlib_interface_loaded(iface_name, &module_path);
+            }
+        }
+        for (type_name, iface_names) in &implements {
             // Find the span for the type declaration (for error reporting).
-            let type_span = module.module.data_classes.iter()
-                .find(|d| d.name == *type_name).map(|d| d.span)
-                .or_else(|| module.module.enums.iter().find(|e| e.name == *type_name).map(|e| e.span))
-                .unwrap_or(Span::new(1, 1));
+            let type_span = self.module_cache.get(&module_path).and_then(|m| {
+                m.module.data_classes.iter().find(|d| d.name == *type_name).map(|d| d.span)
+                    .or_else(|| m.module.enums.iter().find(|e| e.name == *type_name).map(|e| e.span))
+                    .or_else(|| m.module.structs.iter().find(|s| s.name == *type_name).map(|s| s.span))
+            }).unwrap_or(Span::new(1, 1));
             for iface_name in iface_names {
                 let Some(iface) = self.resolve_interface(iface_name) else {
                     self.add_error(&filename, type_span, format!("unknown interface `{iface_name}`"), None);
                     continue;
                 };
-                // Verify parents exist.
+                // Auto-load and verify parents exist.
                 for parent_name in &iface.parents {
+                    self.ensure_stdlib_interface_loaded(parent_name, &module_path);
                     if self.resolve_interface(parent_name).is_none() {
                         self.add_error(&filename, iface.span, format!("unknown parent interface `{parent_name}`"), None);
                     }
@@ -306,13 +322,39 @@ impl Checker {
                 }
                 // Collect default methods from the interface (own + inherited).
                 let defaults = self.collect_interface_defaults(&iface);
+                // Determine type kind for auto-generation eligibility.
+                let type_kind = self.module_cache.get(&module_path).and_then(|m| {
+                    if m.module.data_classes.iter().any(|d| d.name == *type_name) {
+                        Some(autogen::TypeKind::DataClass)
+                    } else if let Some(s) = m.module.structs.iter().find(|s| s.name == *type_name) {
+                        Some(autogen::classify_type(&s.annotations, true))
+                    } else if m.module.enums.iter().any(|e| e.name == *type_name) {
+                        Some(autogen::TypeKind::Enum)
+                    } else {
+                        None
+                    }
+                });
                 for method in &required_methods {
                     // W5.4.4: type's own extension method takes priority over default.
                     let ext = self.resolve_extension(type_name, &method.name);
                     let Some(ext_fn) = ext else {
                         // W5.4.3: if method missing but default exists, mark as satisfied.
                         let has_default = defaults.iter().any(|d| d.name == method.name);
-                        if !has_default {
+                        if has_default {
+                            continue;
+                        }
+                        // Check if auto-generation can satisfy this method.
+                        // Only suppress for stdlib interfaces (not local definitions
+                        // that happen to share the same name).
+                        let is_stdlib_iface = Self::stdlib_interface_module(iface_name).is_some()
+                            && !self.module_cache.get(&module_path)
+                                .map(|m| m.interfaces.contains_key(iface_name))
+                                .unwrap_or(false);
+                        let can_autogen = is_stdlib_iface
+                            && type_kind
+                                .map(|kind| autogen::can_auto_generate(kind, iface_name))
+                                .unwrap_or(false);
+                        if !can_autogen {
                             self.add_error(
                                 &filename,
                                 type_span,
@@ -338,19 +380,22 @@ impl Checker {
                         );
                         continue;
                     }
-                    // Check return type match.
-                    if method.return_type.is_some() && ext_fn.return_type != method.return_type {
-                        self.add_error(
-                            &filename,
-                            type_span,
-                            format!(
-                                "method `{}` on `{type_name}` returns `{}`, but interface `{iface_name}` requires `{}`",
-                                method.name,
-                                ext_fn.return_type.as_deref().unwrap_or("Unit"),
-                                method.return_type.as_deref().unwrap_or("Unit"),
-                            ),
-                            None,
-                        );
+                    // Check return type match (resolve `Self` → concrete type).
+                    if let Some(ref iface_rt) = method.return_type {
+                        let resolved_rt = iface_rt.replace("Self", type_name);
+                        if ext_fn.return_type.as_deref() != Some(resolved_rt.as_str()) {
+                            self.add_error(
+                                &filename,
+                                type_span,
+                                format!(
+                                    "method `{}` on `{type_name}` returns `{}`, but interface `{iface_name}` requires `{}`",
+                                    method.name,
+                                    ext_fn.return_type.as_deref().unwrap_or("Unit"),
+                                    resolved_rt,
+                                ),
+                                None,
+                            );
+                        }
                     }
                     // Check ownership convention on self parameter (W5.3.10-11).
                     if let (Some(iface_self), Some(ext_self)) = (method.params.first(), ext_fn.params.first()) {
@@ -1338,6 +1383,32 @@ impl Checker {
 
     fn resolve_interface(&self, name: &str) -> Option<InterfaceInfo> {
         self.module_cache.values().find_map(|module| module.interfaces.get(name).cloned())
+    }
+
+    /// Map well-known stdlib interface names to their module paths.
+    fn stdlib_interface_module(name: &str) -> Option<&'static str> {
+        match name {
+            "Equatable" => Some("core.equatable"),
+            "Hashable" => Some("core.hashable"),
+            "Comparable" => Some("core.comparable"),
+            "Printable" => Some("core.printable"),
+            "Debuggable" => Some("core.debuggable"),
+            _ => None,
+        }
+    }
+
+    /// Auto-load a stdlib interface module if the interface is not already in
+    /// the module cache. Called during conformance checking so that user code
+    /// does not need an explicit `import core.equatable`.
+    fn ensure_stdlib_interface_loaded(&mut self, iface_name: &str, referrer: &Path) {
+        if self.resolve_interface(iface_name).is_some() {
+            return;
+        }
+        if let Some(module_path) = Self::stdlib_interface_module(iface_name) {
+            if let Some(target) = resolve_import_path(referrer, module_path) {
+                let _ = self.load_module(&target);
+            }
+        }
     }
 
     /// Collect all required methods for an interface, including those inherited

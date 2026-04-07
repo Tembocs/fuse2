@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// true
+// Point(1, 2)
+
+data class Point(val x: Int, val y: Int) implements Equatable, Printable
+
+@entrypoint
+fn main() {
+  val a = Point(1, 2)
+  val b = Point(1, 2)
+  println(a.eq(ref b))
+  println(a.toString())
+}

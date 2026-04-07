@@ -1,0 +1,12 @@
+// Equatable — structural equality contract.
+//
+// Types implementing Equatable provide an `eq` method for value comparison.
+// The default `ne` method is provided automatically.
+
+pub interface Equatable {
+  fn eq(ref self, ref other: Self) -> Bool
+}
+
+pub fn Equatable.ne(ref self, ref other: Self) -> Bool {
+  not self.eq(ref other)
+}

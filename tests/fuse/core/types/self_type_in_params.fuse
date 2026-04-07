@@ -1,0 +1,22 @@
+// EXPECTED OUTPUT:
+// true
+// false
+
+interface Equatable {
+  fn eq(ref self, ref other: Self) -> Bool
+}
+
+data class Point(val x: Int, val y: Int) implements Equatable
+
+fn Point.eq(ref self, ref other: Point) -> Bool {
+  self.x == other.x and self.y == other.y
+}
+
+@entrypoint
+fn main() {
+  val a = Point(1, 2)
+  val b = Point(1, 2)
+  val c = Point(3, 4)
+  println(a.eq(ref b))
+  println(a.eq(ref c))
+}

@@ -1,0 +1,18 @@
+// EXPECTED OUTPUT:
+// true
+// false
+// false
+// true
+
+data class Point(val x: Int, val y: Int) implements Equatable
+
+@entrypoint
+fn main() {
+  val a = Point(1, 2)
+  val b = Point(1, 2)
+  val c = Point(3, 4)
+  println(a == b)
+  println(a == c)
+  println(a != b)
+  println(a != c)
+}

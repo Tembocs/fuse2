@@ -1,0 +1,21 @@
+// EXPECTED OUTPUT:
+// Counter(5)
+
+interface Printable {
+  fn toString(ref self) -> String
+}
+
+@value
+struct Counter implements Printable {
+  val count: Int
+}
+
+fn Counter.toString(ref self) -> String {
+  f"Counter({self.count})"
+}
+
+@entrypoint
+fn main() {
+  val c = Counter(5)
+  println(c.toString())
+}

@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod autogen;
 pub mod checker;
 pub mod color;
 pub mod common;

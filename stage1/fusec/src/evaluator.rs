@@ -502,7 +502,7 @@ impl Evaluator {
                         methods: struct_decl.methods.clone(),
                         is_pub: struct_decl.is_pub,
                         annotations: struct_decl.annotations.clone(),
-                        implements: Vec::new(),
+                        implements: struct_decl.implements.clone(),
                         span: struct_decl.span,
                     };
                     let methods = as_data

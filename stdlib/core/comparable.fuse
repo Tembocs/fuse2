@@ -1,0 +1,27 @@
+// Comparable — ordering contract (extends Equatable).
+//
+// Types implementing Comparable provide a `compareTo` method that returns
+// negative (less than), zero (equal), or positive (greater than).
+// Default convenience methods lt, gt, le, ge are derived from compareTo.
+
+import core.equatable
+
+pub interface Comparable : Equatable {
+  fn compareTo(ref self, ref other: Self) -> Int
+}
+
+pub fn Comparable.lt(ref self, ref other: Self) -> Bool {
+  self.compareTo(ref other) < 0
+}
+
+pub fn Comparable.gt(ref self, ref other: Self) -> Bool {
+  self.compareTo(ref other) > 0
+}
+
+pub fn Comparable.le(ref self, ref other: Self) -> Bool {
+  self.compareTo(ref other) <= 0
+}
+
+pub fn Comparable.ge(ref self, ref other: Self) -> Bool {
+  self.compareTo(ref other) >= 0
+}

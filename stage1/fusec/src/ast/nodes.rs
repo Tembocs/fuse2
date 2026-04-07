@@ -69,6 +69,7 @@ pub struct StructDecl {
     pub methods: Vec<FunctionDecl>,
     pub is_pub: bool,
     pub annotations: Vec<Annotation>,
+    pub implements: Vec<String>,
     pub span: Span,
 }
 

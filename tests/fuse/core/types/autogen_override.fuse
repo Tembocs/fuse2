@@ -1,0 +1,18 @@
+// EXPECTED OUTPUT:
+// true
+// custom-hash
+
+data class Point(val x: Int, val y: Int) implements Equatable
+
+fn Point.hash(ref self) -> Int {
+  println("custom-hash")
+  42
+}
+
+@entrypoint
+fn main() {
+  val a = Point(1, 2)
+  val b = Point(1, 2)
+  println(a == b)
+  a.hash()
+}

@@ -35,10 +35,10 @@
 > Every ADR-013 interface uses `Self` in parameters:
 > `fn eq(ref self, ref other: Self) -> Bool`.
 
-- [ ] **0.1** Checker: resolve `Self` → concrete type in interface method params during conformance checking.
-- [ ] **0.2** Codegen: resolve `Self` in extension function params during `load_module_recursive`.
-- [ ] **0.3** Codegen: resolve `Self` in data class method params.
-- [ ] **0.4** Codegen: resolve `Self` in struct method params.
+- [x] **0.1** Checker: resolve `Self` → concrete type in interface method params during conformance checking.
+- [x] **0.2** Codegen: resolve `Self` in extension function params during `load_module_recursive`.
+- [x] **0.3** Codegen: resolve `Self` in data class method params.
+- [x] **0.4** Codegen: resolve `Self` in struct method params.
 
 **Test:** `self_type_in_params.fuse` — interface with `Self` param compiles and runs.
 
@@ -49,13 +49,13 @@
 > ADR-013: `@value struct` gets auto-generation, plain `struct` gets manual-only.
 > Both need `implements`.
 
-- [ ] **1.1** AST: add `implements: Vec<String>` to `StructDecl`.
-- [ ] **1.2** Parser: parse `implements` after struct name (same pattern as data class).
-- [ ] **1.3** Checker: register struct `implements` in `ModuleInfo.implements`.
-- [ ] **1.4** Checker: pass struct `implements` through `as_data` conversion.
-- [ ] **1.5** Codegen: include structs in implementor collection for default forwarding.
-- [ ] **1.6** Evaluator: pass struct `implements` through struct→data conversion.
-- [ ] **1.7** Test: `struct_implements.fuse` — `@value struct` with interface.
+- [x] **1.1** AST: add `implements: Vec<String>` to `StructDecl`.
+- [x] **1.2** Parser: parse `implements` after struct name (same pattern as data class).
+- [x] **1.3** Checker: register struct `implements` in `ModuleInfo.implements`.
+- [x] **1.4** Checker: pass struct `implements` through `as_data` conversion.
+- [x] **1.5** Codegen: include structs in implementor collection for default forwarding.
+- [x] **1.6** Evaluator: pass struct `implements` through struct→data conversion.
+- [x] **1.7** Test: `struct_implements.fuse` — `@value struct` with interface.
 
 ---
 
@@ -63,13 +63,13 @@
 
 > Create the `.fuse` files defining the interface contracts.
 
-- [ ] **2.1** Create `stdlib/core/equatable.fuse` — `Equatable { fn eq(ref self, ref other: Self) -> Bool }` + default `ne`.
-- [ ] **2.2** Create `stdlib/core/hashable.fuse` — `Hashable : Equatable { fn hash(ref self) -> Int }`.
-- [ ] **2.3** Create `stdlib/core/comparable.fuse` — `Comparable : Equatable { fn compareTo(...) -> Int }` + defaults `lt`, `gt`, `le`, `ge`.
-- [ ] **2.4** Create `stdlib/core/printable.fuse` — `Printable { fn toString(ref self) -> String }`.
-- [ ] **2.5** Create `stdlib/core/debuggable.fuse` — `Debuggable : Printable { fn debugString(ref self) -> String }`.
-- [ ] **2.6** Checker: auto-load stdlib interface module when `resolve_interface` fails for a known stdlib interface name.
-- [ ] **2.7** Codegen: auto-load stdlib interface module during `load_module_recursive` when `implements` references an unresolved interface.
+- [x] **2.1** Create `stdlib/core/equatable.fuse` — `Equatable { fn eq(ref self, ref other: Self) -> Bool }` + default `ne`.
+- [x] **2.2** Create `stdlib/core/hashable.fuse` — `Hashable : Equatable { fn hash(ref self) -> Int }`.
+- [x] **2.3** Create `stdlib/core/comparable.fuse` — `Comparable : Equatable { fn compareTo(...) -> Int }` + defaults `lt`, `gt`, `le`, `ge`.
+- [x] **2.4** Create `stdlib/core/printable.fuse` — `Printable { fn toString(ref self) -> String }`.
+- [x] **2.5** Create `stdlib/core/debuggable.fuse` — `Debuggable : Printable { fn debugString(ref self) -> String }`.
+- [x] **2.6** Checker: auto-load stdlib interface module when `resolve_interface` fails for a known stdlib interface name.
+- [x] **2.7** Codegen: auto-load stdlib interface module during `load_module_recursive` when `implements` references an unresolved interface.
 
 **Design decision:** No explicit `import core.equatable` required. The compiler auto-loads stdlib interfaces when referenced via `implements`.
 
@@ -80,18 +80,18 @@
 > When `data class Foo(...) implements Equatable` does not provide `eq` manually,
 > the compiler generates it from field metadata.
 
-- [ ] **3.1** Create `fusec/src/autogen.rs` — shared module for AST generation.
-- [ ] **3.2** Add `mod autogen;` to `lib.rs`.
-- [ ] **3.3** Implement `TypeKind` enum: `DataClass`, `ValueStruct`, `PlainStruct`, `Enum`.
-- [ ] **3.4** Implement `classify_type()` on Checker.
-- [ ] **3.5** Implement `can_auto_generate(type_kind, interface_name) -> bool`.
-- [ ] **3.6** Implement AST builder helpers: `make_self_param`, `make_other_param`, `make_member_access`, `make_binary`, `make_method_call`.
-- [ ] **3.7** Implement `generate_eq(type_name, fields, span) -> FunctionDecl` — field-wise `self.f == other.f && ...`.
-- [ ] **3.8** Implement `generate_hash(type_name, fields, span) -> FunctionDecl` — `h = h * 31 + self.f.hash()` loop.
-- [ ] **3.9** Implement `generate_compare_to(type_name, fields, span) -> FunctionDecl` — field-wise compare, first non-zero wins.
-- [ ] **3.10** Implement `generate_to_string(type_name, fields, span) -> FunctionDecl` — `f"TypeName({self.f1}, {self.f2})"`.
-- [ ] **3.11** Implement `generate_debug_string(type_name, fields, span) -> FunctionDecl` — `f"TypeName {{ f1: {self.f1}, f2: {self.f2} }}"`.
-- [ ] **3.12** Integrate into checker: in `check_interface_conformance`, when method missing and auto-generable, suppress error.
+- [x] **3.1** Create `fusec/src/autogen.rs` — shared module for AST generation.
+- [x] **3.2** Add `mod autogen;` to `lib.rs`.
+- [x] **3.3** Implement `TypeKind` enum: `DataClass`, `ValueStruct`, `PlainStruct`, `Enum`.
+- [x] **3.4** Implement `classify_type()` on Checker.
+- [x] **3.5** Implement `can_auto_generate(type_kind, interface_name) -> bool`.
+- [x] **3.6** Implement AST builder helpers: `make_self_param`, `make_other_param`, `make_member_access`, `make_binary`, `make_method_call`.
+- [x] **3.7** Implement `generate_eq(type_name, fields, span) -> FunctionDecl` — field-wise `self.f == other.f && ...`.
+- [x] **3.8** Implement `generate_hash(type_name, fields, span) -> FunctionDecl` — `h = h * 31 + self.f.hash()` loop.
+- [x] **3.9** Implement `generate_compare_to(type_name, fields, span) -> FunctionDecl` — field-wise compare, first non-zero wins.
+- [x] **3.10** Implement `generate_to_string(type_name, fields, span) -> FunctionDecl` — `f"TypeName({self.f1}, {self.f2})"`.
+- [x] **3.11** Implement `generate_debug_string(type_name, fields, span) -> FunctionDecl` — `f"TypeName {{ f1: {self.f1}, f2: {self.f2} }}"`.
+- [x] **3.12** Integrate into checker: in `check_interface_conformance`, when method missing and auto-generable, suppress error.
 
 **Key design:** Auto-generated functions are real `FunctionDecl` AST nodes. They compile, inline, and optimize identically to hand-written code. Zero runtime overhead.
 
@@ -101,18 +101,18 @@
 
 > Inject auto-generated methods as synthetic extensions during module loading.
 
-- [ ] **4.1** Codegen: after default method forwarding in `load_module_recursive`, add auto-gen pass.
-- [ ] **4.2** For each type with `implements`, collect required methods (own + inherited from parents).
-- [ ] **4.3** For each required method not already in `extensions`: call `autogen::generate_*` and insert.
-- [ ] **4.4** Auto-generated methods use the type declaration's span (synthetic).
-- [ ] **4.5** Test: `autogen_eq_data_class.fuse` — `data class Point(x: Int, y: Int) implements Equatable`, verify `==` works.
-- [ ] **4.6** Test: `autogen_hash_data_class.fuse` — `implements Hashable`, verify `hash()` returns consistent values.
-- [ ] **4.7** Test: `autogen_comparable_data_class.fuse` — `implements Comparable`, verify sorting works.
-- [ ] **4.8** Test: `autogen_tostring_data_class.fuse` — `implements Printable`.
-- [ ] **4.9** Test: `autogen_debugstring_data_class.fuse` — `implements Debuggable`.
-- [ ] **4.10** Test: `autogen_value_struct.fuse` — `@value struct` with `implements Equatable`.
-- [ ] **4.11** Test: `autogen_plain_struct_error.fuse` — EXPECTED ERROR: plain struct without `@value` cannot auto-generate.
-- [ ] **4.12** Test: `autogen_multiple.fuse` — `implements Hashable, Comparable, Debuggable` generates all methods.
+- [x] **4.1** Codegen: after default method forwarding in `load_module_recursive`, add auto-gen pass.
+- [x] **4.2** For each type with `implements`, collect required methods (own + inherited from parents).
+- [x] **4.3** For each required method not already in `extensions`: call `autogen::generate_*` and insert.
+- [x] **4.4** Auto-generated methods use the type declaration's span (synthetic).
+- [x] **4.5** Test: `autogen_eq_data_class.fuse` — `data class Point(x: Int, y: Int) implements Equatable`, verify `==` works.
+- [x] **4.6** Test: `autogen_hash_data_class.fuse` — `implements Hashable`, verify `hash()` returns consistent values.
+- [x] **4.7** Test: `autogen_comparable_data_class.fuse` — `implements Comparable`, verify sorting works.
+- [x] **4.8** Test: `autogen_tostring_data_class.fuse` — `implements Printable`.
+- [x] **4.9** Test: `autogen_debugstring_data_class.fuse` — `implements Debuggable`.
+- [x] **4.10** Test: `autogen_value_struct.fuse` — `@value struct` with `implements Equatable`.
+- [x] **4.11** Test: `autogen_plain_struct_error.fuse` — EXPECTED ERROR: plain struct without `@value` cannot auto-generate.
+- [x] **4.12** Test: `autogen_multiple.fuse` — `implements Hashable, Comparable, Debuggable` generates all methods.
 
 ---
 
@@ -121,17 +121,17 @@
 > `==` on types implementing Equatable dispatches to `eq()`.
 > `<` on types implementing Comparable dispatches to `compareTo()`.
 
-- [ ] **5.1** Codegen: add `type_has_extension(type_name, method_name)` helper.
-- [ ] **5.2** Codegen: add `compile_extension_call(receiver_type, method, args)` helper.
-- [ ] **5.3** Codegen: `==` dispatches to `eq()` when operand type has `eq` extension.
-- [ ] **5.4** Codegen: `!=` dispatches to `eq()` + boolean negate.
-- [ ] **5.5** Codegen: `<` dispatches to `compareTo()` + `< 0` check.
-- [ ] **5.6** Codegen: `<=`, `>`, `>=` dispatch similarly.
-- [ ] **5.7** Evaluator: `==` on `Value::Data` checks for `eq` extension before structural compare.
-- [ ] **5.8** Evaluator: `!=` on `Value::Data` dispatches through `eq`.
-- [ ] **5.9** Evaluator: comparison operators on `Value::Data` dispatch through `compareTo`.
-- [ ] **5.10** Test: `operator_eq_dispatch.fuse` — `Point == Point` uses auto-generated `eq`.
-- [ ] **5.11** Test: `operator_compare_dispatch.fuse` — `emp1 < emp2` uses auto-generated `compareTo`.
+- [x] **5.1** Codegen: add `type_has_extension(type_name, method_name)` helper.
+- [x] **5.2** Codegen: add `compile_extension_call(receiver_type, method, args)` helper.
+- [x] **5.3** Codegen: `==` dispatches to `eq()` when operand type has `eq` extension.
+- [x] **5.4** Codegen: `!=` dispatches to `eq()` + boolean negate.
+- [x] **5.5** Codegen: `<` dispatches to `compareTo()` + `< 0` check.
+- [x] **5.6** Codegen: `<=`, `>`, `>=` dispatch similarly.
+- [x] **5.7** Evaluator: `==` on `Value::Data` checks for `eq` extension before structural compare.
+- [x] **5.8** Evaluator: `!=` on `Value::Data` dispatches through `eq`.
+- [x] **5.9** Evaluator: comparison operators on `Value::Data` dispatch through `compareTo`.
+- [x] **5.10** Test: `operator_eq_dispatch.fuse` — `Point == Point` uses auto-generated `eq`.
+- [x] **5.11** Test: `operator_compare_dispatch.fuse` — `emp1 < emp2` uses auto-generated `compareTo`.
 
 ---
 
@@ -140,14 +140,14 @@
 > Enums with `implements Printable` get `toString` from variant names.
 > Enums with `implements Equatable` get tag + payload comparison.
 
-- [ ] **6.1** `autogen.rs`: `generate_enum_to_string(enum_decl)` — match arms returning variant names.
-- [ ] **6.2** `autogen.rs`: `generate_enum_debug_string(enum_decl)` — match arms with field detail.
-- [ ] **6.3** `autogen.rs`: `generate_enum_eq(enum_decl)` — match on both self and other, compare tags + payloads.
-- [ ] **6.4** `autogen.rs`: `generate_enum_hash(enum_decl)` — hash from variant tag ordinal + payload hashes.
-- [ ] **6.5** Codegen: include enums in auto-gen pass.
-- [ ] **6.6** Checker: include enums in `can_auto_generate`.
-- [ ] **6.7** Test: `enum_implements_printable.fuse`.
-- [ ] **6.8** Test: `enum_implements_equatable.fuse`.
+- [x] **6.1** `autogen.rs`: `generate_enum_to_string(enum_decl)` — match arms returning variant names.
+- [x] **6.2** `autogen.rs`: `generate_enum_debug_string(enum_decl)` — match arms with field detail.
+- [x] **6.3** `autogen.rs`: `generate_enum_eq(enum_decl)` — match on both self and other, compare tags + payloads.
+- [x] **6.4** `autogen.rs`: `generate_enum_hash(enum_decl)` — hash from variant tag ordinal + payload hashes.
+- [x] **6.5** Codegen: include enums in auto-gen pass.
+- [x] **6.6** Checker: include enums in `can_auto_generate`.
+- [x] **6.7** Test: `enum_implements_printable.fuse`.
+- [x] **6.8** Test: `enum_implements_equatable.fuse`.
 
 ---
 
@@ -156,9 +156,9 @@
 > If the user writes `fn Point.hash(ref self) -> Int { ... }`, it overrides
 > the auto-generated version. Auto-generated `eq` from Equatable parent is kept.
 
-- [ ] **7.1** Verify codegen insertion order: user extensions registered before auto-gen pass (auto-gen checks `!extensions.contains_key` before inserting).
-- [ ] **7.2** Verify checker conformance: user methods found before auto-gen check.
-- [ ] **7.3** Test: `autogen_override.fuse` — override `hash()`, keep auto `eq()`.
+- [x] **7.1** Verify codegen insertion order: user extensions registered before auto-gen pass (auto-gen checks `!extensions.contains_key` before inserting).
+- [x] **7.2** Verify checker conformance: user methods found before auto-gen check.
+- [x] **7.3** Test: `autogen_override.fuse` — override `hash()`, keep auto `eq()`.
 
 ---
 
@@ -167,12 +167,12 @@
 > `implements Hashable` must also generate `eq` from Equatable parent.
 > `implements Debuggable` must also generate `toString` from Printable parent.
 
-- [ ] **8.1** Codegen: expand default forwarding to include parent interface defaults from other loaded modules.
-- [ ] **8.2** Auto-gen: collect ALL required methods (own + inherited from parents) when generating.
-- [ ] **8.3** Checker: validate parent interface methods are auto-generable too.
-- [ ] **8.4** Test: `hashable_generates_eq.fuse` — `implements Hashable` auto-generates both `hash` and `eq`.
-- [ ] **8.5** Test: `comparable_generates_eq.fuse` — `implements Comparable` auto-generates `compareTo` and `eq`.
-- [ ] **8.6** Test: `debuggable_generates_tostring.fuse` — `implements Debuggable` auto-generates both.
+- [x] **8.1** Codegen: expand default forwarding to include parent interface defaults from other loaded modules.
+- [x] **8.2** Auto-gen: collect ALL required methods (own + inherited from parents) when generating.
+- [x] **8.3** Checker: validate parent interface methods are auto-generable too.
+- [x] **8.4** Test: `hashable_generates_eq.fuse` — `implements Hashable` auto-generates both `hash` and `eq`.
+- [x] **8.5** Test: `comparable_generates_eq.fuse` — `implements Comparable` auto-generates `compareTo` and `eq`.
+- [x] **8.6** Test: `debuggable_generates_tostring.fuse` — `implements Debuggable` auto-generates both.
 
 ---
 

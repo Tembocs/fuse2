@@ -1,0 +1,10 @@
+// Debuggable — debug string representation contract (extends Printable).
+//
+// Types implementing Debuggable provide a verbose, developer-facing string
+// representation in addition to the human-readable toString() from Printable.
+
+import core.printable
+
+pub interface Debuggable : Printable {
+  fn debugString(ref self) -> String
+}
