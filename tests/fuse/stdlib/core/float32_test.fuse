@@ -58,10 +58,8 @@ fn main() {
 
   // predicates
   println("=== predicates ===")
-  val isPos = Float32.from(1.0).isPositive()
-  println(f"isPositive: {isPos}")
-  val isNeg = Float32.from(-1.0).isNegative()
-  println(f"isNegative: {isNeg}")
+  println(f"isPositive: {Float32.from(1.0).isPositive()}")
+  println(f"isNegative: {Float32.from(-1.0).isNegative()}")
 
   // toInt
   println("=== toInt ===")

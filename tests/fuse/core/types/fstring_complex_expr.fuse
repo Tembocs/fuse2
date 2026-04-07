@@ -1,0 +1,27 @@
+// EXPECTED OUTPUT:
+// sum: 8
+// gt: true
+// call: 5
+// chain: HELLO
+
+@entrypoint
+fn main() {
+  // Arithmetic inside f-string
+  val a = 3
+  val b = 5
+  println(f"sum: {a + b}")
+
+  // Comparison inside f-string
+  println(f"gt: {b > a}")
+
+  // Function call inside f-string
+  println(f"call: {identity(5)}")
+
+  // Method chain inside f-string
+  val s = "hello"
+  println(f"chain: {s.toUpper()}")
+}
+
+fn identity(x: Int) -> Int {
+  x
+}

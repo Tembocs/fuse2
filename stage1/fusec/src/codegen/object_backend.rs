@@ -1672,19 +1672,31 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 );
             }
             let after = &rest[start + 1..];
-            let end = after
-                .find('}')
-                .ok_or_else(|| "unterminated f-string".to_string())?;
-            let placeholder = after[..end].trim();
-            let mut value =
-                self.compile_name(builder, placeholder.split('.').next().unwrap_or_default())?;
-            for segment in placeholder.split('.').skip(1) {
-                if let Some(name) = segment.strip_suffix("()") {
-                    value = self.call_zero_arg_member(builder, value, name)?;
-                } else {
-                    value = self.member_access(builder, value, segment, false)?;
-                }
-            }
+            let end = fstring_brace_end(after)
+                .ok_or_else(|| "unterminated f-string interpolation".to_string())?;
+            let expr_text = after[..end].trim();
+            let source = format!("fn __fstr__() => {expr_text}");
+            let program = parse_source(&source, "<fstring>")
+                .map_err(|d| format!("f-string parse error: {}", d.render()))?;
+            let expr = program
+                .declarations
+                .first()
+                .and_then(|decl| {
+                    if let fa::Declaration::Function(func) = decl {
+                        func.body.statements.first()
+                    } else {
+                        None
+                    }
+                })
+                .and_then(|stmt| {
+                    if let fa::Statement::Expr(expr_stmt) = stmt {
+                        Some(&expr_stmt.expr)
+                    } else {
+                        None
+                    }
+                })
+                .ok_or_else(|| format!("failed to parse f-string expression: {expr_text}"))?;
+            let value = self.compile_expr(builder, expr)?;
             let rendered = self.runtime(
                 builder,
                 self.compiler.runtime.to_string,
@@ -4325,14 +4337,30 @@ fn collect_block_names(block: &fa::Block) -> HashSet<String> {
 fn collect_expr_names(expr: &fa::Expr) -> HashSet<String> {
     match expr {
         fa::Expr::Literal(_) => HashSet::new(),
-        fa::Expr::FString(fstring) => fstring
-            .template
-            .split('{')
-            .skip(1)
-            .filter_map(|part| part.split('}').next())
-            .map(|part| part.trim().split('.').next().unwrap_or_default().to_string())
-            .filter(|part| !part.is_empty())
-            .collect(),
+        fa::Expr::FString(fstring) => {
+            let mut names = HashSet::new();
+            let mut rest = fstring.template.as_str();
+            while let Some(start) = rest.find('{') {
+                let after = &rest[start + 1..];
+                if let Some(end) = fstring_brace_end(after) {
+                    let expr_text = after[..end].trim();
+                    let source = format!("fn __names__() => {expr_text}");
+                    if let Ok(program) = parse_source(&source, "<fstring-names>") {
+                        for decl in &program.declarations {
+                            if let fa::Declaration::Function(func) = decl {
+                                if let Some(fa::Statement::Expr(expr_stmt)) = func.body.statements.first() {
+                                    names.extend(collect_expr_names(&expr_stmt.expr));
+                                }
+                            }
+                        }
+                    }
+                    rest = &after[end + 1..];
+                } else {
+                    break;
+                }
+            }
+            names
+        }
         fa::Expr::Name(name) => HashSet::from([name.value.clone()]),
         fa::Expr::List(list) => list.items.iter().flat_map(collect_expr_names).collect(),
         fa::Expr::Unary(unary) => collect_expr_names(&unary.value),
@@ -4460,4 +4488,19 @@ fn validate_simd_lanes(n: u64) -> Result<(), String> {
             "unsupported SIMD lane count `{n}` — must be a power of 2 in {{2, 4, 8, 16}}"
         ))
     }
+}
+
+/// Find the closing `}` for an f-string interpolation, accounting for nested
+/// brace pairs (e.g. in map literals or nested f-strings).
+fn fstring_brace_end(s: &str) -> Option<usize> {
+    let mut depth: usize = 0;
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' if depth == 0 => return Some(i),
+            '}' => depth -= 1,
+            _ => {}
+        }
+    }
+    None
 }
