@@ -516,19 +516,19 @@ importing modules. `path.SEPARATOR` cannot be read after `import path`.
 
 ---
 
-### Phase W2.6 — Sized Integer Runtime Values
+### Phase W2.6 — Sized Integer Runtime Values [DONE]
 
 **Design:** All sized integers passed as `i64` across Cranelift ABI.
 Runtime narrows/widens on store/load. Arithmetic wraps on overflow.
 
-- [ ] **W2.6.1** Add variants: `Int8(i8)`, `UInt8(u8)`, `Int32(i32)`,
+- [x] **W2.6.1** Add variants: `Int8(i8)`, `UInt8(u8)`, `Int32(i32)`,
       `UInt32(u32)`, `UInt64(u64)`.
-- [ ] **W2.6.2** Add allocation FFI for each type.
-- [ ] **W2.6.3** Add extraction FFI for each type.
-- [ ] **W2.6.4** Add arithmetic FFI (5 ops × 5 types = 25 functions).
-- [ ] **W2.6.5** Add comparison FFI (5 ops × 5 types = 25 functions).
-- [ ] **W2.6.6** Add `to_string` for each type.
-- [ ] **W2.6.7** Document overflow behavior (wrapping semantics).
+- [x] **W2.6.2** Add allocation FFI for each type.
+- [x] **W2.6.3** Add extraction FFI for each type.
+- [x] **W2.6.4** Add arithmetic FFI (5 ops × 5 types = 25 functions).
+- [x] **W2.6.5** Add comparison FFI (5 ops × 5 types = 25 functions).
+- [x] **W2.6.6** Add `to_string` for each type.
+- [x] **W2.6.7** Document overflow behavior (wrapping semantics).
 
 ---
 
