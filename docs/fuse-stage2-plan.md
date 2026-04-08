@@ -501,15 +501,15 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W2.5 — Complex Expression Parsing
 
-- [ ] **W2.5.1** Implement `fn parseIfExpr() -> Result<IfExpr, String>` — `if`, `else if`, `else`.
-- [ ] **W2.5.2** Implement `fn parseMatchExpr() -> Result<MatchExpr, String>` — subject, arms with patterns.
-- [ ] **W2.5.3** Implement `fn parseWhenExpr() -> Result<WhenExpr, String>` — guard conditions, else arm.
-- [ ] **W2.5.4** Implement `fn parsePattern() -> Result<Pattern, String>` — wildcard `_`, literals, names, `Variant(args)`, tuples.
-- [ ] **W2.5.5** Implement `fn parseLambda() -> Result<LambdaExpr, String>` — `fn(params) -> Type => expr` or `fn(params) -> Type { block }`.
-- [ ] **W2.5.6** Implement f-string expression parsing (parse template into concat of string literals and expressions).
-- [ ] **W2.5.7** Test: parse `match result { Ok(v) => v, Err(e) => 0 }`.
-- [ ] **W2.5.8** Test: parse `val label = when { score >= 90 => "A", else => "F" }`.
-- [ ] **W2.5.9** Test: parse the full `four_functions.fuse` milestone and verify AST structure.
+- [x] **W2.5.1** Implement `fn parseIfExpr() -> Result<IfExpr, String>` — `if`, `else if`, `else`.
+- [x] **W2.5.2** Implement `fn parseMatchExpr() -> Result<MatchExpr, String>` — subject, arms with patterns.
+- [x] **W2.5.3** Implement `fn parseWhenExpr() -> Result<WhenExpr, String>` — guard conditions, else arm.
+- [x] **W2.5.4** Implement `fn parsePattern() -> Result<Pattern, String>` — wildcard `_`, literals, names, `Variant(args)`, tuples.
+- [x] **W2.5.5** Implement `fn parseLambda() -> Result<LambdaExpr, String>` — `fn(params) -> Type => expr` or `fn(params) -> Type { block }`.
+- [x] **W2.5.6** Implement f-string expression parsing (parse template into concat of string literals and expressions).
+- [x] **W2.5.7** Test: parse `match result { Ok(v) => v, Err(e) => 0 }`.
+- [x] **W2.5.8** Test: parse `val label = when { score >= 90 => "A", else => "F" }`.
+- [x] **W2.5.9** Test: parse the full `four_functions.fuse` milestone and verify AST structure.
 
 ---
 

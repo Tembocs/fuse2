@@ -1,0 +1,266 @@
+// EXPECTED OUTPUT:
+// --- match ---
+// match arms: 2
+// arm 0: Variant Ok args: 1
+// arm 1: Variant Err args: 1
+// --- when ---
+// when arms: 2
+// arm 0 has condition: true
+// arm 1 has condition: false
+// --- four_functions ---
+// decls: 6
+// d0: DataClass Resource fields: 2 methods: 1
+// d1: Function inspect params: 1
+// d2: Function increment params: 1
+// d3: Function consume params: 1
+// d4: Function greet params: 1 ret: String
+// d5: Function main params: 0 annotations: 1
+// main body stmts: 7
+// --- fstring ---
+// fstring template: hello {name}
+// --- lambda ---
+// lambda params: 1
+
+import stdlib.full.io
+import stage2.src.lexer
+import stage2.src.parser
+import stage2.src.token
+import stage2.src.ast
+
+fn lexParse(source: String) -> Result<Program, String> {
+  val tokens = lexer.lex(source, "t.fuse")?
+  parser.parse(tokens, "t.fuse")
+}
+
+@entrypoint
+fn main() {
+  // --- W2.5.7: parse match ---
+  println("--- match ---")
+  val r1 = lexParse("fn test() { match result { Ok(v) => v, Err(e) => 0 } }")
+  match r1 {
+    Ok(prog) => {
+      match prog.declarations.get(0) {
+        Some(d) => {
+          match d {
+            Declaration.Function(fd) => {
+              match fd.body.statements.get(0) {
+                Some(s) => {
+                  match s {
+                    Statement.Expr(es) => {
+                      match es.expr {
+                        Expr.Match(me) => {
+                          println(f"match arms: {me.arms.len()}")
+                          match me.arms.get(0) {
+                            Some(arm) => {
+                              match arm.pattern {
+                                Pattern.Variant(vp) => println(f"arm 0: Variant {vp.name} args: {vp.args.len()}"),
+                                _ => println("arm 0: other")
+                              }
+                            },
+                            None => {}
+                          }
+                          match me.arms.get(1) {
+                            Some(arm) => {
+                              match arm.pattern {
+                                Pattern.Variant(vp) => println(f"arm 1: Variant {vp.name} args: {vp.args.len()}"),
+                                _ => println("arm 1: other")
+                              }
+                            },
+                            None => {}
+                          }
+                        },
+                        _ => println("not match")
+                      }
+                    },
+                    _ => println("not expr")
+                  }
+                },
+                None => println("no stmt")
+              }
+            },
+            _ => println("not fn")
+          }
+        },
+        None => {}
+      }
+    },
+    Err(msg) => println(f"error: {msg}")
+  }
+
+  // --- W2.5.8: parse when ---
+  println("--- when ---")
+  val r2 = lexParse("fn test() { val label = when { score >= 90 => \"A\", else => \"F\" } }")
+  match r2 {
+    Ok(prog) => {
+      match prog.declarations.get(0) {
+        Some(d) => {
+          match d {
+            Declaration.Function(fd) => {
+              match fd.body.statements.get(0) {
+                Some(s) => {
+                  match s {
+                    Statement.VarDecl(vd) => {
+                      match vd.value {
+                        Expr.When(we) => {
+                          println(f"when arms: {we.arms.len()}")
+                          match we.arms.get(0) {
+                            Some(arm) => {
+                              match arm.condition {
+                                Some(_) => println("arm 0 has condition: true"),
+                                None => println("arm 0 has condition: false")
+                              }
+                            },
+                            None => {}
+                          }
+                          match we.arms.get(1) {
+                            Some(arm) => {
+                              match arm.condition {
+                                Some(_) => println("arm 1 has condition: true"),
+                                None => println("arm 1 has condition: false")
+                              }
+                            },
+                            None => {}
+                          }
+                        },
+                        _ => println("not when")
+                      }
+                    },
+                    _ => println("not var decl")
+                  }
+                },
+                None => println("no stmt")
+              }
+            },
+            _ => println("not fn")
+          }
+        },
+        None => {}
+      }
+    },
+    Err(msg) => println(f"error: {msg}")
+  }
+
+  // --- W2.5.9: parse full four_functions.fuse ---
+  println("--- four_functions ---")
+  val content = readFile("tests/fuse/milestone/four_functions.fuse")
+  match content {
+    Ok(source) => {
+      val tokens = lexer.lex(source, "four_functions.fuse")
+      match tokens {
+        Ok(toks) => {
+          val result = parser.parse(toks, "four_functions.fuse")
+          match result {
+            Ok(prog) => {
+              println(f"decls: {prog.declarations.len()}")
+              var i = 0
+              while i < prog.declarations.len() {
+                match prog.declarations.get(i) {
+                  Some(d) => {
+                    match d {
+                      Declaration.DataClass(dc) => println(f"d{i}: DataClass {dc.name} fields: {dc.fields.len()} methods: {dc.methods.len()}"),
+                      Declaration.Function(fd) => {
+                        match fd.returnType {
+                          Some(rt) => {
+                            if fd.annotations.len() > 0 {
+                              println(f"d{i}: Function {fd.name} params: {fd.params.len()} ret: {rt} annotations: {fd.annotations.len()}")
+                            } else {
+                              println(f"d{i}: Function {fd.name} params: {fd.params.len()} ret: {rt}")
+                            }
+                          },
+                          None => {
+                            if fd.annotations.len() > 0 {
+                              println(f"d{i}: Function {fd.name} params: {fd.params.len()} annotations: {fd.annotations.len()}")
+                            } else {
+                              println(f"d{i}: Function {fd.name} params: {fd.params.len()}")
+                            }
+                          }
+                        }
+                        // Print main body statement count
+                        if fd.name == "main" {
+                          println(f"main body stmts: {fd.body.statements.len()}")
+                        }
+                      },
+                      Declaration.Import(imp) => println(f"d{i}: Import {imp.modulePath}"),
+                      _ => println(f"d{i}: other")
+                    }
+                  },
+                  None => {}
+                }
+                i = i + 1
+              }
+            },
+            Err(msg) => println(f"parse error: {msg}")
+          }
+        },
+        Err(msg) => println(f"lex error: {msg}")
+      }
+    },
+    Err(msg) => println(f"io error: {msg}")
+  }
+
+  // --- f-string ---
+  println("--- fstring ---")
+  val r3 = lexParse("fn test() { val x = f\"hello {name}\" }")
+  match r3 {
+    Ok(prog) => {
+      match prog.declarations.get(0) {
+        Some(d) => {
+          match d {
+            Declaration.Function(fd) => {
+              match fd.body.statements.get(0) {
+                Some(s) => {
+                  match s {
+                    Statement.VarDecl(vd) => {
+                      match vd.value {
+                        Expr.FString(fs) => println(f"fstring template: {fs.template}"),
+                        _ => println("not fstring")
+                      }
+                    },
+                    _ => println("not var decl")
+                  }
+                },
+                None => {}
+              }
+            },
+            _ => println("not fn")
+          }
+        },
+        None => {}
+      }
+    },
+    Err(msg) => println(f"error: {msg}")
+  }
+
+  // --- lambda ---
+  println("--- lambda ---")
+  val r4 = lexParse("fn test() { val f = fn(x: Int) -> Int => x * 2 }")
+  match r4 {
+    Ok(prog) => {
+      match prog.declarations.get(0) {
+        Some(d) => {
+          match d {
+            Declaration.Function(fd) => {
+              match fd.body.statements.get(0) {
+                Some(s) => {
+                  match s {
+                    Statement.VarDecl(vd) => {
+                      match vd.value {
+                        Expr.Lambda(lam) => println(f"lambda params: {lam.params.len()}"),
+                        _ => println("not lambda")
+                      }
+                    },
+                    _ => println("not var decl")
+                  }
+                },
+                None => {}
+              }
+            },
+            _ => println("not fn")
+          }
+        },
+        None => {}
+      }
+    },
+    Err(msg) => println(f"error: {msg}")
+  }
+}
