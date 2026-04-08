@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// 0
+// 3
+
+import stdlib.core.list
+
+@entrypoint
+fn main() {
+  val empty: List<Int> = []
+  println(empty.len())
+  val xs = [1, 2, 3]
+  println(xs.len())
+}

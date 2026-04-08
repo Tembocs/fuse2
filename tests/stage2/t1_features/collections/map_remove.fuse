@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// true
+// false
+
+import stdlib.core.map
+
+@entrypoint
+fn main() {
+  var m = Map::<String, Int>.new()
+  m.set("x", 42)
+  println(m.contains("x"))
+  m.remove("x")
+  println(m.contains("x"))
+}

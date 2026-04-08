@@ -1,0 +1,8 @@
+// EXPECTED OUTPUT:
+// []
+
+@entrypoint
+fn main() {
+  val xs: List<Int> = []
+  println(xs)
+}

@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// [1, 2, 3]
+
+import stdlib.core.list
+
+@entrypoint
+fn main() {
+  var xs: List<Int> = []
+  xs.push(1)
+  xs.push(2)
+  xs.push(3)
+  println(xs)
+}

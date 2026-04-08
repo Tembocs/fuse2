@@ -1,0 +1,10 @@
+// EXPECTED OUTPUT:
+// {}
+
+import stdlib.core.map
+
+@entrypoint
+fn main() {
+  val m = Map::<String, Int>.new()
+  println(m)
+}

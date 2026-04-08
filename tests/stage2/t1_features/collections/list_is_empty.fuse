@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// true
+// false
+
+import stdlib.core.list
+
+@entrypoint
+fn main() {
+  val empty: List<Int> = []
+  println(empty.isEmpty())
+  val xs = [1, 2, 3]
+  println(xs.isEmpty())
+}

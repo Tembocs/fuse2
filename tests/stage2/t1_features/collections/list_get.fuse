@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// Some(10)
+// Some(20)
+// Some(30)
+// None
+
+import stdlib.core.list
+
+@entrypoint
+fn main() {
+  val xs = [10, 20, 30]
+  println(xs.get(0))
+  println(xs.get(1))
+  println(xs.get(2))
+  println(xs.get(3))
+}

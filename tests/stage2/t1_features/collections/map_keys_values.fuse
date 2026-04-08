@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// 2
+// 2
+
+import stdlib.core.map
+
+@entrypoint
+fn main() {
+  var m = Map::<String, Int>.new()
+  m.set("a", 1)
+  m.set("b", 2)
+  val keys = m.keys()
+  val values = m.values()
+  println(keys.len())
+  println(values.len())
+}

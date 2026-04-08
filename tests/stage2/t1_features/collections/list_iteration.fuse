@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// a
+// b
+// c
+
+@entrypoint
+fn main() {
+  val xs = ["a", "b", "c"]
+  for item in xs {
+    println(item)
+  }
+}
