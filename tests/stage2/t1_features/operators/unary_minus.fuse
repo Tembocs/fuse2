@@ -1,0 +1,10 @@
+// EXPECTED OUTPUT:
+// -5
+// 5
+
+@entrypoint
+fn main() {
+  val x = 5
+  println(-x)
+  println(-(-x))
+}

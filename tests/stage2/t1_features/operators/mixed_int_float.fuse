@@ -1,0 +1,9 @@
+// EXPECTED OUTPUT:
+// 5.5
+
+@entrypoint
+fn main() {
+  val a = 2
+  val b = 3.5
+  println(a.toFloat() + b)
+}

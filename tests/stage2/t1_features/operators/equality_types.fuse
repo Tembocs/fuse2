@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// true
+// true
+// true
+// false
+// false
+// false
+
+@entrypoint
+fn main() {
+  println(42 == 42)
+  println("abc" == "abc")
+  println(true == true)
+  println(42 == 99)
+  println("abc" == "xyz")
+  println(true == false)
+}

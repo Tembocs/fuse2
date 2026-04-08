@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// Some(3)
+// None
+
+data class Item(val name: String)
+
+@entrypoint
+fn main() {
+  val a: Option<Item> = Some(Item("abc"))
+  println(a?.name?.len())
+  val b: Option<Item> = None
+  println(b?.name)
+}

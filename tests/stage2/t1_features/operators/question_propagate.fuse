@@ -1,0 +1,18 @@
+// EXPECTED OUTPUT:
+// Ok(10)
+// Err(bad)
+
+fn parse(s: String) -> Result<Int, String> {
+  if s == "10" { Ok(10) } else { Err("bad") }
+}
+
+fn double(s: String) -> Result<Int, String> {
+  val n = parse(s)?
+  Ok(n * 2)
+}
+
+@entrypoint
+fn main() {
+  println(double("10"))
+  println(double("x"))
+}
