@@ -1,0 +1,168 @@
+// EXPECTED OUTPUT:
+// --- four_functions ---
+// errors: 0
+// --- missing import ---
+// errors: 1
+// error: cannot resolve import `nonexistent.module`
+// --- unknown annotation ---
+// errors: 1
+// error: unknown annotation `@bogus`
+// --- resolveFunction ---
+// found greet: true
+// found missing: false
+// --- resolveExtension ---
+// found Point::describe: true
+
+import stage2.src.lexer
+import stage2.src.parser
+import stage2.src.ast
+import stage2.src.token
+import stage2.src.module
+import stage2.src.checker
+import stage2.src.error
+import stdlib.full.io
+
+fn loadAndCheck(source: String, filename: String) -> List<Diagnostic> {
+  val tokens = lexer.lex(source, filename)
+  match tokens {
+    Ok(toks) => {
+      val prog = parser.parse(toks, filename)
+      match prog {
+        Ok(p) => {
+          // Build ModuleInfo.
+          var symbols: List<NamedSymbol> = []
+          var extensions: List<NamedFunc> = []
+          var statics: List<NamedFunc> = []
+          var ifaces: List<NamedIface> = []
+          var implList: List<NamedImpls> = []
+          var i = 0
+          while i < p.declarations.len() {
+            match p.declarations.get(i) {
+              Some(d) => {
+                match d {
+                  Declaration.Function(fd) => {
+                    match fd.receiverType {
+                      Some(rt) => {
+                        val isStatic = if fd.params.len() == 0 { true } else {
+                          match fd.params.get(0) { Some(pp) => pp.name != "self", _ => true }
+                        }
+                        val key = module.extKey(rt, fd.name)
+                        if isStatic { statics = statics.concat([NamedFunc(key, fd)]) }
+                        else { extensions = extensions.concat([NamedFunc(key, fd)]) }
+                      },
+                      None => { symbols = symbols.concat([NamedSymbol(fd.name, Symbol.Function(fd, fd.isPub))]) }
+                    }
+                  },
+                  Declaration.DataClass(dc) => {
+                    symbols = symbols.concat([NamedSymbol(dc.name, Symbol.Data(dc, dc.isPub))])
+                  },
+                  Declaration.Enum(ed) => {
+                    symbols = symbols.concat([NamedSymbol(ed.name, Symbol.Enum(ed, ed.isPub))])
+                  },
+                  Declaration.ExternFn(ef) => {
+                    val synthetic = FunctionDecl(ef.name, [], ef.params, ef.returnType, Block([], Span(1,1)), ef.isPub, [], None, ef.span)
+                    symbols = symbols.concat([NamedSymbol(ef.name, Symbol.Function(synthetic, ef.isPub))])
+                  },
+                  _ => {}
+                }
+              },
+              None => {}
+            }
+            i = i + 1
+          }
+          val info = ModuleInfo(filename, p, symbols, extensions, statics, ifaces, implList)
+          checker.checkModule(info, [])
+        },
+        Err(msg) => [error.error(msg, filename, Span(1, 1), None)]
+      }
+    },
+    Err(msg) => [error.error(msg, filename, Span(1, 1), None)]
+  }
+}
+
+fn printErrors(diags: List<Diagnostic>) {
+  println(f"errors: {diags.len()}")
+  var i = 0
+  while i < diags.len() {
+    match diags.get(i) {
+      Some(d) => {
+        val sev = if d.isError() { "error" } else { "warning" }
+        println(f"{sev}: {d.message}")
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+}
+
+@entrypoint
+fn main() {
+  // --- W5.4.9: check four_functions.fuse — zero diagnostics ---
+  println("--- four_functions ---")
+  val content = readFile("tests/fuse/milestone/four_functions.fuse")
+  match content {
+    Ok(source) => {
+      val diags = loadAndCheck(source, "four_functions.fuse")
+      printErrors(diags)
+    },
+    Err(msg) => println(f"io error: {msg}")
+  }
+
+  // --- W5.4.10: missing import ---
+  println("--- missing import ---")
+  val d1 = loadAndCheck("import nonexistent.module\n\nfn test() { val x = 1 }", "test.fuse")
+  printErrors(d1)
+
+  // --- unknown annotation ---
+  println("--- unknown annotation ---")
+  val d2 = loadAndCheck("@bogus\nfn test() { val x = 1 }", "test.fuse")
+  printErrors(d2)
+
+  // --- resolveFunction ---
+  println("--- resolveFunction ---")
+  val src = "pub fn greet(name: String) -> String { f\"hello {name}\" }\nfn Point.describe(ref self) -> String { \"pt\" }"
+  val toks = lexer.lex(src, "test.fuse")
+  match toks {
+    Ok(tokens) => {
+      val prog = parser.parse(tokens, "test.fuse")
+      match prog {
+        Ok(p) => {
+          var symbols: List<NamedSymbol> = []
+          var extensions: List<NamedFunc> = []
+          var i = 0
+          while i < p.declarations.len() {
+            match p.declarations.get(i) {
+              Some(d) => {
+                match d {
+                  Declaration.Function(fd) => {
+                    match fd.receiverType {
+                      Some(rt) => { extensions = extensions.concat([NamedFunc(module.extKey(rt, fd.name), fd)]) },
+                      None => { symbols = symbols.concat([NamedSymbol(fd.name, Symbol.Function(fd, fd.isPub))]) }
+                    }
+                  },
+                  _ => {}
+                }
+              },
+              None => {}
+            }
+            i = i + 1
+          }
+          val info = ModuleInfo("test.fuse", p, symbols, extensions, [], [], [])
+
+          val f1 = checker.resolveFunction(info, "greet")
+          match f1 { Some(_) => println("found greet: true"), _ => println("found greet: false") }
+
+          val f2 = checker.resolveFunction(info, "missing")
+          match f2 { Some(_) => println("found missing: true"), _ => println("found missing: false") }
+
+          // --- resolveExtension ---
+          println("--- resolveExtension ---")
+          val e1 = checker.resolveExtension(info, "Point", "describe")
+          match e1 { Some(_) => println("found Point::describe: true"), _ => println("found Point::describe: false") }
+        },
+        Err(msg) => println(f"parse error: {msg}")
+      }
+    },
+    Err(msg) => println(f"lex error: {msg}")
+  }
+}

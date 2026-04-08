@@ -629,16 +629,16 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W5.4 — Module-Level Checking
 
-- [ ] **W5.4.1** Implement `pub fn checkModule(module: ModuleInfo) -> List<Diagnostic>` — orchestrate all checks.
-- [ ] **W5.4.2** Validate imports: target module exists, imported items are `pub`.
-- [ ] **W5.4.3** Validate function signatures: parameter types exist, return type exists.
-- [ ] **W5.4.4** Validate annotations: known annotations only, correct positions.
-- [ ] **W5.4.5** Check all functions in module (free functions, extension methods, struct methods).
-- [ ] **W5.4.6** Check interface conformance for types with `implements`.
-- [ ] **W5.4.7** Implement `fn resolveExtension(typeName: String, methodName: String) -> Option<FunctionDecl>` — search module cache.
-- [ ] **W5.4.8** Implement `fn resolveFunction(name: String) -> Option<FunctionDecl>` — search module cache.
-- [ ] **W5.4.9** Test: full check of `four_functions.fuse` — zero diagnostics.
-- [ ] **W5.4.10** Test: check file with missing import → error.
+- [x] **W5.4.1** Implement `pub fn checkModule(module: ModuleInfo) -> List<Diagnostic>` — orchestrate all checks.
+- [x] **W5.4.2** Validate imports: target module exists, imported items are `pub`.
+- [x] **W5.4.3** Validate function signatures: parameter types exist, return type exists.
+- [x] **W5.4.4** Validate annotations: known annotations only, correct positions.
+- [x] **W5.4.5** Check all functions in module (free functions, extension methods, struct methods).
+- [x] **W5.4.6** Check interface conformance for types with `implements`.
+- [x] **W5.4.7** Implement `fn resolveExtension(typeName: String, methodName: String) -> Option<FunctionDecl>` — search module cache.
+- [x] **W5.4.8** Implement `fn resolveFunction(name: String) -> Option<FunctionDecl>` — search module cache.
+- [x] **W5.4.9** Test: full check of `four_functions.fuse` — zero diagnostics.
+- [x] **W5.4.10** Test: check file with missing import → error.
 
 ---
 

@@ -8,6 +8,7 @@ import token
 import ast
 import error
 import module
+import common
 
 // ---------------------------------------------------------------------------
 // Binding info
@@ -978,4 +979,217 @@ pub fn inferExprTypeFull(info: ModuleInfo, expr: Expr, scope: List<NamedBinding>
 // Backward-compatible simple version (no scope).
 pub fn inferExprType(info: ModuleInfo, expr: Expr) -> Option<String> {
   inferExprTypeFull(info, expr, [])
+}
+
+// ---------------------------------------------------------------------------
+// Module-level checking — orchestrator
+// ---------------------------------------------------------------------------
+
+pub fn checkModule(info: ModuleInfo, cache: List<CachedModule>) -> List<Diagnostic> {
+  var state = CheckerState([], info.path)
+
+  var i = 0
+  while i < info.program.declarations.len() {
+    match info.program.declarations.get(i) {
+      Some(decl) => {
+        match decl {
+          Declaration.Import(imp) => {
+            checkImport(mutref state, info, imp, cache)
+          },
+          Declaration.Function(fd) => {
+            validateAnnotations(mutref state, fd.annotations, "function")
+            checkFunction(mutref state, info, fd)
+          },
+          Declaration.DataClass(dc) => {
+            validateAnnotations(mutref state, dc.annotations, "type")
+            // Check inline methods.
+            var mi = 0
+            while mi < dc.methods.len() {
+              match dc.methods.get(mi) {
+                Some(method) => {
+                  validateAnnotations(mutref state, method.annotations, "function")
+                  checkFunction(mutref state, info, method)
+                },
+                None => {}
+              }
+              mi = mi + 1
+            }
+          },
+          Declaration.Struct(sd) => {
+            validateAnnotations(mutref state, sd.annotations, "type")
+            var mi = 0
+            while mi < sd.methods.len() {
+              match sd.methods.get(mi) {
+                Some(method) => {
+                  validateAnnotations(mutref state, method.annotations, "function")
+                  checkFunction(mutref state, info, method)
+                },
+                None => {}
+              }
+              mi = mi + 1
+            }
+          },
+          Declaration.ExternFn(_) => {},
+          Declaration.Enum(_) => {},
+          Declaration.Interface(_) => {},
+          Declaration.Const(_) => {}
+        }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+
+  // Check extension/static functions.
+  var ei = 0
+  while ei < info.extensions.len() {
+    match info.extensions.get(ei) {
+      Some(nf) => {
+        validateAnnotations(mutref state, nf.func.annotations, "function")
+        checkFunction(mutref state, info, nf.func)
+      },
+      None => {}
+    }
+    ei = ei + 1
+  }
+  var si = 0
+  while si < info.statics.len() {
+    match info.statics.get(si) {
+      Some(nf) => {
+        validateAnnotations(mutref state, nf.func.annotations, "function")
+        checkFunction(mutref state, info, nf.func)
+      },
+      None => {}
+    }
+    si = si + 1
+  }
+
+  state.diagnostics
+}
+
+// ---------------------------------------------------------------------------
+// Import validation
+// ---------------------------------------------------------------------------
+
+fn checkImport(mutref state: CheckerState, info: ModuleInfo, imp: ImportDecl, cache: List<CachedModule>) {
+  val resolved = common.resolveImportPath(info.path, imp.modulePath)
+  match resolved {
+    None => {
+      addError(mutref state, imp.span, f"cannot resolve import `{imp.modulePath}`")
+    },
+    Some(targetPath) => {
+      // If selective import, check items are pub in target module.
+      match imp.items {
+        Some(items) => {
+          // Try to find target in cache.
+          val targetInfo = findCached(cache, targetPath)
+          match targetInfo {
+            Some(target) => {
+              var ii = 0
+              while ii < items.len() {
+                match items.get(ii) {
+                  Some(item) => {
+                    val sym = findSymbol(target.symbols, item)
+                    match sym {
+                      Some(s) => {
+                        if s.isPub() == false {
+                          addError(mutref state, imp.span, f"cannot import non-pub item `{item}`")
+                        }
+                      },
+                      _ => {}
+                    }
+                  },
+                  None => {}
+                }
+                ii = ii + 1
+              }
+            },
+            _ => {}
+          }
+        },
+        None => {}
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Annotation validation
+// ---------------------------------------------------------------------------
+
+fn validateAnnotations(mutref state: CheckerState, annotations: List<Annotation>, position: String) {
+  var i = 0
+  while i < annotations.len() {
+    match annotations.get(i) {
+      Some(ann) => {
+        val spec = annotationSpec(ann.name)
+        match spec {
+          None => {
+            addError(mutref state, ann.span, f"unknown annotation `@{ann.name}`")
+          },
+          Some(s) => {
+            // Check position.
+            if listContains(s.positions, position) == false {
+              addError(mutref state, ann.span, f"`@{ann.name}` cannot be used here")
+            }
+            // Check args.
+            if s.argsKind == "none" and ann.args.len() > 0 {
+              addError(mutref state, ann.span, f"`@{ann.name}` takes no arguments")
+            }
+            if s.argsKind == "one_int" {
+              if ann.args.len() != 1 {
+                addError(mutref state, ann.span, f"`@{ann.name}` requires one integer argument")
+              }
+            }
+            if s.argsKind == "one_string" {
+              if ann.args.len() != 1 {
+                addError(mutref state, ann.span, f"`@{ann.name}` requires one string argument")
+              }
+            }
+          }
+        }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+}
+
+data class AnnotationSpec(
+  val positions: List<String>,
+  val argsKind: String
+)
+
+fn annotationSpec(name: String) -> Option<AnnotationSpec> {
+  if name == "entrypoint" { return Some(AnnotationSpec(["function"], "none")) }
+  if name == "value" { return Some(AnnotationSpec(["type"], "none")) }
+  if name == "rank" { return Some(AnnotationSpec(["statement"], "one_int")) }
+  if name == "deprecated" { return Some(AnnotationSpec(["function", "type"], "one_string")) }
+  if name == "export" { return Some(AnnotationSpec(["function"], "one_string")) }
+  if name == "inline" { return Some(AnnotationSpec(["function"], "none")) }
+  if name == "unsafe" { return Some(AnnotationSpec(["function"], "none")) }
+  if name == "test" { return Some(AnnotationSpec(["function"], "none")) }
+  None
+}
+
+// ---------------------------------------------------------------------------
+// Symbol resolution helpers
+// ---------------------------------------------------------------------------
+
+pub fn resolveFunction(info: ModuleInfo, name: String) -> Option<FunctionDecl> {
+  val sym = findSymbol(info.symbols, name)
+  match sym {
+    Some(s) => {
+      match s {
+        Symbol.Function(fd, _) => Some(fd),
+        _ => None
+      }
+    },
+    _ => None
+  }
+}
+
+pub fn resolveExtension(info: ModuleInfo, typeName: String, methodName: String) -> Option<FunctionDecl> {
+  val key = extKey(typeName, methodName)
+  findFunc(info.extensions, key)
 }
