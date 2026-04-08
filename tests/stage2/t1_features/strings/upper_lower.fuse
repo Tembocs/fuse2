@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// hello
+// Hello
+
+import stdlib.core.string
+
+@entrypoint
+fn main() {
+  val s = "HELLO"
+  println(s.toLower())
+  val t = "hello"
+  println(t.capitalize())
+}

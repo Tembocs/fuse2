@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// llo
+
+import stdlib.core.string
+
+extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
+
+@entrypoint
+fn main() {
+  val s = "hello"
+  val sub = fuse_rt_string_slice(s, 2, 5)
+  println(sub)
+}

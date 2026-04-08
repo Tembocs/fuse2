@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// 104
+// 101
+
+import stdlib.core.string
+
+@entrypoint
+fn main() {
+  val s = "hello"
+  // 'h' = 104, 'e' = 101
+  println(s.byteAt(0))
+  println(s.byteAt(1))
+}

@@ -1,0 +1,8 @@
+// EXPECTED OUTPUT:
+// hello world
+
+@entrypoint
+fn main() {
+  val s = "hello" + " " + "world"
+  println(s)
+}

@@ -1,0 +1,9 @@
+// EXPECTED OUTPUT:
+// sum = 7
+
+@entrypoint
+fn main() {
+  val a = 3
+  val b = 4
+  println(f"sum = {a + b}")
+}

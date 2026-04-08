@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// true
+// false
+// true
+// false
+
+import stdlib.core.string
+
+@entrypoint
+fn main() {
+  val s = "hello world"
+  println(s.startsWith("hello"))
+  println(s.startsWith("world"))
+  println(s.endsWith("world"))
+  println(s.endsWith("hello"))
+}

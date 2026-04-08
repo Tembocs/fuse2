@@ -1,0 +1,9 @@
+// EXPECTED OUTPUT:
+// outer: inner: 42
+
+@entrypoint
+fn main() {
+  val x = 42
+  val inner = f"inner: {x}"
+  println(f"outer: {inner}")
+}

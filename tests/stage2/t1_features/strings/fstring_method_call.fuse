@@ -1,0 +1,8 @@
+// EXPECTED OUTPUT:
+// length is 3
+
+@entrypoint
+fn main() {
+  val xs = [1, 2, 3]
+  println(f"length is {xs.len()}")
+}

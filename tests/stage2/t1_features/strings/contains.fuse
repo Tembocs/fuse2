@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// true
+// false
+
+import stdlib.core.string
+
+@entrypoint
+fn main() {
+  val s = "hello world"
+  println(s.contains("world"))
+  println(s.contains("xyz"))
+}

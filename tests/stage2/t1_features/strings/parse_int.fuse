@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// Ok(42)
+// Err(invalid integer: abc)
+
+import stdlib.core.string
+
+@entrypoint
+fn main() {
+  println("42".toInt())
+  println("abc".toInt())
+}

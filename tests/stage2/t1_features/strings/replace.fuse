@@ -1,0 +1,10 @@
+// EXPECTED OUTPUT:
+// hello universe
+
+import stdlib.core.string
+
+@entrypoint
+fn main() {
+  val s = "hello world"
+  println(s.replace("world", "universe"))
+}

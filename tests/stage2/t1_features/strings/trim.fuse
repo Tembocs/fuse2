@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// hello
+// 5
+
+import stdlib.core.string
+
+@entrypoint
+fn main() {
+  val s = "  hello  "
+  val trimmed = s.trim()
+  println(trimmed)
+  println(trimmed.len())
+}

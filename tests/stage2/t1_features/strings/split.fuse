@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// [a, b, c]
+
+import stdlib.core.string
+
+@entrypoint
+fn main() {
+  val s = "a,b,c"
+  val parts = s.split(",")
+  println(parts)
+}

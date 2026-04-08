@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// Ok(3.14)
+// Err(invalid float: xyz)
+
+import stdlib.core.string
+
+@entrypoint
+fn main() {
+  println("3.14".toFloat())
+  println("xyz".toFloat())
+}
