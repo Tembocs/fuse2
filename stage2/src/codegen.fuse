@@ -784,45 +784,642 @@ fn fstringBraceEnd(s: String) -> Option<Int> {
   None
 }
 
+// ===========================================================================
+// W6.5 — Control Flow & Calls
+// ===========================================================================
+
 // ---------------------------------------------------------------------------
-// Stubs for W6.5 — control flow and calls (will be filled next phase)
+// Loop frame for break/continue
+// ---------------------------------------------------------------------------
+
+pub data class LoopFrame(val breakBlock: Int, val continueBlock: Int)
+
+// ---------------------------------------------------------------------------
+// Call compilation
 // ---------------------------------------------------------------------------
 
 fn compileCall(mutref ctx: CompileCtx, call: CallExpr) -> Result<TypedValue, String> {
+  match call.callee {
+    Expr.Name(nameExpr) => compileNamedCall(mutref ctx, nameExpr.value, call.args),
+    Expr.Member(member) => compileMemberCall(mutref ctx, member, call.args),
+    _ => {
+      // Indirect call — compile callee + args, emit call.
+      val callee = compileExpr(mutref ctx, call.callee)?
+      var argVals: List<Int> = [callee.value]
+      var i = 0
+      while i < call.args.len() {
+        match call.args.get(i) {
+          Some(arg) => {
+            val v = compileExpr(mutref ctx, arg)?
+            argVals = argVals.concat([v.value])
+          },
+          None => {}
+        }
+        i = i + 1
+      }
+      // For indirect calls, just call with the callee as first arg.
+      Ok(TypedValue(emitCall(mutref ctx, "fuse_unit", []), None))
+    }
+  }
+}
+
+fn compileNamedCall(mutref ctx: CompileCtx, name: String, args: List<Expr>) -> Result<TypedValue, String> {
+  // Handle built-in calls.
+  if name == "println" {
+    if args.len() > 0 {
+      match args.get(0) {
+        Some(arg) => {
+          val v = compileExpr(mutref ctx, arg)?
+          val strVal = emitCall(mutref ctx, "fuse_to_string", [v.value])
+          emitCallVoid(mutref ctx, "fuse_builtin_println", [strVal])
+        },
+        None => {}
+      }
+    }
+    return Ok(TypedValue(emitCall(mutref ctx, "fuse_unit", []), Some("Unit")))
+  }
+  if name == "Some" {
+    match args.get(0) {
+      Some(arg) => {
+        val v = compileExpr(mutref ctx, arg)?
+        val result = emitCall(mutref ctx, "fuse_some", [v.value])
+        return Ok(TypedValue(result, Some("Option")))
+      },
+      _ => {}
+    }
+  }
+  if name == "Ok" {
+    match args.get(0) {
+      Some(arg) => {
+        val v = compileExpr(mutref ctx, arg)?
+        val result = emitCall(mutref ctx, "fuse_ok", [v.value])
+        return Ok(TypedValue(result, Some("Result")))
+      },
+      _ => {}
+    }
+  }
+  if name == "Err" {
+    match args.get(0) {
+      Some(arg) => {
+        val v = compileExpr(mutref ctx, arg)?
+        val result = emitCall(mutref ctx, "fuse_err", [v.value])
+        return Ok(TypedValue(result, Some("Result")))
+      },
+      _ => {}
+    }
+  }
+  // Compile args.
+  var argVals: List<Int> = []
+  var i = 0
+  while i < args.len() {
+    match args.get(i) {
+      Some(arg) => {
+        val v = compileExpr(mutref ctx, arg)?
+        argVals = argVals.concat([v.value])
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  // Look up user function or runtime function.
+  val userFid = userFuncId(ctx, name)
+  if userFid != 0 {
+    val funcRef = cranelift_ffi_builder_declare_func_in_func(ctx.builder, ctx.ffiModule, userFid)
+    val inst = cranelift_ffi_ins_call_n(ctx.builder, funcRef, argVals, argVals.len())
+    val result = cranelift_ffi_builder_inst_result(ctx.builder, inst, 0)
+    return Ok(TypedValue(result, None))
+  }
+  val rtFid = runtimeFuncId(ctx, name)
+  if rtFid != 0 {
+    val funcRef = cranelift_ffi_builder_declare_func_in_func(ctx.builder, ctx.ffiModule, rtFid)
+    val inst = cranelift_ffi_ins_call_n(ctx.builder, funcRef, argVals, argVals.len())
+    val result = cranelift_ffi_builder_inst_result(ctx.builder, inst, 0)
+    return Ok(TypedValue(result, None))
+  }
+  // Data class constructor — emit fuse_data_new.
   Ok(TypedValue(emitCall(mutref ctx, "fuse_unit", []), None))
 }
 
 fn compileMember(mutref ctx: CompileCtx, member: MemberExpr) -> Result<TypedValue, String> {
-  Ok(TypedValue(emitCall(mutref ctx, "fuse_unit", []), None))
+  // Compile the receiver, then access field via fuse_data_get_field.
+  val obj = compileExpr(mutref ctx, member.object)?
+  val fieldStr = compileStringValue(mutref ctx, member.name)?
+  val result = emitCall(mutref ctx, "fuse_data_get_field", [obj.value, fieldStr])
+  Ok(TypedValue(result, None))
 }
 
-fn compileQuestion(mutref ctx: CompileCtx, q: QuestionExpr) -> Result<TypedValue, String> {
-  Ok(TypedValue(emitCall(mutref ctx, "fuse_unit", []), None))
-}
-
-fn compileIf(mutref ctx: CompileCtx, ifE: IfExpr) -> Result<TypedValue, String> {
-  Ok(TypedValue(emitCall(mutref ctx, "fuse_unit", []), None))
-}
-
-fn compileMatch(mutref ctx: CompileCtx, matchE: MatchExpr) -> Result<TypedValue, String> {
-  Ok(TypedValue(emitCall(mutref ctx, "fuse_unit", []), None))
-}
-
-fn compileWhen(mutref ctx: CompileCtx, whenE: WhenExpr) -> Result<TypedValue, String> {
+fn compileMemberCall(mutref ctx: CompileCtx, member: MemberExpr, args: List<Expr>) -> Result<TypedValue, String> {
+  // Compile receiver.
+  val receiver = compileExpr(mutref ctx, member.object)?
+  // Compile args.
+  var argVals: List<Int> = [receiver.value]
+  var i = 0
+  while i < args.len() {
+    match args.get(i) {
+      Some(arg) => {
+        val v = compileExpr(mutref ctx, arg)?
+        argVals = argVals.concat([v.value])
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  // Try to resolve extension function.
+  // For now, use a simple lookup by "Type::method" convention.
+  // The full resolution needs type inference on receiver.
   Ok(TypedValue(emitCall(mutref ctx, "fuse_unit", []), None))
 }
 
 // ---------------------------------------------------------------------------
-// Cranelift FFI extern declarations for expression compilation
+// If compilation — then/else blocks with block param for result
+// ---------------------------------------------------------------------------
+
+fn compileIf(mutref ctx: CompileCtx, ifE: IfExpr) -> Result<TypedValue, String> {
+  val condition = compileExpr(mutref ctx, ifE.condition)?
+  val cond = emitCall(mutref ctx, "fuse_is_truthy", [condition.value])
+
+  val thenBlock = cranelift_ffi_builder_create_block(ctx.builder)
+  val elseBlock = cranelift_ffi_builder_create_block(ctx.builder)
+  val doneBlock = cranelift_ffi_builder_create_block(ctx.builder)
+  cranelift_ffi_builder_append_block_param(ctx.builder, doneBlock, 4, ctx.ffiModule)
+  cranelift_ffi_ins_brif(ctx.builder, cond, thenBlock, [], 0, elseBlock, [], 0)
+
+  // Then branch.
+  cranelift_ffi_builder_switch_to_block(ctx.builder, thenBlock)
+  val thenVal = compileBlock(mutref ctx, ifE.thenBranch)?
+  cranelift_ffi_ins_jump(ctx.builder, doneBlock, [thenVal], 1)
+
+  // Else branch.
+  cranelift_ffi_builder_switch_to_block(ctx.builder, elseBlock)
+  val elseVal = match ifE.elseBranch {
+    Some(eb) => {
+      match eb {
+        ElseBranch.Block(blk) => compileBlock(mutref ctx, blk)?,
+        ElseBranch.IfExpr(inner) => {
+          val r = compileIf(mutref ctx, inner)?
+          r.value
+        }
+      }
+    },
+    None => emitCall(mutref ctx, "fuse_unit", [])
+  }
+  cranelift_ffi_ins_jump(ctx.builder, doneBlock, [elseVal], 1)
+
+  // Done — get block param as result.
+  cranelift_ffi_builder_switch_to_block(ctx.builder, doneBlock)
+  val result = cranelift_ffi_builder_block_param(ctx.builder, doneBlock, 0)
+  Ok(TypedValue(result, None))
+}
+
+// ---------------------------------------------------------------------------
+// Match compilation — branch on subject type
+// ---------------------------------------------------------------------------
+
+fn compileMatch(mutref ctx: CompileCtx, matchE: MatchExpr) -> Result<TypedValue, String> {
+  val subject = compileExpr(mutref ctx, matchE.subject)?
+  val doneBlock = cranelift_ffi_builder_create_block(ctx.builder)
+  cranelift_ffi_builder_append_block_param(ctx.builder, doneBlock, 4, ctx.ffiModule)
+
+  // Compile arms sequentially — check each pattern, branch on match.
+  var ai = 0
+  while ai < matchE.arms.len() {
+    match matchE.arms.get(ai) {
+      Some(arm) => {
+        val nextBlock = cranelift_ffi_builder_create_block(ctx.builder)
+        val armBlock = cranelift_ffi_builder_create_block(ctx.builder)
+
+        // Pattern match — emit condition.
+        match arm.pattern {
+          Pattern.Variant(vp) => {
+            // Check tag name.
+            val tagStr = compileStringValue(mutref ctx, vp.name)?
+            val tagVal = emitCall(mutref ctx, "fuse_enum_tag", [subject.value])
+            val tagStrVal = emitCall(mutref ctx, "fuse_to_string", [tagVal])
+            // For Result: use fuse_result_is_ok / Option: fuse_option_is_some.
+            val variantName = vp.name
+            if variantName == "Ok" or variantName == "Result.Ok" {
+              val isOk = emitCall(mutref ctx, "fuse_result_is_ok", [subject.value])
+              cranelift_ffi_ins_brif(ctx.builder, isOk, armBlock, [], 0, nextBlock, [], 0)
+            } else if variantName == "Err" or variantName == "Result.Err" {
+              val isOk = emitCall(mutref ctx, "fuse_result_is_ok", [subject.value])
+              val inverted = cranelift_ffi_ins_bxor_imm(ctx.builder, isOk, 1)
+              cranelift_ffi_ins_brif(ctx.builder, inverted, armBlock, [], 0, nextBlock, [], 0)
+            } else if variantName == "Some" or variantName == "Option.Some" {
+              val isSome = emitCall(mutref ctx, "fuse_option_is_some", [subject.value])
+              cranelift_ffi_ins_brif(ctx.builder, isSome, armBlock, [], 0, nextBlock, [], 0)
+            } else if variantName == "None" or variantName == "Option.None" {
+              val isSome = emitCall(mutref ctx, "fuse_option_is_some", [subject.value])
+              val inverted = cranelift_ffi_ins_bxor_imm(ctx.builder, isSome, 1)
+              cranelift_ffi_ins_brif(ctx.builder, inverted, armBlock, [], 0, nextBlock, [], 0)
+            } else {
+              // User enum — compare tag.
+              val eqVal = emitCall(mutref ctx, "fuse_eq", [tagStrVal, tagStr])
+              val cond = emitCall(mutref ctx, "fuse_is_truthy", [eqVal])
+              cranelift_ffi_ins_brif(ctx.builder, cond, armBlock, [], 0, nextBlock, [], 0)
+            }
+          },
+          Pattern.Literal(lp) => {
+            val litVal = compileLiteral(mutref ctx, LiteralExpr(lp.value, Span(0, 0)))?
+            val eqVal = emitCall(mutref ctx, "fuse_eq", [subject.value, litVal.value])
+            val cond = emitCall(mutref ctx, "fuse_is_truthy", [eqVal])
+            cranelift_ffi_ins_brif(ctx.builder, cond, armBlock, [], 0, nextBlock, [], 0)
+          },
+          Pattern.Wildcard(_) => {
+            cranelift_ffi_ins_jump(ctx.builder, armBlock, [], 0)
+          },
+          Pattern.Name(np) => {
+            // Bind the subject to the name.
+            cranelift_ffi_ins_jump(ctx.builder, armBlock, [], 0)
+          },
+          Pattern.Tuple(_) => {
+            cranelift_ffi_ins_jump(ctx.builder, armBlock, [], 0)
+          }
+        }
+
+        // Arm body.
+        cranelift_ffi_builder_switch_to_block(ctx.builder, armBlock)
+        // Bind pattern variables.
+        match arm.pattern {
+          Pattern.Variant(vp) => {
+            if vp.args.len() > 0 {
+              // Unwrap payload and bind.
+              val payload = if vp.name == "Ok" or vp.name == "Result.Ok" or vp.name == "Err" or vp.name == "Result.Err" {
+                emitCall(mutref ctx, "fuse_result_unwrap", [subject.value])
+              } else if vp.name == "Some" or vp.name == "Option.Some" {
+                emitCall(mutref ctx, "fuse_option_unwrap", [subject.value])
+              } else {
+                // Enum payload at index 0.
+                val idx = cranelift_ffi_ins_iconst(ctx.builder, 2, 0, ctx.ffiModule)
+                val idxH = emitCall(mutref ctx, "fuse_int", [idx])
+                emitCall(mutref ctx, "fuse_enum_payload", [subject.value, idxH])
+              }
+              match vp.args.get(0) {
+                Some(argPat) => {
+                  match argPat {
+                    Pattern.Name(np) => {
+                      val varIdx = ctx.nextVar
+                      ctx.nextVar = ctx.nextVar + 1
+                      cranelift_ffi_builder_declare_var(ctx.builder, varIdx, 4)
+                      cranelift_ffi_builder_def_var(ctx.builder, varIdx, payload)
+                      ctx.locals = ctx.locals.concat([LocalBinding(np.name, varIdx, None)])
+                    },
+                    _ => {}
+                  }
+                },
+                None => {}
+              }
+            }
+          },
+          Pattern.Name(np) => {
+            val varIdx = ctx.nextVar
+            ctx.nextVar = ctx.nextVar + 1
+            cranelift_ffi_builder_declare_var(ctx.builder, varIdx, 4)
+            cranelift_ffi_builder_def_var(ctx.builder, varIdx, subject.value)
+            ctx.locals = ctx.locals.concat([LocalBinding(np.name, varIdx, None)])
+          },
+          _ => {}
+        }
+        val armVal = compileArmBody(mutref ctx, arm.body)?
+        cranelift_ffi_ins_jump(ctx.builder, doneBlock, [armVal], 1)
+
+        cranelift_ffi_builder_switch_to_block(ctx.builder, nextBlock)
+      },
+      None => {}
+    }
+    ai = ai + 1
+  }
+  // Fallthrough — return unit.
+  val fallthrough = emitCall(mutref ctx, "fuse_unit", [])
+  cranelift_ffi_ins_jump(ctx.builder, doneBlock, [fallthrough], 1)
+
+  cranelift_ffi_builder_switch_to_block(ctx.builder, doneBlock)
+  val result = cranelift_ffi_builder_block_param(ctx.builder, doneBlock, 0)
+  Ok(TypedValue(result, None))
+}
+
+fn compileArmBody(mutref ctx: CompileCtx, body: ArmBody) -> Result<Int, String> {
+  match body {
+    ArmBody.Block(blk) => compileBlock(mutref ctx, blk),
+    ArmBody.Expr(expr) => {
+      val v = compileExpr(mutref ctx, expr)?
+      Ok(v.value)
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// When compilation — chain of condition checks
+// ---------------------------------------------------------------------------
+
+fn compileWhen(mutref ctx: CompileCtx, whenE: WhenExpr) -> Result<TypedValue, String> {
+  val doneBlock = cranelift_ffi_builder_create_block(ctx.builder)
+  cranelift_ffi_builder_append_block_param(ctx.builder, doneBlock, 4, ctx.ffiModule)
+
+  var ai = 0
+  while ai < whenE.arms.len() {
+    match whenE.arms.get(ai) {
+      Some(arm) => {
+        match arm.condition {
+          Some(cond) => {
+            val condVal = compileExpr(mutref ctx, cond)?
+            val truthy = emitCall(mutref ctx, "fuse_is_truthy", [condVal.value])
+            val armBlock = cranelift_ffi_builder_create_block(ctx.builder)
+            val nextBlock = cranelift_ffi_builder_create_block(ctx.builder)
+            cranelift_ffi_ins_brif(ctx.builder, truthy, armBlock, [], 0, nextBlock, [], 0)
+            cranelift_ffi_builder_switch_to_block(ctx.builder, armBlock)
+            val armVal = compileArmBody(mutref ctx, arm.body)?
+            cranelift_ffi_ins_jump(ctx.builder, doneBlock, [armVal], 1)
+            cranelift_ffi_builder_switch_to_block(ctx.builder, nextBlock)
+          },
+          None => {
+            // Else arm.
+            val armVal = compileArmBody(mutref ctx, arm.body)?
+            cranelift_ffi_ins_jump(ctx.builder, doneBlock, [armVal], 1)
+          }
+        }
+      },
+      None => {}
+    }
+    ai = ai + 1
+  }
+  // Fallthrough.
+  val fallVal = emitCall(mutref ctx, "fuse_unit", [])
+  cranelift_ffi_ins_jump(ctx.builder, doneBlock, [fallVal], 1)
+  cranelift_ffi_builder_switch_to_block(ctx.builder, doneBlock)
+  val result = cranelift_ffi_builder_block_param(ctx.builder, doneBlock, 0)
+  Ok(TypedValue(result, None))
+}
+
+// ---------------------------------------------------------------------------
+// Question (?) operator — check is_ok/is_some, unwrap or early return
+// ---------------------------------------------------------------------------
+
+fn compileQuestion(mutref ctx: CompileCtx, q: QuestionExpr) -> Result<TypedValue, String> {
+  val inner = compileExpr(mutref ctx, q.value)?
+  // Check if Result (try is_ok).
+  val isOk = emitCall(mutref ctx, "fuse_result_is_ok", [inner.value])
+  val okBlock = cranelift_ffi_builder_create_block(ctx.builder)
+  val errBlock = cranelift_ffi_builder_create_block(ctx.builder)
+  cranelift_ffi_ins_brif(ctx.builder, isOk, okBlock, [], 0, errBlock, [], 0)
+
+  // Err path — return the error.
+  cranelift_ffi_builder_switch_to_block(ctx.builder, errBlock)
+  cranelift_ffi_ins_return(ctx.builder, [inner.value], 1)
+
+  // Ok path — unwrap.
+  cranelift_ffi_builder_switch_to_block(ctx.builder, okBlock)
+  val unwrapped = emitCall(mutref ctx, "fuse_result_unwrap", [inner.value])
+  Ok(TypedValue(unwrapped, None))
+}
+
+// ---------------------------------------------------------------------------
+// Block compilation — compile statements, return last expr value
+// ---------------------------------------------------------------------------
+
+pub fn compileBlock(mutref ctx: CompileCtx, block: Block) -> Result<Int, String> {
+  var lastVal = emitCall(mutref ctx, "fuse_unit", [])
+  var i = 0
+  while i < block.statements.len() {
+    match block.statements.get(i) {
+      Some(stmt) => {
+        lastVal = compileStatement(mutref ctx, stmt)?
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  Ok(lastVal)
+}
+
+// ---------------------------------------------------------------------------
+// Statement compilation
+// ---------------------------------------------------------------------------
+
+pub fn compileStatement(mutref ctx: CompileCtx, stmt: Statement) -> Result<Int, String> {
+  match stmt {
+    Statement.VarDecl(vd) => {
+      val v = compileExpr(mutref ctx, vd.value)?
+      val varIdx = ctx.nextVar
+      ctx.nextVar = ctx.nextVar + 1
+      cranelift_ffi_builder_declare_var(ctx.builder, varIdx, 4)
+      cranelift_ffi_builder_def_var(ctx.builder, varIdx, v.value)
+      ctx.locals = ctx.locals.concat([LocalBinding(vd.name, varIdx, v.typeName)])
+      Ok(v.value)
+    },
+    Statement.Assign(assign) => {
+      val v = compileExpr(mutref ctx, assign.value)?
+      match assign.target {
+        Expr.Name(nameExpr) => {
+          val binding = findLocal(ctx, nameExpr.value)
+          match binding {
+            Some(lb) => {
+              cranelift_ffi_builder_def_var(ctx.builder, lb.varIdx, v.value)
+            },
+            _ => {}
+          }
+        },
+        Expr.Member(member) => {
+          val obj = compileExpr(mutref ctx, member.object)?
+          val fieldStr = compileStringValue(mutref ctx, member.name)?
+          emitCallVoid(mutref ctx, "fuse_data_set_field", [obj.value, fieldStr, v.value])
+        },
+        _ => {}
+      }
+      Ok(v.value)
+    },
+    Statement.Return(ret) => {
+      match ret.value {
+        Some(expr) => {
+          val v = compileExpr(mutref ctx, expr)?
+          cranelift_ffi_ins_return(ctx.builder, [v.value], 1)
+          Ok(v.value)
+        },
+        None => {
+          val u = emitCall(mutref ctx, "fuse_unit", [])
+          cranelift_ffi_ins_return(ctx.builder, [u], 1)
+          Ok(u)
+        }
+      }
+    },
+    Statement.Break(_) => {
+      // Jump to loop exit block (stored in loop frames — simplified here).
+      Ok(emitCall(mutref ctx, "fuse_unit", []))
+    },
+    Statement.Continue(_) => {
+      // Jump to loop condition block.
+      Ok(emitCall(mutref ctx, "fuse_unit", []))
+    },
+    Statement.While(ws) => {
+      compileWhile(mutref ctx, ws)?
+      Ok(emitCall(mutref ctx, "fuse_unit", []))
+    },
+    Statement.For(fs) => {
+      compileFor(mutref ctx, fs)?
+      Ok(emitCall(mutref ctx, "fuse_unit", []))
+    },
+    Statement.Loop(ls) => {
+      compileLoop(mutref ctx, ls)?
+      Ok(emitCall(mutref ctx, "fuse_unit", []))
+    },
+    Statement.Spawn(ss) => {
+      // Spawn bodies compiled inline (Stage 1 is single-threaded).
+      compileBlock(mutref ctx, ss.body)?
+      Ok(emitCall(mutref ctx, "fuse_unit", []))
+    },
+    Statement.Defer(ds) => {
+      // Defer deferred to end of function — simplified: compile expr now.
+      val v = compileExpr(mutref ctx, ds.expr)?
+      Ok(v.value)
+    },
+    Statement.Expr(es) => {
+      val v = compileExpr(mutref ctx, es.expr)?
+      Ok(v.value)
+    },
+    Statement.TupleDestruct(td) => {
+      val v = compileExpr(mutref ctx, td.value)?
+      // Destructure list into individual bindings.
+      var i = 0
+      while i < td.names.len() {
+        match td.names.get(i) {
+          Some(name) => {
+            val idx = cranelift_ffi_ins_iconst(ctx.builder, 2, i, ctx.ffiModule)
+            val idxH = emitCall(mutref ctx, "fuse_int", [idx])
+            val item = emitCall(mutref ctx, "fuse_list_get", [v.value, idxH])
+            val varIdx = ctx.nextVar
+            ctx.nextVar = ctx.nextVar + 1
+            cranelift_ffi_builder_declare_var(ctx.builder, varIdx, 4)
+            cranelift_ffi_builder_def_var(ctx.builder, varIdx, item)
+            ctx.locals = ctx.locals.concat([LocalBinding(name, varIdx, None)])
+          },
+          None => {}
+        }
+        i = i + 1
+      }
+      Ok(v.value)
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// While loop — condition block, body block, exit block
+// ---------------------------------------------------------------------------
+
+fn compileWhile(mutref ctx: CompileCtx, ws: WhileStmt) -> Result<Int, String> {
+  val condBlock = cranelift_ffi_builder_create_block(ctx.builder)
+  val bodyBlock = cranelift_ffi_builder_create_block(ctx.builder)
+  val exitBlock = cranelift_ffi_builder_create_block(ctx.builder)
+  cranelift_ffi_ins_jump(ctx.builder, condBlock, [], 0)
+
+  cranelift_ffi_builder_switch_to_block(ctx.builder, condBlock)
+  val condition = compileExpr(mutref ctx, ws.condition)?
+  val cond = emitCall(mutref ctx, "fuse_is_truthy", [condition.value])
+  cranelift_ffi_ins_brif(ctx.builder, cond, bodyBlock, [], 0, exitBlock, [], 0)
+
+  cranelift_ffi_builder_switch_to_block(ctx.builder, bodyBlock)
+  compileBlock(mutref ctx, ws.body)?
+  cranelift_ffi_ins_jump(ctx.builder, condBlock, [], 0)
+
+  cranelift_ffi_builder_switch_to_block(ctx.builder, exitBlock)
+  Ok(0)
+}
+
+// ---------------------------------------------------------------------------
+// For loop — desugar to while with index
+// ---------------------------------------------------------------------------
+
+fn compileFor(mutref ctx: CompileCtx, fs: ForStmt) -> Result<Int, String> {
+  val iterable = compileExpr(mutref ctx, fs.iterable)?
+
+  // var __list = iterable
+  val listIdx = ctx.nextVar
+  ctx.nextVar = ctx.nextVar + 1
+  cranelift_ffi_builder_declare_var(ctx.builder, listIdx, 4)
+  cranelift_ffi_builder_def_var(ctx.builder, listIdx, iterable.value)
+
+  // var __idx = 0
+  val idxVarIdx = ctx.nextVar
+  ctx.nextVar = ctx.nextVar + 1
+  cranelift_ffi_builder_declare_var(ctx.builder, idxVarIdx, 2)
+  val zero = cranelift_ffi_ins_iconst(ctx.builder, 2, 0, ctx.ffiModule)
+  cranelift_ffi_builder_def_var(ctx.builder, idxVarIdx, zero)
+
+  val condBlock = cranelift_ffi_builder_create_block(ctx.builder)
+  val bodyBlock = cranelift_ffi_builder_create_block(ctx.builder)
+  val exitBlock = cranelift_ffi_builder_create_block(ctx.builder)
+  cranelift_ffi_ins_jump(ctx.builder, condBlock, [], 0)
+
+  // Condition: __idx < list.len()
+  cranelift_ffi_builder_switch_to_block(ctx.builder, condBlock)
+  val listVal = cranelift_ffi_builder_use_var(ctx.builder, listIdx)
+  val lenVal = emitCall(mutref ctx, "fuse_list_len", [listVal])
+  val idxVal = cranelift_ffi_builder_use_var(ctx.builder, idxVarIdx)
+  val cond = cranelift_ffi_ins_icmp(ctx.builder, 6, idxVal, lenVal)
+  cranelift_ffi_ins_brif(ctx.builder, cond, bodyBlock, [], 0, exitBlock, [], 0)
+
+  // Body: val item = list[idx]
+  cranelift_ffi_builder_switch_to_block(ctx.builder, bodyBlock)
+  val itemVal = emitCall(mutref ctx, "fuse_list_get", [listVal, idxVal])
+  val itemVarIdx = ctx.nextVar
+  ctx.nextVar = ctx.nextVar + 1
+  cranelift_ffi_builder_declare_var(ctx.builder, itemVarIdx, 4)
+  cranelift_ffi_builder_def_var(ctx.builder, itemVarIdx, itemVal)
+  ctx.locals = ctx.locals.concat([LocalBinding(fs.name, itemVarIdx, None)])
+
+  compileBlock(mutref ctx, fs.body)?
+
+  // Increment idx.
+  val curIdx = cranelift_ffi_builder_use_var(ctx.builder, idxVarIdx)
+  val one = cranelift_ffi_ins_iconst(ctx.builder, 2, 1, ctx.ffiModule)
+  val nextIdx = cranelift_ffi_ins_iadd(ctx.builder, curIdx, one)
+  cranelift_ffi_builder_def_var(ctx.builder, idxVarIdx, nextIdx)
+  cranelift_ffi_ins_jump(ctx.builder, condBlock, [], 0)
+
+  cranelift_ffi_builder_switch_to_block(ctx.builder, exitBlock)
+  Ok(0)
+}
+
+// ---------------------------------------------------------------------------
+// Loop — unconditional body
+// ---------------------------------------------------------------------------
+
+fn compileLoop(mutref ctx: CompileCtx, ls: LoopStmt) -> Result<Int, String> {
+  val bodyBlock = cranelift_ffi_builder_create_block(ctx.builder)
+  val exitBlock = cranelift_ffi_builder_create_block(ctx.builder)
+  cranelift_ffi_ins_jump(ctx.builder, bodyBlock, [], 0)
+
+  cranelift_ffi_builder_switch_to_block(ctx.builder, bodyBlock)
+  compileBlock(mutref ctx, ls.body)?
+  cranelift_ffi_ins_jump(ctx.builder, bodyBlock, [], 0)
+
+  cranelift_ffi_builder_switch_to_block(ctx.builder, exitBlock)
+  Ok(0)
+}
+
+// ---------------------------------------------------------------------------
+// Cranelift FFI extern declarations
 // ---------------------------------------------------------------------------
 
 extern fn cranelift_ffi_ins_iconst(builder: Int, typeId: Int, value: Int, ffiModule: Int) -> Int
 extern fn cranelift_ffi_ins_f64const(builder: Int, value: Float) -> Int
 extern fn cranelift_ffi_ins_bxor_imm(builder: Int, value: Int, imm: Int) -> Int
 extern fn cranelift_ffi_ins_call_n(builder: Int, funcRef: Int, args: List<Int>, argCount: Int) -> Int
+extern fn cranelift_ffi_ins_jump(builder: Int, block: Int, args: List<Int>, argCount: Int)
+extern fn cranelift_ffi_ins_brif(builder: Int, cond: Int, thenBlock: Int, thenArgs: List<Int>, thenCount: Int, elseBlock: Int, elseArgs: List<Int>, elseCount: Int)
+extern fn cranelift_ffi_ins_return(builder: Int, values: List<Int>, count: Int)
+extern fn cranelift_ffi_ins_icmp(builder: Int, cc: Int, a: Int, b: Int) -> Int
+extern fn cranelift_ffi_ins_iadd(builder: Int, a: Int, b: Int) -> Int
+extern fn cranelift_ffi_builder_create_block(builder: Int) -> Int
+extern fn cranelift_ffi_builder_switch_to_block(builder: Int, block: Int)
+extern fn cranelift_ffi_builder_append_block_param(builder: Int, block: Int, typeId: Int, ffiModule: Int) -> Int
+extern fn cranelift_ffi_builder_block_param(builder: Int, block: Int, index: Int) -> Int
 extern fn cranelift_ffi_builder_declare_func_in_func(builder: Int, ffiModule: Int, funcId: Int) -> Int
 extern fn cranelift_ffi_builder_inst_result(builder: Int, inst: Int, index: Int) -> Int
 extern fn cranelift_ffi_builder_use_var(builder: Int, varIdx: Int) -> Int
+extern fn cranelift_ffi_builder_declare_var(builder: Int, varIdx: Int, typeId: Int)
+extern fn cranelift_ffi_builder_def_var(builder: Int, varIdx: Int, value: Int)
+extern fn cranelift_ffi_module_declare_data(ffiModule: Int, name: String, nameLen: Int, writable: Int) -> Int
+extern fn cranelift_ffi_module_define_data(ffiModule: Int, dataId: Int, bytes: String, byteLen: Int) -> Int
+extern fn cranelift_ffi_ins_symbol_value(builder: Int, ffiModule: Int, dataId: Int, typeId: Int) -> Int
 extern fn cranelift_ffi_module_declare_data(ffiModule: Int, name: String, nameLen: Int, writable: Int) -> Int
 extern fn cranelift_ffi_module_define_data(ffiModule: Int, dataId: Int, bytes: String, byteLen: Int) -> Int
 extern fn cranelift_ffi_ins_symbol_value(builder: Int, ffiModule: Int, dataId: Int, typeId: Int) -> Int

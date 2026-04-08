@@ -1,0 +1,113 @@
+// EXPECTED OUTPUT:
+// --- compile dispatch ---
+// question: ok
+// call println: ok
+// call Some: ok
+// var decl: ok
+// assign: ok
+// return: ok
+// while: ok
+// for: ok
+// loop: ok
+// if/else: ok
+// match: ok
+// when: ok
+
+import stage2.src.lexer
+import stage2.src.parser
+import stage2.src.ast
+import stage2.src.token
+import stage2.src.codegen
+
+fn tryCompileBlock(source: String) -> String {
+  val toksResult = lexer.lex(source, "test.fuse")
+  match toksResult {
+    Ok(toks) => {
+      val progResult = parser.parse(toks, "test.fuse")
+      match progResult {
+        Ok(prog) => {
+          match prog.declarations.get(0) {
+            Some(d) => {
+              match d {
+                Declaration.Function(fd) => {
+                  var ctx = CompileCtx(0, 0, [LocalBinding("x", 0, Some("Int")), LocalBinding("opt", 1, Some("Option")), LocalBinding("res", 2, Some("Result")), LocalBinding("b", 3, Some("Bool")), LocalBinding("items", 4, Some("List")), LocalBinding("item", 5, None)], 6, [], [], "test.fuse", 0, [])
+                  val result = codegen.compileBlock(mutref ctx, fd.body)
+                  match result {
+                    Ok(_) => "ok",
+                    Err(msg) => msg
+                  }
+                },
+                _ => "not a function"
+              }
+            },
+            _ => "no decl"
+          }
+        },
+        Err(msg) => msg
+      }
+    },
+    Err(msg) => msg
+  }
+}
+
+fn tryCompileExpr(source: String) -> String {
+  val toksResult = lexer.lex(source, "test.fuse")
+  match toksResult {
+    Ok(toks) => {
+      val progResult = parser.parse(toks, "test.fuse")
+      match progResult {
+        Ok(prog) => {
+          match prog.declarations.get(0) {
+            Some(d) => {
+              match d {
+                Declaration.Function(fd) => {
+                  match fd.body.statements.get(0) {
+                    Some(s) => {
+                      match s {
+                        Statement.Expr(es) => {
+                          var ctx = CompileCtx(0, 0, [LocalBinding("x", 0, Some("Int")), LocalBinding("opt", 1, Some("Option")), LocalBinding("res", 2, Some("Result")), LocalBinding("b", 3, Some("Bool"))], 4, [], [], "test.fuse", 0, [])
+                          val result = codegen.compileExpr(mutref ctx, es.expr)
+                          match result {
+                            Ok(_) => "ok",
+                            Err(msg) => msg
+                          }
+                        },
+                        _ => "not expr"
+                      }
+                    },
+                    _ => "no stmt"
+                  }
+                },
+                _ => "not fn"
+              }
+            },
+            _ => "no decl"
+          }
+        },
+        Err(msg) => msg
+      }
+    },
+    Err(msg) => msg
+  }
+}
+
+@entrypoint
+fn main() {
+  println("--- compile dispatch ---")
+
+  // Simple expressions (no braces in source — safe for f-string)
+  println("question: " + tryCompileExpr("fn __t__() => res?"))
+  println("call println: " + tryCompileExpr("fn __t__() => println(x)"))
+  println("call Some: " + tryCompileExpr("fn __t__() => Some(x)"))
+
+  // Statements with blocks — pass full fn source.
+  println("var decl: " + tryCompileBlock("fn __t__() { val y = x + 1 }"))
+  println("assign: " + tryCompileBlock("fn __t__() { x = x + 1 }"))
+  println("return: " + tryCompileBlock("fn __t__() { return x }"))
+  println("while: " + tryCompileBlock("fn __t__() { while b { x } }"))
+  println("for: " + tryCompileBlock("fn __t__() { for i in items { println(i) } }"))
+  println("loop: " + tryCompileBlock("fn __t__() { loop { break } }"))
+  println("if/else: " + tryCompileBlock("fn __t__() { if b { x } else { 0 } }"))
+  println("match: " + tryCompileBlock("fn __t__() { match res { Ok(v) => v, Err(e) => 0 } }"))
+  println("when: " + tryCompileBlock("fn __t__() { when { b => x, else => 0 } }"))
+}
