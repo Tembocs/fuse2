@@ -1,0 +1,382 @@
+// lexer.fuse — Lexer for the Stage 2 self-hosted compiler.
+//
+// Matches Stage 1 (stage1/fusec/src/lexer/lexer.rs) exactly.
+// Byte-level ASCII scanning via String.byteAt(i).
+
+import stdlib.core.string
+import token
+
+// --- Character classification ---
+
+fn is_digit(ch: Int) -> Bool {
+  ch >= 48 and ch <= 57
+}
+
+fn is_alpha(ch: Int) -> Bool {
+  (ch >= 65 and ch <= 90) or (ch >= 97 and ch <= 122) or ch == 95
+}
+
+fn is_alnum(ch: Int) -> Bool {
+  is_digit(ch) or is_alpha(ch)
+}
+
+// --- Lexer state ---
+
+data class Lexer(
+  var source: String,
+  var filename: String,
+  var index: Int,
+  var line: Int,
+  var column: Int,
+  var length: Int
+)
+
+// Return byte at index+offset, or 0 if past end.
+fn Lexer.peek(ref self, offset: Int) -> Int {
+  val pos = self.index + offset
+  if pos >= self.length { return 0 }
+  self.source.byteAt(pos)
+}
+
+// Consume and return current byte. Track line/column.
+fn Lexer.advance(mutref self) -> Int {
+  val ch = self.peek(0)
+  if ch == 0 { return 0 }
+  self.index = self.index + 1
+  if ch == 10 {
+    self.line = self.line + 1
+    self.column = 1
+  } else {
+    self.column = self.column + 1
+  }
+  ch
+}
+
+// Skip spaces, tabs, CR, LF, and // line comments.
+fn Lexer.skipWhitespaceAndComments(mutref self) {
+  while true {
+    val ch = self.peek(0)
+    if ch == 32 or ch == 9 or ch == 13 or ch == 10 {
+      self.advance()
+      continue
+    }
+    if ch == 47 and self.peek(1) == 47 {
+      while true {
+        val c = self.peek(0)
+        if c == 10 or c == 0 { break }
+        self.advance()
+      }
+      continue
+    }
+    break
+  }
+}
+
+// Read an integer or float literal.
+fn Lexer.readNumber(mutref self) -> Token {
+  val tok_line = self.line
+  val tok_col = self.column
+  var text = ""
+  while is_digit(self.peek(0)) {
+    val byte = self.advance()
+    text = f"{text}{String.fromChar(byte)}"
+  }
+  // Float: digits '.' digits
+  if self.peek(0) == 46 and is_digit(self.peek(1)) {
+    val dot = self.advance()
+    text = f"{text}{String.fromChar(dot)}"
+    while is_digit(self.peek(0)) {
+      val byte = self.advance()
+      text = f"{text}{String.fromChar(byte)}"
+    }
+    return Token(TokenKind.Float, text, tok_line, tok_col)
+  }
+  Token(TokenKind.Int, text, tok_line, tok_col)
+}
+
+// Read an identifier or keyword.
+fn Lexer.readIdent(mutref self) -> Token {
+  val tok_line = self.line
+  val tok_col = self.column
+  var text = ""
+  while is_alnum(self.peek(0)) {
+    val byte = self.advance()
+    text = f"{text}{String.fromChar(byte)}"
+  }
+  val kw = keyword_kind(text)
+  match kw {
+    Some(k) => Token(k, text, tok_line, tok_col),
+    None => Token(TokenKind.Identifier, text, tok_line, tok_col)
+  }
+}
+
+// Read a string or f-string literal. Handles escape sequences and brace depth.
+fn Lexer.readString(mutref self, formatted: Bool) -> Result<Token, String> {
+  val tok_line = self.line
+  val tok_col = self.column
+  if formatted { self.advance() }
+  self.advance()
+  var value = ""
+  var brace_depth = 0
+  while true {
+    val ch = self.peek(0)
+    if ch == 0 {
+      return Err(f"unterminated string literal at {self.filename}:{tok_line}:{tok_col}")
+    }
+    // Closing quote — only when not inside interpolation braces.
+    if ch == 34 and brace_depth == 0 {
+      self.advance()
+      break
+    }
+    // Opening brace in f-string.
+    if ch == 123 and formatted {
+      brace_depth = brace_depth + 1
+      value = f"{value}{String.fromChar(123)}"
+      self.advance()
+      continue
+    }
+    // Closing brace in f-string (inside interpolation).
+    if ch == 125 and formatted and brace_depth > 0 {
+      brace_depth = brace_depth - 1
+      value = f"{value}{String.fromChar(125)}"
+      self.advance()
+      continue
+    }
+    // Escape sequences: \n \t \" \\ and pass-through.
+    if ch == 92 {
+      self.advance()
+      val next = self.advance()
+      if next == 110 {
+        value = f"{value}{String.fromChar(10)}"
+      } else if next == 116 {
+        value = f"{value}{String.fromChar(9)}"
+      } else if next == 34 {
+        value = f"{value}{String.fromChar(34)}"
+      } else if next == 92 {
+        value = f"{value}{String.fromChar(92)}"
+      } else {
+        value = f"{value}{String.fromChar(next)}"
+      }
+      continue
+    }
+    // Regular character.
+    value = f"{value}{String.fromChar(ch)}"
+    self.advance()
+  }
+  val kind = if formatted { TokenKind.FString } else { TokenKind.String }
+  Ok(Token(kind, value, tok_line, tok_col))
+}
+
+// --- Public API ---
+
+pub fn lex(source: String, filename: String) -> Result<List<Token>, String> {
+  var lexer = Lexer(source, filename, 0, 1, 1, source.len())
+  var tokens = []
+
+  while true {
+    lexer.skipWhitespaceAndComments()
+    val tok_line = lexer.line
+    val tok_col = lexer.column
+    val ch = lexer.peek(0)
+
+    // EOF
+    if ch == 0 {
+      tokens = tokens.concat([Token(TokenKind.Eof, "", tok_line, tok_col)])
+      return Ok(tokens)
+    }
+
+    // Number literals
+    if is_digit(ch) {
+      tokens = tokens.concat([lexer.readNumber()])
+      continue
+    }
+
+    // Identifiers, keywords, f-strings
+    if is_alpha(ch) {
+      if ch == 102 and lexer.peek(1) == 34 {
+        val tok = lexer.readString(true)?
+        tokens = tokens.concat([tok])
+      } else {
+        tokens = tokens.concat([lexer.readIdent()])
+      }
+      continue
+    }
+
+    // String literals
+    if ch == 34 {
+      val tok = lexer.readString(false)?
+      tokens = tokens.concat([tok])
+      continue
+    }
+
+    // Multi-character operators (check before single-char)
+    val next = lexer.peek(1)
+    if ch == 61 and next == 62 {
+      lexer.advance()
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.FatArrow, "=>", tok_line, tok_col)])
+      continue
+    }
+    if ch == 45 and next == 62 {
+      lexer.advance()
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Arrow, "->", tok_line, tok_col)])
+      continue
+    }
+    if ch == 63 and next == 46 {
+      lexer.advance()
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.QDot, "?.", tok_line, tok_col)])
+      continue
+    }
+    if ch == 63 and next == 58 {
+      lexer.advance()
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Elvis, "?:", tok_line, tok_col)])
+      continue
+    }
+    if ch == 58 and next == 58 {
+      lexer.advance()
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.ColonColon, "::", tok_line, tok_col)])
+      continue
+    }
+    if ch == 61 and next == 61 {
+      lexer.advance()
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.EqEq, "==", tok_line, tok_col)])
+      continue
+    }
+    if ch == 33 and next == 61 {
+      lexer.advance()
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Ne, "!=", tok_line, tok_col)])
+      continue
+    }
+    if ch == 60 and next == 61 {
+      lexer.advance()
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Le, "<=", tok_line, tok_col)])
+      continue
+    }
+    if ch == 62 and next == 61 {
+      lexer.advance()
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Ge, ">=", tok_line, tok_col)])
+      continue
+    }
+
+    // Single-character operators and delimiters
+    if ch == 40 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.LParen, "(", tok_line, tok_col)])
+      continue
+    }
+    if ch == 41 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.RParen, ")", tok_line, tok_col)])
+      continue
+    }
+    if ch == 123 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.LBrace, String.fromChar(123), tok_line, tok_col)])
+      continue
+    }
+    if ch == 125 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.RBrace, String.fromChar(125), tok_line, tok_col)])
+      continue
+    }
+    if ch == 91 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.LBracket, "[", tok_line, tok_col)])
+      continue
+    }
+    if ch == 93 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.RBracket, "]", tok_line, tok_col)])
+      continue
+    }
+    if ch == 44 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Comma, ",", tok_line, tok_col)])
+      continue
+    }
+    if ch == 59 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Semi, ";", tok_line, tok_col)])
+      continue
+    }
+    if ch == 58 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Colon, ":", tok_line, tok_col)])
+      continue
+    }
+    if ch == 46 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Dot, ".", tok_line, tok_col)])
+      continue
+    }
+    if ch == 63 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Question, "?", tok_line, tok_col)])
+      continue
+    }
+    if ch == 64 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.At, "@", tok_line, tok_col)])
+      continue
+    }
+    if ch == 61 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Eq, "=", tok_line, tok_col)])
+      continue
+    }
+    if ch == 43 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Plus, "+", tok_line, tok_col)])
+      continue
+    }
+    if ch == 45 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Minus, "-", tok_line, tok_col)])
+      continue
+    }
+    if ch == 42 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Star, "*", tok_line, tok_col)])
+      continue
+    }
+    if ch == 47 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Slash, "/", tok_line, tok_col)])
+      continue
+    }
+    if ch == 37 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Percent, "%", tok_line, tok_col)])
+      continue
+    }
+    if ch == 60 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Lt, "<", tok_line, tok_col)])
+      continue
+    }
+    if ch == 62 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Gt, ">", tok_line, tok_col)])
+      continue
+    }
+    if ch == 33 {
+      lexer.advance()
+      tokens = tokens.concat([Token(TokenKind.Bang, "!", tok_line, tok_col)])
+      continue
+    }
+
+    // Unexpected character
+    return Err(f"unexpected character `{String.fromChar(ch)}` at {filename}:{tok_line}:{tok_col}")
+  }
+
+  // Unreachable — loop always exits via return.
+  Err("unreachable")
+}

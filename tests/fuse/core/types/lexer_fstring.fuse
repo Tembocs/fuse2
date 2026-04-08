@@ -1,0 +1,25 @@
+// EXPECTED OUTPUT:
+// kind: FString
+// text: hello {name}
+// tokens: 2
+
+import stage2.src.lexer
+import stage2.src.token
+
+@entrypoint
+fn main() {
+  val result = lexer.lex("f\"hello {name}\"", "test.fuse")
+  match result {
+    Ok(tokens) => {
+      match tokens.get(0) {
+        Some(t) => {
+          println(f"kind: {t.kind}")
+          println(f"text: {t.text}")
+        },
+        None => println("no token")
+      }
+      println(f"tokens: {tokens.len()}")
+    },
+    Err(msg) => println(f"error: {msg}")
+  }
+}

@@ -385,22 +385,22 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W1.2 — Lexer Core
 
-- [ ] **W1.2.1** Create `stage2/src/lexer.fuse`.
-- [ ] **W1.2.2** Define `pub fn lex(source: String, filename: String) -> Result<List<Token>, String>`.
-- [ ] **W1.2.3** Implement character scanning with `while` loop over `source.byteAt(i)` (byte-level for ASCII source).
-- [ ] **W1.2.4** Implement whitespace and comment skipping (`//` to end of line).
-- [ ] **W1.2.5** Implement integer literals: sequence of digits, produce `TokenKind.Int`.
-- [ ] **W1.2.6** Implement float literals: digits, `.`, digits — produce `TokenKind.Float`.
-- [ ] **W1.2.7** Implement string literals: `"..."` with escape sequences (`\n`, `\t`, `\\`, `\"`).
-- [ ] **W1.2.8** Implement f-string literals: `f"..."` with brace depth tracking for `{expr}`.
-- [ ] **W1.2.9** Implement identifiers: `[a-zA-Z_][a-zA-Z0-9_]*`, check against keyword table.
-- [ ] **W1.2.10** Implement single-character operators: `+`, `-`, `*`, `/`, `%`, `(`, `)`, `{`, `}`, `[`, `]`, `,`, `;`, `:`, `.`, `@`.
-- [ ] **W1.2.11** Implement multi-character operators: `==`, `!=`, `<=`, `>=`, `->`, `=>`, `?.`, `?:`, `::`.
-- [ ] **W1.2.12** Implement single-character operators that may be multi: `<`, `>`, `=`, `?`, `!`.
-- [ ] **W1.2.13** Append `TokenKind.Eof` at end.
-- [ ] **W1.2.14** Track line and column numbers.
-- [ ] **W1.2.15** Test: lex `val x = 42` → 4 tokens (Val, Identifier, Assign, Int).
-- [ ] **W1.2.16** Test: lex `f"hello {name}"` → 1 FString token.
+- [x] **W1.2.1** Create `stage2/src/lexer.fuse`.
+- [x] **W1.2.2** Define `pub fn lex(source: String, filename: String) -> Result<List<Token>, String>`.
+- [x] **W1.2.3** Implement character scanning with `while` loop over `source.byteAt(i)` (byte-level for ASCII source).
+- [x] **W1.2.4** Implement whitespace and comment skipping (`//` to end of line).
+- [x] **W1.2.5** Implement integer literals: sequence of digits, produce `TokenKind.Int`.
+- [x] **W1.2.6** Implement float literals: digits, `.`, digits — produce `TokenKind.Float`.
+- [x] **W1.2.7** Implement string literals: `"..."` with escape sequences (`\n`, `\t`, `\\`, `\"`).
+- [x] **W1.2.8** Implement f-string literals: `f"..."` with brace depth tracking for `{expr}`.
+- [x] **W1.2.9** Implement identifiers: `[a-zA-Z_][a-zA-Z0-9_]*`, check against keyword table.
+- [x] **W1.2.10** Implement single-character operators: `+`, `-`, `*`, `/`, `%`, `(`, `)`, `{`, `}`, `[`, `]`, `,`, `;`, `:`, `.`, `@`.
+- [x] **W1.2.11** Implement multi-character operators: `==`, `!=`, `<=`, `>=`, `->`, `=>`, `?.`, `?:`, `::`.
+- [x] **W1.2.12** Implement single-character operators that may be multi: `<`, `>`, `=`, `?`, `!`.
+- [x] **W1.2.13** Append `TokenKind.Eof` at end.
+- [x] **W1.2.14** Track line and column numbers.
+- [x] **W1.2.15** Test: lex `val x = 42` → 4 tokens (Val, Identifier, Assign, Int).
+- [x] **W1.2.16** Test: lex `f"hello {name}"` → 1 FString token.
 
 ---
 

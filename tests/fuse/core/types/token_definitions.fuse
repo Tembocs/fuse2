@@ -30,7 +30,7 @@ fn main() {
   println(f"not a keyword: {hello_kind}")
 
   // Token data class.
-  val tok = token.Token(token.TokenKind.Fn, "fn", 1, 5)
+  val tok = Token(TokenKind.Fn, "fn", 1, 5)
   println(f"token kind: {tok.kind}")
   println(f"token text: {tok.text}")
   println(f"token line: {tok.line}")

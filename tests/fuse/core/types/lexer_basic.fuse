@@ -1,0 +1,29 @@
+// EXPECTED OUTPUT:
+// tokens: 5
+// Val val 1:1
+// Identifier x 1:5
+// Eq = 1:7
+// Int 42 1:9
+// Eof  1:11
+
+import stage2.src.lexer
+import stage2.src.token
+
+@entrypoint
+fn main() {
+  val result = lexer.lex("val x = 42", "test.fuse")
+  match result {
+    Ok(tokens) => {
+      println(f"tokens: {tokens.len()}")
+      var i = 0
+      while i < tokens.len() {
+        match tokens.get(i) {
+          Some(t) => println(f"{t.kind} {t.text} {t.line}:{t.column}"),
+          None => {}
+        }
+        i = i + 1
+      }
+    },
+    Err(msg) => println(f"error: {msg}")
+  }
+}
