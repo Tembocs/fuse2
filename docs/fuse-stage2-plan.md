@@ -114,6 +114,24 @@ A wave is done when all phases in the wave meet the completion
 standard. **After a wave completes, stop and report before proceeding
 to the next wave.**
 
+### Rule 8: Fixes Go Forward, Not Backward
+
+Stage 0 (Python) is a completed prototype. It is not a test harness
+for Stage 2, and it must not be modified. When Stage 2 development
+reveals a bug, a missing feature, or a limitation, the fix belongs in
+**Stage 1** (the Rust compiler, runtime, or FFI layer). Stage 1 is the
+toolchain that compiles Stage 2 — it is the only codebase that matters.
+Never regress into Stage 0 to work around a Stage 1 gap.
+
+### Rule 9: Document What You Learn
+
+Fixing a bug is not enough — the insight behind it must survive the
+fix. When an issue is discovered and resolved during Stage 2 work,
+record it in `docs/learning.md` with: what went wrong, why it
+happened, and what was done to solve it. This log turns individual
+fixes into institutional knowledge and prevents the same class of
+mistake from recurring.
+
 ---
 
 ## Status Key
