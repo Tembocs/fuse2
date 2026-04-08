@@ -46,6 +46,35 @@ citizens with dedicated tiers and categories.
 5. **Python runner for ease of change.** The test runner is a Python script.
    Fixtures are `.fuse` files with `EXPECTED OUTPUT` / `EXPECTED ERROR` /
    `EXPECTED WARNING` headers. Adding a test means adding one `.fuse` file.
+6. **NEVER modify a test to accommodate a bug.** A test fixture defines the
+   *correct* behavior of the language. If a test fails because the compiler
+   has a bug, the test is right and the compiler is wrong. The correct
+   response is:
+   - Add the test to `tests/stage2/known_failures.txt` with a bug ID.
+   - Document the bug in `docs/learning.md` with a **detailed fix plan**
+     (root cause, which file/function to change, what the fix looks like).
+   - Fix the compiler. Remove the `known_failures.txt` entry. The test
+     turns green.
+
+   **What is forbidden:**
+   - Changing expected output to match buggy behavior.
+   - Replacing the code under test with a workaround (e.g., replacing
+     `.map()` with a manual for-loop, or adding unreachable trailing
+     expressions).
+   - Removing imports or features from a test to avoid a codegen bug.
+   - Weakening assertions (e.g., testing `len()` instead of `.get()`
+     because `.get()` crashes).
+
+   **The only legitimate reasons to edit a test fixture are:**
+   - Fixing a typo in the expected output (e.g., `78` → `75` when the
+     math is `3 * 5 * 5`).
+   - Fixing incorrect expected error messages to match the compiler's
+     actual (correct) diagnostic text.
+   - Updating the test after an intentional language design change that
+     is documented in the language guide.
+
+   Every test that fails is a bug report. Hiding it is shipping broken
+   software.
 
 ---
 
