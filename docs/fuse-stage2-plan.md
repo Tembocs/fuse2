@@ -484,18 +484,18 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W2.4 — Statement & Expression Parsing
 
-- [ ] **W2.4.1** Implement `fn parseStatement() -> Result<Statement, String>` — dispatch on token kind.
-- [ ] **W2.4.2** Implement `val`/`var` declaration parsing.
-- [ ] **W2.4.3** Implement assignment parsing (detect assign target vs expression).
-- [ ] **W2.4.4** Implement `return`, `break`, `continue` parsing.
-- [ ] **W2.4.5** Implement `while`, `for`, `loop`, `defer` parsing.
-- [ ] **W2.4.6** Implement expression precedence chain: `parseExpression` → `parseElvis` → `parseOr` → `parseAnd` → `parseEquality` → `parseCompare` → `parseTerm` → `parseFactor` → `parseUnary` → `parsePostfix` → `parsePrimary`.
-- [ ] **W2.4.7** Implement binary operators: `+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `and`, `or`, `?:`.
-- [ ] **W2.4.8** Implement unary operators: `-`, `not`, `move`, `ref`, `mutref`.
-- [ ] **W2.4.9** Implement postfix: `.member`, `?.member`, `(args)`, `?`.
-- [ ] **W2.4.10** Implement primary: literals, names, `(expr)`, `[items]`, `(a, b)` tuples.
-- [ ] **W2.4.11** Test: parse `if x > 0 { x } else { 0 - x }`.
-- [ ] **W2.4.12** Test: parse `val items = [1, 2, 3]`.
+- [x] **W2.4.1** Implement `fn parseStatement() -> Result<Statement, String>` — dispatch on token kind.
+- [x] **W2.4.2** Implement `val`/`var` declaration parsing.
+- [x] **W2.4.3** Implement assignment parsing (detect assign target vs expression).
+- [x] **W2.4.4** Implement `return`, `break`, `continue` parsing.
+- [x] **W2.4.5** Implement `while`, `for`, `loop`, `defer` parsing.
+- [x] **W2.4.6** Implement expression precedence chain: `parseExpression` → `parseElvis` → `parseOr` → `parseAnd` → `parseEquality` → `parseCompare` → `parseTerm` → `parseFactor` → `parseUnary` → `parsePostfix` → `parsePrimary`.
+- [x] **W2.4.7** Implement binary operators: `+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `and`, `or`, `?:`.
+- [x] **W2.4.8** Implement unary operators: `-`, `not`, `move`, `ref`, `mutref`.
+- [x] **W2.4.9** Implement postfix: `.member`, `?.member`, `(args)`, `?`.
+- [x] **W2.4.10** Implement primary: literals, names, `(expr)`, `[items]`, `(a, b)` tuples.
+- [x] **W2.4.11** Test: parse `if x > 0 { x } else { 0 - x }`.
+- [x] **W2.4.12** Test: parse `val items = [1, 2, 3]`.
 
 ---
 

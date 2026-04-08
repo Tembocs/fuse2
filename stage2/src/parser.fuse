@@ -220,16 +220,603 @@ fn Parser.parseBlock(mutref self) -> Result<Block, String> {
   Ok(Block(stmts, Span(start.line, start.column)))
 }
 
-// Statement parsing (stub — will be filled in W2.4)
+// ---------------------------------------------------------------------------
+// Statement parsing
+// ---------------------------------------------------------------------------
+
 fn Parser.parseStatement(mutref self) -> Result<Statement, String> {
+  // Collect annotations
+  var annotations: List<Annotation> = []
+  while self.peek(0).kind == TokenKind.At {
+    self.take()
+    val ann = self.parseAnnotation()?
+    annotations = annotations.concat([ann])
+  }
   val tok = self.peek(0)
-  Err(f"parseStatement not yet implemented at {self.filename}:{tok.line}:{tok.column}")
+
+  // val/var — tuple destruct or var decl
+  if tok.kind == TokenKind.Val or tok.kind == TokenKind.Var {
+    if self.peek(1).kind == TokenKind.LParen {
+      return Ok(Statement.TupleDestruct(self.parseTupleDestruct()?))
+    }
+    return Ok(Statement.VarDecl(self.parseVarDecl(annotations)?))
+  }
+  // return
+  if tok.kind == TokenKind.Return {
+    self.take()
+    val next = self.peek(0)
+    var value: Option<Expr> = None
+    if next.kind != TokenKind.RBrace and next.kind != TokenKind.Semi {
+      value = Some(self.parseExpression()?)
+    }
+    return Ok(Statement.Return(ReturnStmt(value, Span(tok.line, tok.column))))
+  }
+  // break
+  if tok.kind == TokenKind.Break {
+    self.take()
+    return Ok(Statement.Break(Span(tok.line, tok.column)))
+  }
+  // continue
+  if tok.kind == TokenKind.Continue {
+    self.take()
+    return Ok(Statement.Continue(Span(tok.line, tok.column)))
+  }
+  // spawn
+  if tok.kind == TokenKind.Spawn {
+    return Ok(Statement.Spawn(self.parseSpawn()?))
+  }
+  // while
+  if tok.kind == TokenKind.While {
+    return Ok(Statement.While(self.parseWhile()?))
+  }
+  // for
+  if tok.kind == TokenKind.For {
+    return Ok(Statement.For(self.parseFor()?))
+  }
+  // loop
+  if tok.kind == TokenKind.Loop {
+    return Ok(Statement.Loop(self.parseLoop()?))
+  }
+  // defer
+  if tok.kind == TokenKind.Defer {
+    self.take()
+    val expr = self.parseExpression()?
+    return Ok(Statement.Defer(DeferStmt(expr, Span(tok.line, tok.column))))
+  }
+  // Expression or assignment
+  val expr = self.parseExpression()?
+  match self.matchKind(TokenKind.Eq) {
+    Some(_) => {
+      val value = self.parseExpression()?
+      Ok(Statement.Assign(AssignStmt(expr, value, Span(tok.line, tok.column))))
+    },
+    None => Ok(Statement.Expr(ExprStmt(expr, Span(tok.line, tok.column))))
+  }
 }
 
-// Expression parsing (stub — will be filled in W2.4/W2.5)
+fn Parser.parseVarDecl(mutref self, annotations: List<Annotation>) -> Result<VarDeclStmt, String> {
+  val start = self.take()
+  val mutable = start.kind == TokenKind.Var
+  val nameTok = self.expect(TokenKind.Identifier, "expected binding name")?
+  var typeName: Option<String> = None
+  match self.matchKind(TokenKind.Colon) {
+    Some(_) => {
+      typeName = Some(self.parseTypeName(TokenKind.Eq, TokenKind.Eof, TokenKind.Eof))
+    },
+    None => {}
+  }
+  self.expect(TokenKind.Eq, "expected `=` in binding")?
+  val value = self.parseExpression()?
+  Ok(VarDeclStmt(annotations, mutable, nameTok.text, typeName, value, Span(start.line, start.column)))
+}
+
+fn Parser.parseTupleDestruct(mutref self) -> Result<TupleDestructStmt, String> {
+  val start = self.take()
+  self.expect(TokenKind.LParen, "expected `(` for tuple destructuring")?
+  val first = self.expect(TokenKind.Identifier, "expected binding name")?
+  var names: List<String> = [first.text]
+  while self.peek(0).kind == TokenKind.Comma {
+    self.take()
+    val n = self.expect(TokenKind.Identifier, "expected binding name")?
+    names = names.concat([n.text])
+  }
+  self.expect(TokenKind.RParen, "expected `)` after tuple bindings")?
+  self.expect(TokenKind.Eq, "expected `=` in tuple destructuring")?
+  val value = self.parseExpression()?
+  Ok(TupleDestructStmt(names, value, Span(start.line, start.column)))
+}
+
+fn Parser.parseWhile(mutref self) -> Result<WhileStmt, String> {
+  val start = self.expect(TokenKind.While, "expected `while`")?
+  val condition = self.parseExpression()?
+  val body = self.parseBlock()?
+  Ok(WhileStmt(condition, body, Span(start.line, start.column)))
+}
+
+fn Parser.parseFor(mutref self) -> Result<ForStmt, String> {
+  val start = self.expect(TokenKind.For, "expected `for`")?
+  val nameTok = self.expect(TokenKind.Identifier, "expected loop variable")?
+  self.expect(TokenKind.In, "expected `in` in for loop")?
+  val iterable = self.parseExpression()?
+  val body = self.parseBlock()?
+  Ok(ForStmt(nameTok.text, iterable, body, Span(start.line, start.column)))
+}
+
+fn Parser.parseLoop(mutref self) -> Result<LoopStmt, String> {
+  val start = self.expect(TokenKind.Loop, "expected `loop`")?
+  val body = self.parseBlock()?
+  Ok(LoopStmt(body, Span(start.line, start.column)))
+}
+
+fn Parser.parseSpawn(mutref self) -> Result<SpawnStmt, String> {
+  val start = self.expect(TokenKind.Spawn, "expected `spawn`")?
+  val body = self.parseBlock()?
+  Ok(SpawnStmt(body, Span(start.line, start.column)))
+}
+
+// ---------------------------------------------------------------------------
+// Expression precedence chain
+// ---------------------------------------------------------------------------
+
 fn Parser.parseExpression(mutref self) -> Result<Expr, String> {
+  self.parseElvis()
+}
+
+fn Parser.parseElvis(mutref self) -> Result<Expr, String> {
+  var expr = self.parseOr()?
+  while self.peek(0).kind == TokenKind.Elvis {
+    val op = self.take()
+    val right = self.parseOr()?
+    expr = Expr.Binary(BinaryOp(expr, "?:", right, Span(op.line, op.column)))
+  }
+  Ok(expr)
+}
+
+fn Parser.parseOr(mutref self) -> Result<Expr, String> {
+  var expr = self.parseAnd()?
+  while self.peek(0).kind == TokenKind.Or {
+    val op = self.take()
+    val right = self.parseAnd()?
+    expr = Expr.Binary(BinaryOp(expr, "or", right, Span(op.line, op.column)))
+  }
+  Ok(expr)
+}
+
+fn Parser.parseAnd(mutref self) -> Result<Expr, String> {
+  var expr = self.parseEquality()?
+  while self.peek(0).kind == TokenKind.And {
+    val op = self.take()
+    val right = self.parseEquality()?
+    expr = Expr.Binary(BinaryOp(expr, "and", right, Span(op.line, op.column)))
+  }
+  Ok(expr)
+}
+
+fn Parser.parseEquality(mutref self) -> Result<Expr, String> {
+  var expr = self.parseCompare()?
+  while self.peek(0).kind == TokenKind.EqEq or self.peek(0).kind == TokenKind.Ne {
+    val op = self.take()
+    val right = self.parseCompare()?
+    expr = Expr.Binary(BinaryOp(expr, op.text, right, Span(op.line, op.column)))
+  }
+  Ok(expr)
+}
+
+fn Parser.parseCompare(mutref self) -> Result<Expr, String> {
+  var expr = self.parseTerm()?
+  while self.peek(0).kind == TokenKind.Lt or self.peek(0).kind == TokenKind.Gt or self.peek(0).kind == TokenKind.Le or self.peek(0).kind == TokenKind.Ge {
+    val op = self.take()
+    val right = self.parseTerm()?
+    expr = Expr.Binary(BinaryOp(expr, op.text, right, Span(op.line, op.column)))
+  }
+  Ok(expr)
+}
+
+fn Parser.parseTerm(mutref self) -> Result<Expr, String> {
+  var expr = self.parseFactor()?
+  while self.peek(0).kind == TokenKind.Plus or self.peek(0).kind == TokenKind.Minus {
+    val op = self.take()
+    val right = self.parseFactor()?
+    expr = Expr.Binary(BinaryOp(expr, op.text, right, Span(op.line, op.column)))
+  }
+  Ok(expr)
+}
+
+fn Parser.parseFactor(mutref self) -> Result<Expr, String> {
+  var expr = self.parseUnary()?
+  while self.peek(0).kind == TokenKind.Star or self.peek(0).kind == TokenKind.Slash or self.peek(0).kind == TokenKind.Percent {
+    val op = self.take()
+    val right = self.parseUnary()?
+    expr = Expr.Binary(BinaryOp(expr, op.text, right, Span(op.line, op.column)))
+  }
+  Ok(expr)
+}
+
+fn Parser.parseUnary(mutref self) -> Result<Expr, String> {
   val tok = self.peek(0)
-  Err(f"parseExpression not yet implemented at {self.filename}:{tok.line}:{tok.column}")
+  if tok.kind == TokenKind.Minus or tok.kind == TokenKind.Not {
+    self.take()
+    val inner = self.parseUnary()?
+    return Ok(Expr.Unary(UnaryOp(tok.text, inner, Span(tok.line, tok.column))))
+  }
+  if tok.kind == TokenKind.Move {
+    self.take()
+    val inner = self.parseUnary()?
+    return Ok(Expr.Move(MoveExpr(inner, Span(tok.line, tok.column))))
+  }
+  if tok.kind == TokenKind.Ref {
+    self.take()
+    val inner = self.parseUnary()?
+    return Ok(Expr.Ref(RefExpr(inner, Span(tok.line, tok.column))))
+  }
+  if tok.kind == TokenKind.MutRef {
+    self.take()
+    val inner = self.parseUnary()?
+    return Ok(Expr.MutRef(MutRefExpr(inner, Span(tok.line, tok.column))))
+  }
+  self.parsePostfix()
+}
+
+// ---------------------------------------------------------------------------
+// Postfix: call, member, optional chain, question
+// ---------------------------------------------------------------------------
+
+fn Parser.parsePostfix(mutref self) -> Result<Expr, String> {
+  var expr = self.parsePrimary()?
+  while true {
+    // Call: expr(args)
+    if self.peek(0).kind == TokenKind.LParen {
+      self.take()
+      var args: List<Expr> = []
+      if self.peek(0).kind != TokenKind.RParen {
+        while true {
+          val a = self.parseExpression()?
+          args = args.concat([a])
+          match self.matchKind(TokenKind.Comma) {
+            Some(_) => {},
+            None => { break }
+          }
+        }
+      }
+      val close = self.expect(TokenKind.RParen, "expected `)` after arguments")?
+      expr = Expr.Call(CallExpr(expr, args, Span(close.line, close.column)))
+      continue
+    }
+    // Member: expr.name or expr.0
+    if self.peek(0).kind == TokenKind.Dot {
+      self.take()
+      if self.peek(0).kind == TokenKind.Int {
+        val idx = self.take()
+        expr = Expr.Member(MemberExpr(expr, idx.text, false, Span(idx.line, idx.column)))
+      } else {
+        val nameTok = self.take()
+        if nameTok.kind == TokenKind.Eof {
+          return Err(f"expected member name after `.` at {self.filename}:{nameTok.line}:{nameTok.column}")
+        }
+        expr = Expr.Member(MemberExpr(expr, nameTok.text, false, Span(nameTok.line, nameTok.column)))
+      }
+      continue
+    }
+    // Optional chain: expr?.name
+    if self.peek(0).kind == TokenKind.QDot {
+      self.take()
+      val nameTok = self.expect(TokenKind.Identifier, "expected member name after `?.`")?
+      expr = Expr.Member(MemberExpr(expr, nameTok.text, true, Span(nameTok.line, nameTok.column)))
+      continue
+    }
+    // Question: expr?
+    if self.peek(0).kind == TokenKind.Question {
+      val q = self.take()
+      expr = Expr.Question(QuestionExpr(expr, Span(q.line, q.column)))
+      continue
+    }
+    break
+  }
+  Ok(expr)
+}
+
+// ---------------------------------------------------------------------------
+// Primary expressions
+// ---------------------------------------------------------------------------
+
+fn Parser.parsePrimary(mutref self) -> Result<Expr, String> {
+  val tok = self.peek(0)
+
+  // Int literal
+  if tok.kind == TokenKind.Int {
+    self.take()
+    val n = tok.text.toInt()
+    val intVal = if n == Ok(0) { 0 } else {
+      match n { Ok(v) => v, Err(_) => 0 }
+    }
+    return Ok(Expr.Literal(LiteralExpr(LiteralValue.Int(intVal), Span(tok.line, tok.column))))
+  }
+  // Float literal
+  if tok.kind == TokenKind.Float {
+    self.take()
+    val n = tok.text.toFloat()
+    val floatVal = match n { Ok(v) => v, Err(_) => 0.0 }
+    return Ok(Expr.Literal(LiteralExpr(LiteralValue.Float(floatVal), Span(tok.line, tok.column))))
+  }
+  // String literal
+  if tok.kind == TokenKind.String {
+    self.take()
+    return Ok(Expr.Literal(LiteralExpr(LiteralValue.String(tok.text), Span(tok.line, tok.column))))
+  }
+  // F-string
+  if tok.kind == TokenKind.FString {
+    self.take()
+    return Ok(Expr.FString(FStringExpr(tok.text, Span(tok.line, tok.column))))
+  }
+  // Boolean
+  if tok.kind == TokenKind.True {
+    self.take()
+    return Ok(Expr.Literal(LiteralExpr(LiteralValue.Bool(true), Span(tok.line, tok.column))))
+  }
+  if tok.kind == TokenKind.False {
+    self.take()
+    return Ok(Expr.Literal(LiteralExpr(LiteralValue.Bool(false), Span(tok.line, tok.column))))
+  }
+  // Identifier (with :: for qualified names like SIMD::<Int, 4>)
+  if tok.kind == TokenKind.Identifier {
+    var value = self.take().text
+    if self.peek(0).kind == TokenKind.ColonColon {
+      while self.peek(0).kind == TokenKind.ColonColon or self.peek(0).kind == TokenKind.Lt or self.peek(0).kind == TokenKind.Gt or self.peek(0).kind == TokenKind.Comma or self.peek(0).kind == TokenKind.Identifier or self.peek(0).kind == TokenKind.Int {
+        val part = self.take()
+        value = f"{value}{part.text}"
+      }
+    }
+    return Ok(Expr.Name(NameExpr(value, Span(tok.line, tok.column))))
+  }
+  // Parenthesized expression or tuple
+  if tok.kind == TokenKind.LParen {
+    self.take()
+    val first = self.parseExpression()?
+    if self.peek(0).kind == TokenKind.Comma {
+      self.take()
+      var items: List<Expr> = [first]
+      if self.peek(0).kind != TokenKind.RParen {
+        while true {
+          val item = self.parseExpression()?
+          items = items.concat([item])
+          match self.matchKind(TokenKind.Comma) {
+            Some(_) => {},
+            None => { break }
+          }
+        }
+      }
+      self.expect(TokenKind.RParen, "expected `)` after tuple")?
+      return Ok(Expr.Tuple(TupleExpr(items, Span(tok.line, tok.column))))
+    }
+    self.expect(TokenKind.RParen, "expected `)`")?
+    return Ok(first)
+  }
+  // List literal
+  if tok.kind == TokenKind.LBracket {
+    self.take()
+    var items: List<Expr> = []
+    if self.peek(0).kind != TokenKind.RBracket {
+      while true {
+        val item = self.parseExpression()?
+        items = items.concat([item])
+        match self.matchKind(TokenKind.Comma) {
+          Some(_) => {},
+          None => { break }
+        }
+      }
+    }
+    self.expect(TokenKind.RBracket, "expected `]`")?
+    return Ok(Expr.List(ListExpr(items, Span(tok.line, tok.column))))
+  }
+  // If expression
+  if tok.kind == TokenKind.If {
+    val ifExpr = self.parseIfExpr()?
+    return Ok(Expr.If(ifExpr))
+  }
+  // Match expression
+  if tok.kind == TokenKind.Match {
+    val matchExpr = self.parseMatchExpr()?
+    return Ok(Expr.Match(matchExpr))
+  }
+  // When expression
+  if tok.kind == TokenKind.When {
+    val whenExpr = self.parseWhenExpr()?
+    return Ok(Expr.When(whenExpr))
+  }
+  // Lambda
+  if tok.kind == TokenKind.Fn {
+    val lambda = self.parseLambda()?
+    return Ok(Expr.Lambda(lambda))
+  }
+
+  Err(f"unexpected token `{tok.text}` at {self.filename}:{tok.line}:{tok.column}")
+}
+
+// ---------------------------------------------------------------------------
+// If expression
+// ---------------------------------------------------------------------------
+
+fn Parser.parseIfExpr(mutref self) -> Result<IfExpr, String> {
+  val start = self.expect(TokenKind.If, "expected `if`")?
+  val condition = self.parseExpression()?
+  val thenBranch = self.parseBlock()?
+  var elseBranch: Option<ElseBranch> = None
+  match self.matchKind(TokenKind.Else) {
+    Some(_) => {
+      if self.peek(0).kind == TokenKind.If {
+        val elseIf = self.parseIfExpr()?
+        elseBranch = Some(ElseBranch.IfExpr(elseIf))
+      } else {
+        val elseBlock = self.parseBlock()?
+        elseBranch = Some(ElseBranch.Block(elseBlock))
+      }
+    },
+    None => {}
+  }
+  Ok(IfExpr(condition, thenBranch, elseBranch, Span(start.line, start.column)))
+}
+
+// ---------------------------------------------------------------------------
+// Match expression
+// ---------------------------------------------------------------------------
+
+fn Parser.parseMatchExpr(mutref self) -> Result<MatchExpr, String> {
+  val start = self.expect(TokenKind.Match, "expected `match`")?
+  val subject = self.parseExpression()?
+  self.expect(TokenKind.LBrace, "expected `{` after match subject")?
+  var arms: List<MatchArm> = []
+  while self.peek(0).kind != TokenKind.RBrace {
+    val pattern = self.parsePattern()?
+    val arrow = self.expect(TokenKind.FatArrow, "expected `=>` in match arm")?
+    val body = if self.peek(0).kind == TokenKind.LBrace {
+      ArmBody.Block(self.parseBlock()?)
+    } else {
+      ArmBody.Expr(self.parseExpression()?)
+    }
+    arms = arms.concat([MatchArm(pattern, body, Span(arrow.line, arrow.column))])
+    self.matchKind(TokenKind.Comma)
+  }
+  self.expect(TokenKind.RBrace, "expected `}` after match arms")?
+  Ok(MatchExpr(subject, arms, Span(start.line, start.column)))
+}
+
+// ---------------------------------------------------------------------------
+// When expression
+// ---------------------------------------------------------------------------
+
+fn Parser.parseWhenExpr(mutref self) -> Result<WhenExpr, String> {
+  val start = self.expect(TokenKind.When, "expected `when`")?
+  self.expect(TokenKind.LBrace, "expected `{` after `when`")?
+  var arms: List<WhenArm> = []
+  while self.peek(0).kind != TokenKind.RBrace {
+    var condition: Option<Expr> = None
+    if self.peek(0).kind == TokenKind.Else {
+      self.take()
+    } else {
+      condition = Some(self.parseExpression()?)
+    }
+    self.expect(TokenKind.FatArrow, "expected `=>` in when arm")?
+    val body = if self.peek(0).kind == TokenKind.LBrace {
+      ArmBody.Block(self.parseBlock()?)
+    } else {
+      ArmBody.Expr(self.parseExpression()?)
+    }
+    arms = arms.concat([WhenArm(condition, body, Span(start.line, start.column))])
+    self.matchKind(TokenKind.Comma)
+  }
+  self.expect(TokenKind.RBrace, "expected `}` after when arms")?
+  Ok(WhenExpr(arms, Span(start.line, start.column)))
+}
+
+// ---------------------------------------------------------------------------
+// Lambda
+// ---------------------------------------------------------------------------
+
+fn Parser.parseLambda(mutref self) -> Result<LambdaExpr, String> {
+  val start = self.expect(TokenKind.Fn, "expected `fn`")?
+  self.expect(TokenKind.LParen, "expected `(` after `fn` in lambda")?
+  var params: List<Param> = []
+  if self.peek(0).kind != TokenKind.RParen {
+    while true {
+      val p = self.parseParam()?
+      params = params.concat([p])
+      match self.matchKind(TokenKind.Comma) {
+        Some(_) => {},
+        None => { break }
+      }
+    }
+  }
+  self.expect(TokenKind.RParen, "expected `)` after lambda parameters")?
+  var returnType: Option<String> = None
+  match self.matchKind(TokenKind.Arrow) {
+    Some(_) => {
+      returnType = Some(self.parseTypeName(TokenKind.LBrace, TokenKind.FatArrow, TokenKind.Eof))
+    },
+    None => {}
+  }
+  val body = if self.peek(0).kind == TokenKind.FatArrow {
+    self.take()
+    val expr = self.parseExpression()?
+    Block([Statement.Expr(ExprStmt(expr, Span(start.line, start.column)))], Span(start.line, start.column))
+  } else {
+    self.parseBlock()?
+  }
+  Ok(LambdaExpr(params, returnType, body, Span(start.line, start.column)))
+}
+
+// ---------------------------------------------------------------------------
+// Pattern
+// ---------------------------------------------------------------------------
+
+fn Parser.parsePattern(mutref self) -> Result<Pattern, String> {
+  val tok = self.peek(0)
+
+  // Wildcard: _
+  if tok.kind == TokenKind.Identifier and tok.text == "_" {
+    self.take()
+    return Ok(Pattern.Wildcard(Span(tok.line, tok.column)))
+  }
+  // Literal patterns
+  if tok.kind == TokenKind.Int or tok.kind == TokenKind.String or tok.kind == TokenKind.True or tok.kind == TokenKind.False {
+    val expr = self.parsePrimary()?
+    val pat = match expr {
+      Expr.Literal(lit) => Ok(Pattern.Literal(LiteralPattern(lit.value, Span(tok.line, tok.column)))),
+      _ => Err(f"unexpected pattern at {self.filename}:{tok.line}:{tok.column}")
+    }
+    return pat
+  }
+  // Identifier: name, Variant, or Type.Variant
+  if tok.kind == TokenKind.Identifier {
+    var name = self.take().text
+    // Qualified: Type.Variant
+    match self.matchKind(TokenKind.Dot) {
+      Some(_) => {
+        val seg = self.expect(TokenKind.Identifier, "expected variant segment after `.`")?
+        name = f"{name}.{seg.text}"
+      },
+      None => {}
+    }
+    // Variant with args: Name(pattern, ...)
+    match self.matchKind(TokenKind.LParen) {
+      Some(_) => {
+        var args: List<Pattern> = []
+        if self.peek(0).kind != TokenKind.RParen {
+          while true {
+            val p = self.parsePattern()?
+            args = args.concat([p])
+            match self.matchKind(TokenKind.Comma) {
+              Some(_) => {},
+              None => { break }
+            }
+          }
+        }
+        self.expect(TokenKind.RParen, "expected `)` after pattern args")?
+        return Ok(Pattern.Variant(VariantPattern(name, args, Span(tok.line, tok.column))))
+      },
+      None => {}
+    }
+    // Uppercase name without args → variant; lowercase → binding
+    val firstByte = name.byteAt(0)
+    if firstByte >= 65 and firstByte <= 90 {
+      return Ok(Pattern.Variant(VariantPattern(name, [], Span(tok.line, tok.column))))
+    }
+    return Ok(Pattern.Name(NamePattern(name, Span(tok.line, tok.column))))
+  }
+  // Tuple pattern
+  if tok.kind == TokenKind.LParen {
+    self.take()
+    val first = self.parsePattern()?
+    var elements: List<Pattern> = [first]
+    while self.peek(0).kind == TokenKind.Comma {
+      self.take()
+      val elem = self.parsePattern()?
+      elements = elements.concat([elem])
+    }
+    self.expect(TokenKind.RParen, "expected `)` after tuple pattern")?
+    return Ok(Pattern.Tuple(TuplePattern(elements, Span(tok.line, tok.column))))
+  }
+
+  Err(f"unsupported match pattern at {self.filename}:{tok.line}:{tok.column}")
 }
 
 // ---------------------------------------------------------------------------
