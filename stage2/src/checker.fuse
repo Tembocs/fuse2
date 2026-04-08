@@ -1,0 +1,457 @@
+// checker.fuse — Type checker for the Stage 2 self-hosted compiler.
+//
+// Matches Stage 1 (stage1/fusec/src/checker/mod.rs) core logic.
+// Uses List-based scopes (evaluator cannot mutate maps).
+
+import stdlib.core.string
+import token
+import ast
+import error
+import module
+
+// ---------------------------------------------------------------------------
+// Binding info
+// ---------------------------------------------------------------------------
+
+pub data class BindingInfo(
+  val mutable: Bool,
+  val convention: Option<String>,
+  val typeName: Option<String>,
+  val moved: Bool,
+  val used: Bool
+)
+
+pub data class NamedBinding(val name: String, val info: BindingInfo)
+
+// ---------------------------------------------------------------------------
+// Scope helpers (list-based)
+// ---------------------------------------------------------------------------
+
+fn findBinding(scope: List<NamedBinding>, name: String) -> Option<BindingInfo> {
+  // Search backwards so inner bindings shadow outer ones.
+  var i = scope.len() - 1
+  while i >= 0 {
+    match scope.get(i) {
+      Some(nb) => {
+        if nb.name == name { return Some(nb.info) }
+      },
+      None => {}
+    }
+    i = i - 1
+  }
+  None
+}
+
+fn addBinding(scope: List<NamedBinding>, name: String, info: BindingInfo) -> List<NamedBinding> {
+  scope.concat([NamedBinding(name, info)])
+}
+
+// Mark a binding as moved. Returns updated scope.
+fn markMoved(scope: List<NamedBinding>, name: String) -> List<NamedBinding> {
+  var result: List<NamedBinding> = []
+  var i = 0
+  while i < scope.len() {
+    match scope.get(i) {
+      Some(nb) => {
+        if nb.name == name {
+          result = result.concat([NamedBinding(name, BindingInfo(nb.info.mutable, nb.info.convention, nb.info.typeName, true, nb.info.used))])
+        } else {
+          result = result.concat([nb])
+        }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  result
+}
+
+// Mark a binding as used. Returns updated scope.
+fn markUsed(scope: List<NamedBinding>, name: String) -> List<NamedBinding> {
+  var result: List<NamedBinding> = []
+  var i = 0
+  while i < scope.len() {
+    match scope.get(i) {
+      Some(nb) => {
+        if nb.name == name {
+          result = result.concat([NamedBinding(name, BindingInfo(nb.info.mutable, nb.info.convention, nb.info.typeName, nb.info.moved, true))])
+        } else {
+          result = result.concat([nb])
+        }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  result
+}
+
+// ---------------------------------------------------------------------------
+// Checker state
+// ---------------------------------------------------------------------------
+
+pub data class CheckerState(
+  var diagnostics: List<Diagnostic>,
+  var filename: String
+)
+
+fn addError(mutref state: CheckerState, span: Span, message: String) {
+  val d = error.error(message, state.filename, span, None)
+  state.diagnostics = state.diagnostics.concat([d])
+}
+
+fn addWarning(mutref state: CheckerState, span: Span, message: String) {
+  val d = error.warning(message, state.filename, span, None)
+  state.diagnostics = state.diagnostics.concat([d])
+}
+
+// ---------------------------------------------------------------------------
+// Check a function body
+// ---------------------------------------------------------------------------
+
+pub fn checkFunction(mutref state: CheckerState, info: ModuleInfo, func: FunctionDecl) {
+  // Create scope from parameters.
+  var scope: List<NamedBinding> = []
+  var pi = 0
+  while pi < func.params.len() {
+    match func.params.get(pi) {
+      Some(p) => {
+        val bi = BindingInfo(true, p.convention, p.typeName, false, false)
+        scope = addBinding(scope, p.name, bi)
+      },
+      None => {}
+    }
+    pi = pi + 1
+  }
+  // Check body statements.
+  scope = checkBlock(mutref state, info, func.body, scope, 0)
+}
+
+fn checkBlock(mutref state: CheckerState, info: ModuleInfo, block: Block, scope: List<NamedBinding>, loopDepth: Int) -> List<NamedBinding> {
+  var s = scope
+  var i = 0
+  while i < block.statements.len() {
+    match block.statements.get(i) {
+      Some(stmt) => {
+        s = checkStatement(mutref state, info, stmt, s, loopDepth)
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  s
+}
+
+// ---------------------------------------------------------------------------
+// Statement checking
+// ---------------------------------------------------------------------------
+
+fn checkStatement(mutref state: CheckerState, info: ModuleInfo, stmt: Statement, scope: List<NamedBinding>, loopDepth: Int) -> List<NamedBinding> {
+  var s = scope
+  match stmt {
+    Statement.VarDecl(vd) => {
+      s = checkExpr(mutref state, info, vd.value, s, loopDepth)
+      val ty = vd.typeName
+      s = addBinding(s, vd.name, BindingInfo(vd.mutable, None, ty, false, false))
+    },
+    Statement.Assign(assign) => {
+      s = checkExpr(mutref state, info, assign.value, s, loopDepth)
+      s = checkAssignTarget(mutref state, info, assign.target, s, loopDepth, assign.span)
+    },
+    Statement.Return(ret) => {
+      match ret.value {
+        Some(expr) => { s = checkExpr(mutref state, info, expr, s, loopDepth) },
+        None => {}
+      }
+    },
+    Statement.While(ws) => {
+      s = checkExpr(mutref state, info, ws.condition, s, loopDepth)
+      checkBlock(mutref state, info, ws.body, s, loopDepth + 1)
+    },
+    Statement.For(fs) => {
+      s = checkExpr(mutref state, info, fs.iterable, s, loopDepth)
+      val childScope = addBinding(s, fs.name, BindingInfo(true, None, None, false, false))
+      checkBlock(mutref state, info, fs.body, childScope, loopDepth + 1)
+    },
+    Statement.Loop(ls) => {
+      checkBlock(mutref state, info, ls.body, s, loopDepth + 1)
+    },
+    Statement.Spawn(ss) => {
+      checkBlock(mutref state, info, ss.body, s, loopDepth)
+    },
+    Statement.Break(span) => {
+      if loopDepth == 0 {
+        addError(mutref state, span, "`break` outside loop")
+      }
+    },
+    Statement.Continue(span) => {
+      if loopDepth == 0 {
+        addError(mutref state, span, "`continue` outside loop")
+      }
+    },
+    Statement.Defer(ds) => {
+      s = checkExpr(mutref state, info, ds.expr, s, loopDepth)
+    },
+    Statement.Expr(es) => {
+      s = checkExpr(mutref state, info, es.expr, s, loopDepth)
+    },
+    Statement.TupleDestruct(td) => {
+      s = checkExpr(mutref state, info, td.value, s, loopDepth)
+      var ni = 0
+      while ni < td.names.len() {
+        match td.names.get(ni) {
+          Some(n) => { s = addBinding(s, n, BindingInfo(false, None, None, false, false)) },
+          None => {}
+        }
+        ni = ni + 1
+      }
+    }
+  }
+  s
+}
+
+// ---------------------------------------------------------------------------
+// Assignment target checking
+// ---------------------------------------------------------------------------
+
+fn checkAssignTarget(mutref state: CheckerState, info: ModuleInfo, target: Expr, scope: List<NamedBinding>, loopDepth: Int, span: Span) -> List<NamedBinding> {
+  var s = scope
+  match target {
+    Expr.Name(nameExpr) => {
+      val binding = findBinding(s, nameExpr.value)
+      match binding {
+        Some(bi) => {
+          if bi.mutable == false {
+            addError(mutref state, span, f"cannot assign to immutable binding `{nameExpr.value}`")
+          }
+          if bi.convention == Some("ref") {
+            addError(mutref state, span, f"cannot assign through `ref` parameter `{nameExpr.value}`")
+          }
+        },
+        _ => {}
+      }
+    },
+    Expr.Member(mem) => {
+      s = checkExpr(mutref state, info, mem.object, s, loopDepth)
+    },
+    _ => {
+      s = checkExpr(mutref state, info, target, s, loopDepth)
+    }
+  }
+  s
+}
+
+// ---------------------------------------------------------------------------
+// Expression checking (move tracking, use-after-move)
+// ---------------------------------------------------------------------------
+
+fn checkExpr(mutref state: CheckerState, info: ModuleInfo, expr: Expr, scope: List<NamedBinding>, loopDepth: Int) -> List<NamedBinding> {
+  var s = scope
+  match expr {
+    Expr.Name(nameExpr) => {
+      val binding = findBinding(s, nameExpr.value)
+      match binding {
+        Some(bi) => {
+          if bi.moved {
+            addError(mutref state, nameExpr.span, f"use of moved value `{nameExpr.value}`")
+          }
+          s = markUsed(s, nameExpr.value)
+        },
+        _ => {}
+      }
+    },
+    Expr.Move(moveExpr) => {
+      match moveExpr.value {
+        Expr.Name(nameExpr) => {
+          val binding = findBinding(s, nameExpr.value)
+          match binding {
+            Some(bi) => {
+              if bi.moved {
+                addError(mutref state, moveExpr.span, f"use of moved value `{nameExpr.value}`")
+              }
+              s = markMoved(s, nameExpr.value)
+            },
+            _ => {}
+          }
+        },
+        _ => { s = checkExpr(mutref state, info, moveExpr.value, s, loopDepth) }
+      }
+    },
+    Expr.MutRef(mrExpr) => {
+      s = checkExpr(mutref state, info, mrExpr.value, s, loopDepth)
+    },
+    Expr.Ref(refExpr) => {
+      s = checkExpr(mutref state, info, refExpr.value, s, loopDepth)
+    },
+    Expr.Binary(binOp) => {
+      s = checkExpr(mutref state, info, binOp.left, s, loopDepth)
+      s = checkExpr(mutref state, info, binOp.right, s, loopDepth)
+    },
+    Expr.Unary(unOp) => {
+      s = checkExpr(mutref state, info, unOp.value, s, loopDepth)
+    },
+    Expr.Call(callExpr) => {
+      s = checkExpr(mutref state, info, callExpr.callee, s, loopDepth)
+      var ai = 0
+      while ai < callExpr.args.len() {
+        match callExpr.args.get(ai) {
+          Some(arg) => { s = checkExpr(mutref state, info, arg, s, loopDepth) },
+          None => {}
+        }
+        ai = ai + 1
+      }
+    },
+    Expr.Member(memExpr) => {
+      s = checkExpr(mutref state, info, memExpr.object, s, loopDepth)
+    },
+    Expr.Question(qExpr) => {
+      s = checkExpr(mutref state, info, qExpr.value, s, loopDepth)
+    },
+    Expr.If(ifExpr) => {
+      s = checkExpr(mutref state, info, ifExpr.condition, s, loopDepth)
+      checkBlock(mutref state, info, ifExpr.thenBranch, s, loopDepth)
+      match ifExpr.elseBranch {
+        Some(eb) => {
+          match eb {
+            ElseBranch.Block(blk) => { checkBlock(mutref state, info, blk, s, loopDepth) },
+            ElseBranch.IfExpr(inner) => {
+              s = checkExpr(mutref state, info, Expr.If(inner), s, loopDepth)
+            }
+          }
+        },
+        None => {}
+      }
+    },
+    Expr.Match(matchExpr) => {
+      s = checkExpr(mutref state, info, matchExpr.subject, s, loopDepth)
+      var mi = 0
+      while mi < matchExpr.arms.len() {
+        match matchExpr.arms.get(mi) {
+          Some(arm) => {
+            // Bind pattern names in arm scope.
+            var armScope = s
+            armScope = bindPattern(armScope, arm.pattern)
+            match arm.body {
+              ArmBody.Block(blk) => { checkBlock(mutref state, info, blk, armScope, loopDepth) },
+              ArmBody.Expr(bodyExpr) => { checkExpr(mutref state, info, bodyExpr, armScope, loopDepth) }
+            }
+          },
+          None => {}
+        }
+        mi = mi + 1
+      }
+    },
+    Expr.When(whenExpr) => {
+      var wi = 0
+      while wi < whenExpr.arms.len() {
+        match whenExpr.arms.get(wi) {
+          Some(arm) => {
+            match arm.condition {
+              Some(cond) => { checkExpr(mutref state, info, cond, s, loopDepth) },
+              None => {}
+            }
+            match arm.body {
+              ArmBody.Block(blk) => { checkBlock(mutref state, info, blk, s, loopDepth) },
+              ArmBody.Expr(bodyExpr) => { checkExpr(mutref state, info, bodyExpr, s, loopDepth) }
+            }
+          },
+          None => {}
+        }
+        wi = wi + 1
+      }
+    },
+    Expr.Lambda(lamExpr) => {
+      var lamScope = s
+      var li = 0
+      while li < lamExpr.params.len() {
+        match lamExpr.params.get(li) {
+          Some(p) => {
+            lamScope = addBinding(lamScope, p.name, BindingInfo(true, p.convention, p.typeName, false, false))
+          },
+          None => {}
+        }
+        li = li + 1
+      }
+      checkBlock(mutref state, info, lamExpr.body, lamScope, loopDepth)
+    },
+    Expr.List(listExpr) => {
+      var li = 0
+      while li < listExpr.items.len() {
+        match listExpr.items.get(li) {
+          Some(item) => { s = checkExpr(mutref state, info, item, s, loopDepth) },
+          None => {}
+        }
+        li = li + 1
+      }
+    },
+    Expr.Tuple(tupleExpr) => {
+      var ti = 0
+      while ti < tupleExpr.items.len() {
+        match tupleExpr.items.get(ti) {
+          Some(item) => { s = checkExpr(mutref state, info, item, s, loopDepth) },
+          None => {}
+        }
+        ti = ti + 1
+      }
+    },
+    Expr.FString(_) => {},
+    Expr.Literal(_) => {}
+  }
+  s
+}
+
+// ---------------------------------------------------------------------------
+// Pattern binding — introduce names from match patterns into scope
+// ---------------------------------------------------------------------------
+
+fn bindPattern(scope: List<NamedBinding>, pat: Pattern) -> List<NamedBinding> {
+  var s = scope
+  match pat {
+    Pattern.Name(np) => {
+      s = addBinding(s, np.name, BindingInfo(false, None, None, false, false))
+    },
+    Pattern.Variant(vp) => {
+      var vi = 0
+      while vi < vp.args.len() {
+        match vp.args.get(vi) {
+          Some(inner) => { s = bindPattern(s, inner) },
+          None => {}
+        }
+        vi = vi + 1
+      }
+    },
+    Pattern.Tuple(tp) => {
+      var ti = 0
+      while ti < tp.elements.len() {
+        match tp.elements.get(ti) {
+          Some(inner) => { s = bindPattern(s, inner) },
+          None => {}
+        }
+        ti = ti + 1
+      }
+    },
+    Pattern.Wildcard(_) => {},
+    Pattern.Literal(_) => {}
+  }
+  s
+}
+
+// ---------------------------------------------------------------------------
+// Basic type inference (stub for now — returns None for most expressions)
+// ---------------------------------------------------------------------------
+
+pub fn inferExprType(info: ModuleInfo, expr: Expr) -> Option<String> {
+  match expr {
+    Expr.Literal(lit) => {
+      match lit.value {
+        LiteralValue.Int(_) => Some("Int"),
+        LiteralValue.Float(_) => Some("Float"),
+        LiteralValue.String(_) => Some("String"),
+        LiteralValue.Bool(_) => Some("Bool")
+      }
+    },
+    Expr.FString(_) => Some("String"),
+    Expr.List(_) => Some("List"),
+    _ => None
+  }
+}

@@ -591,14 +591,14 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W5.1 — Binding & Scope Tracking
 
-- [ ] **W5.1.1** Create `stage2/src/checker.fuse`.
-- [ ] **W5.1.2** Define `data class BindingInfo(val mutable: Bool, val convention: Option<String>, val typeName: Option<String>, val moved: Bool, val used: Bool)`.
-- [ ] **W5.1.3** Implement scope as `var scope: Map<String, BindingInfo>`.
-- [ ] **W5.1.4** Implement `fn checkFunction(module: ModuleInfo, function: FunctionDecl)` — create scope from params, check body.
-- [ ] **W5.1.5** Implement `val` immutability check: assignment to `val` binding → error.
-- [ ] **W5.1.6** Implement `move` tracking: mark binding as moved, subsequent use → error.
-- [ ] **W5.1.7** Implement basic type inference: `fn inferExprType(expr: Expr) -> Option<String>`.
-- [ ] **W5.1.8** Test: `val x = 1; x = 2` → error "cannot assign to immutable binding".
+- [x] **W5.1.1** Create `stage2/src/checker.fuse`.
+- [x] **W5.1.2** Define `data class BindingInfo(val mutable: Bool, val convention: Option<String>, val typeName: Option<String>, val moved: Bool, val used: Bool)`.
+- [x] **W5.1.3** Implement scope as `List<NamedBinding>` with findBinding/addBinding/markMoved/markUsed helpers.
+- [x] **W5.1.4** Implement `fn checkFunction(module: ModuleInfo, function: FunctionDecl)` — create scope from params, check body.
+- [x] **W5.1.5** Implement `val` immutability check: assignment to `val` binding → error.
+- [x] **W5.1.6** Implement `move` tracking: mark binding as moved, subsequent use → error.
+- [x] **W5.1.7** Implement basic type inference: `fn inferExprType(expr: Expr) -> Option<String>`.
+- [x] **W5.1.8** Test: `val x = 1; x = 2` → error "cannot assign to immutable binding".
 
 ---
 
