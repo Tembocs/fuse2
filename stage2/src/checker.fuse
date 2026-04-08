@@ -343,6 +343,8 @@ fn checkExpr(mutref state: CheckerState, info: ModuleInfo, expr: Expr, scope: Li
         }
         mi = mi + 1
       }
+      // Exhaustiveness check.
+      checkMatchExhaustiveness(mutref state, info, matchExpr, s)
     },
     Expr.When(whenExpr) => {
       var wi = 0
@@ -723,10 +725,143 @@ fn checkSpawnExpr(mutref state: CheckerState, expr: Expr, outerNames: List<Strin
 }
 
 // ---------------------------------------------------------------------------
-// Basic type inference
+// Type matching
 // ---------------------------------------------------------------------------
 
-pub fn inferExprType(info: ModuleInfo, expr: Expr) -> Option<String> {
+pub fn typeMatches(expected: String, actual: String) -> Bool {
+  if expected == actual { return true }
+  if expected == "!" or actual == "!" { return true }
+  if expected.startsWith("Result") and actual.startsWith("Result") { return true }
+  if expected.startsWith("Option") and actual.startsWith("Option") { return true }
+  if expected.startsWith("List") and actual.startsWith("List") { return true }
+  if expected.startsWith("Map") and actual.startsWith("Map") { return true }
+  if expected.startsWith("Chan") and actual.startsWith("Chan") { return true }
+  if expected.startsWith("Shared") and actual.startsWith("Shared") { return true }
+  false
+}
+
+pub fn isNumericType(ty: String) -> Bool {
+  ty == "Int" or ty == "Float" or ty == "Float32" or ty == "Int8" or ty == "UInt8" or ty == "Int32" or ty == "UInt32" or ty == "UInt64"
+}
+
+pub fn isPrimitiveType(ty: String) -> Bool {
+  isNumericType(ty) or ty == "Bool" or ty == "String" or ty == "Unit"
+}
+
+// ---------------------------------------------------------------------------
+// Match exhaustiveness checking
+// ---------------------------------------------------------------------------
+
+fn checkMatchExhaustiveness(mutref state: CheckerState, info: ModuleInfo, matchExpr: MatchExpr, scope: List<NamedBinding>) {
+  // Infer the subject type.
+  val subjType = inferExprTypeFull(info, matchExpr.subject, scope)
+  match subjType {
+    None => { return },
+    _ => {}
+  }
+  val ty = match subjType { Some(t) => t, _ => "" }
+  if ty == "" { return }
+
+  // Collect coverage from arms.
+  var covered: List<String> = []
+  var hasWildcard = false
+  var hasNameBinding = false
+  var ai = 0
+  while ai < matchExpr.arms.len() {
+    match matchExpr.arms.get(ai) {
+      Some(arm) => {
+        match arm.pattern {
+          Pattern.Wildcard(_) => { hasWildcard = true },
+          Pattern.Variant(vp) => {
+            // Extract the variant name (after the last dot).
+            val parts = vp.name
+            val dotIdx = parts.lastIndexOf(".")
+            val variantName = match dotIdx {
+              Some(idx) => {
+                // Manually extract suffix after dot.
+                // Use the full name's last segment.
+                val afterDot = fuse_rt_string_slice(parts, idx + 1, parts.len())
+                afterDot
+              },
+              None => parts
+            }
+            covered = covered.concat([variantName])
+          },
+          Pattern.Literal(lp) => {
+            val repr = match lp.value {
+              LiteralValue.Bool(true) => "True",
+              LiteralValue.Bool(false) => "False",
+              LiteralValue.Int(_) => "int_literal",
+              LiteralValue.Float(_) => "float_literal",
+              LiteralValue.String(_) => "string_literal"
+            }
+            covered = covered.concat([repr])
+          },
+          Pattern.Name(_) => { hasNameBinding = true },
+          Pattern.Tuple(_) => { hasWildcard = true }
+        }
+      },
+      None => {}
+    }
+    ai = ai + 1
+  }
+
+  // Wildcard or name binding covers everything.
+  if hasWildcard or hasNameBinding { return }
+
+  // Check known types.
+  if ty.startsWith("Result") {
+    if listContains(covered, "Ok") == false or listContains(covered, "Err") == false {
+      addError(mutref state, matchExpr.span, "non-exhaustive match for `Result`")
+    }
+    return
+  }
+  if ty.startsWith("Option") {
+    if listContains(covered, "Some") == false or listContains(covered, "None") == false {
+      addError(mutref state, matchExpr.span, "non-exhaustive match for `Option`")
+    }
+    return
+  }
+  if ty == "Bool" {
+    if listContains(covered, "True") == false or listContains(covered, "False") == false {
+      addError(mutref state, matchExpr.span, "non-exhaustive match for `Bool`")
+    }
+    return
+  }
+  // User enum: check all variants covered.
+  val enumSym = findSymbol(info.symbols, ty)
+  match enumSym {
+    Some(sym) => {
+      match sym {
+        Symbol.Enum(ed, _) => {
+          var vi = 0
+          while vi < ed.variants.len() {
+            match ed.variants.get(vi) {
+              Some(variant) => {
+                if listContains(covered, variant.name) == false {
+                  addError(mutref state, matchExpr.span, f"non-exhaustive match for `{ty}`")
+                  return
+                }
+              },
+              None => {}
+            }
+            vi = vi + 1
+          }
+        },
+        _ => {}
+      }
+    },
+    _ => {}
+  }
+}
+
+extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
+
+// ---------------------------------------------------------------------------
+// Type inference (scope-aware)
+// ---------------------------------------------------------------------------
+
+pub fn inferExprTypeFull(info: ModuleInfo, expr: Expr, scope: List<NamedBinding>) -> Option<String> {
   match expr {
     Expr.Literal(lit) => {
       match lit.value {
@@ -738,6 +873,109 @@ pub fn inferExprType(info: ModuleInfo, expr: Expr) -> Option<String> {
     },
     Expr.FString(_) => Some("String"),
     Expr.List(_) => Some("List"),
-    _ => None
+    Expr.Name(nameExpr) => {
+      if nameExpr.value == "None" { return Some("Option") }
+      val binding = findBinding(scope, nameExpr.value)
+      match binding {
+        Some(bi) => {
+          match bi.typeName {
+            Some(t) => { return Some(t) },
+            None => {}
+          }
+        },
+        _ => {}
+      }
+      // Check if it's a data class / struct name (constructor).
+      val sym = findSymbol(info.symbols, nameExpr.value)
+      match sym {
+        Some(s) => {
+          match s {
+            Symbol.Data(_, _) => { return Some(nameExpr.value) },
+            Symbol.Struct(_, _) => { return Some(nameExpr.value) },
+            _ => {}
+          }
+        },
+        _ => {}
+      }
+      None
+    },
+    Expr.Binary(bin) => {
+      if bin.op == "==" or bin.op == "!=" or bin.op == "<" or bin.op == ">" or bin.op == "<=" or bin.op == ">=" or bin.op == "and" or bin.op == "or" {
+        return Some("Bool")
+      }
+      if bin.op == "?:" {
+        return inferExprTypeFull(info, bin.right, scope)
+      }
+      inferExprTypeFull(info, bin.left, scope)
+    },
+    Expr.Unary(un) => inferExprTypeFull(info, un.value, scope),
+    Expr.Call(call) => {
+      match call.callee {
+        Expr.Name(nameExpr) => {
+          if nameExpr.value == "Some" { return Some("Option") }
+          if nameExpr.value == "Ok" or nameExpr.value == "Err" { return Some("Result") }
+          // Constructor call.
+          val sym = findSymbol(info.symbols, nameExpr.value)
+          match sym {
+            Some(s) => {
+              match s {
+                Symbol.Data(_, _) => { return Some(nameExpr.value) },
+                Symbol.Struct(_, _) => { return Some(nameExpr.value) },
+                Symbol.Function(fd, _) => { return fd.returnType },
+                _ => {}
+              }
+            },
+            _ => {}
+          }
+          None
+        },
+        _ => None
+      }
+    },
+    Expr.If(ifExpr) => {
+      // Infer from then branch's last statement.
+      if ifExpr.thenBranch.statements.len() > 0 {
+        val lastIdx = ifExpr.thenBranch.statements.len() - 1
+        match ifExpr.thenBranch.statements.get(lastIdx) {
+          Some(stmt) => {
+            match stmt {
+              Statement.Expr(es) => inferExprTypeFull(info, es.expr, scope),
+              Statement.Return(ret) => {
+                match ret.value {
+                  Some(e) => inferExprTypeFull(info, e, scope),
+                  None => Some("Unit")
+                }
+              },
+              _ => Some("Unit")
+            }
+          },
+          None => None
+        }
+      } else { None }
+    },
+    Expr.Question(q) => {
+      val inner = inferExprTypeFull(info, q.value, scope)
+      match inner {
+        Some(t) => {
+          if t.startsWith("Option") { return Some("Option") }
+          if t.startsWith("Result") { return Some("Result") }
+          None
+        },
+        None => None
+      }
+    },
+    Expr.Tuple(_) => Some("Tuple"),
+    Expr.Member(_) => None,
+    Expr.Move(mv) => inferExprTypeFull(info, mv.value, scope),
+    Expr.Ref(rf) => inferExprTypeFull(info, rf.value, scope),
+    Expr.MutRef(mr) => inferExprTypeFull(info, mr.value, scope),
+    Expr.Match(_) => None,
+    Expr.When(_) => None,
+    Expr.Lambda(_) => None
   }
+}
+
+// Backward-compatible simple version (no scope).
+pub fn inferExprType(info: ModuleInfo, expr: Expr) -> Option<String> {
+  inferExprTypeFull(info, expr, [])
 }

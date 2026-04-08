@@ -1,0 +1,140 @@
+// EXPECTED OUTPUT:
+// --- typeMatches ---
+// exact: true
+// result generic: true
+// option generic: true
+// mismatch: false
+// never: true
+// --- option non-exhaustive ---
+// errors: 1
+// error: non-exhaustive match for `Option`
+// --- option exhaustive ---
+// errors: 0
+// --- result non-exhaustive ---
+// errors: 1
+// error: non-exhaustive match for `Result`
+// --- wildcard covers all ---
+// errors: 0
+// --- bool exhaustive ---
+// errors: 0
+
+import stage2.src.lexer
+import stage2.src.parser
+import stage2.src.ast
+import stage2.src.token
+import stage2.src.module
+import stage2.src.checker
+import stage2.src.error
+
+fn checkSource(source: String) -> List<Diagnostic> {
+  val tokens = lexer.lex(source, "test.fuse")
+  match tokens {
+    Ok(toks) => {
+      val prog = parser.parse(toks, "test.fuse")
+      match prog {
+        Ok(p) => {
+          var symbols: List<NamedSymbol> = []
+          var i = 0
+          while i < p.declarations.len() {
+            match p.declarations.get(i) {
+              Some(d) => {
+                match d {
+                  Declaration.Function(fd) => {
+                    match fd.receiverType {
+                      Some(_) => {},
+                      None => { symbols = symbols.concat([NamedSymbol(fd.name, Symbol.Function(fd, fd.isPub))]) }
+                    }
+                  },
+                  Declaration.ExternFn(ef) => {
+                    val synthetic = FunctionDecl(ef.name, [], ef.params, ef.returnType, Block([], Span(1,1)), ef.isPub, [], None, ef.span)
+                    symbols = symbols.concat([NamedSymbol(ef.name, Symbol.Function(synthetic, ef.isPub))])
+                  },
+                  Declaration.Enum(ed) => {
+                    symbols = symbols.concat([NamedSymbol(ed.name, Symbol.Enum(ed, ed.isPub))])
+                  },
+                  _ => {}
+                }
+              },
+              None => {}
+            }
+            i = i + 1
+          }
+          val info = ModuleInfo("test.fuse", p, symbols, [], [], [], [])
+          var state = CheckerState([], "test.fuse")
+          i = 0
+          while i < p.declarations.len() {
+            match p.declarations.get(i) {
+              Some(d) => {
+                match d {
+                  Declaration.Function(fd) => {
+                    match fd.receiverType {
+                      Some(_) => {},
+                      None => checker.checkFunction(mutref state, info, fd)
+                    }
+                  },
+                  _ => {}
+                }
+              },
+              None => {}
+            }
+            i = i + 1
+          }
+          state.diagnostics
+        },
+        Err(msg) => [error.error(msg, "test.fuse", Span(1, 1), None)]
+      }
+    },
+    Err(msg) => [error.error(msg, "test.fuse", Span(1, 1), None)]
+  }
+}
+
+fn printErrors(diags: List<Diagnostic>) {
+  println(f"errors: {diags.len()}")
+  var i = 0
+  while i < diags.len() {
+    match diags.get(i) {
+      Some(d) => {
+        val sev = if d.isError() { "error" } else { "warning" }
+        println(f"{sev}: {d.message}")
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+}
+
+@entrypoint
+fn main() {
+  // --- typeMatches ---
+  println("--- typeMatches ---")
+  println(f"exact: {checker.typeMatches(\"Int\", \"Int\")}")
+  println(f"result generic: {checker.typeMatches(\"Result<Int, String>\", \"Result<Any, Any>\")}")
+  println(f"option generic: {checker.typeMatches(\"Option<Int>\", \"Option<String>\")}")
+  println(f"mismatch: {checker.typeMatches(\"Int\", \"String\")}")
+  println(f"never: {checker.typeMatches(\"!\", \"Int\")}")
+
+  // --- W5.3.8: match opt { Some(v) => v } → non-exhaustive ---
+  println("--- option non-exhaustive ---")
+  val d1 = checkSource("fn getOpt() -> Option<Int> { Some(1) }\nfn test() { val opt: Option<Int> = getOpt()\n match opt { Some(v) => v } }")
+  printErrors(d1)
+
+  // --- option exhaustive (Some + None) ---
+  println("--- option exhaustive ---")
+  val d2 = checkSource("fn getOpt() -> Option<Int> { Some(1) }\nfn test() { val opt: Option<Int> = getOpt()\n match opt { Some(v) => v, None => 0 } }")
+  printErrors(d2)
+
+  // --- result non-exhaustive ---
+  println("--- result non-exhaustive ---")
+  val d3 = checkSource("fn getRes() -> Result<Int, String> { Ok(1) }\nfn test() { val r: Result<Int, String> = getRes()\n match r { Ok(v) => v } }")
+  printErrors(d3)
+
+  // --- wildcard covers all ---
+  println("--- wildcard covers all ---")
+  val d4 = checkSource("fn getOpt() -> Option<Int> { Some(1) }\nfn test() { val opt: Option<Int> = getOpt()\n match opt { Some(v) => v, _ => 0 } }")
+  printErrors(d4)
+
+  // --- bool exhaustive ---
+  println("--- bool exhaustive ---")
+  val d5 = checkSource("fn test() { val b = true\n match b { true => 1, false => 0 } }")
+  printErrors(d5)
+}

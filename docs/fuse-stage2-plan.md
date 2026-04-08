@@ -616,14 +616,14 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W5.3 — Type Matching & Exhaustiveness
 
-- [ ] **W5.3.1** Implement `fn typeMatches(expected: String, actual: String) -> Bool` — handle generics (Result<T,E>, Option<T>, List<T>).
-- [ ] **W5.3.2** Implement `fn checkMatch(module: ModuleInfo, match: MatchExpr)` — verify exhaustiveness.
-- [ ] **W5.3.3** Handle `Result<T,E>` exhaustiveness: must cover `Ok` and `Err`.
-- [ ] **W5.3.4** Handle `Option<T>` exhaustiveness: must cover `Some` and `None`.
-- [ ] **W5.3.5** Handle `Bool` exhaustiveness: must cover `true` and `false`.
-- [ ] **W5.3.6** Handle enum exhaustiveness: must cover all variants.
-- [ ] **W5.3.7** Handle wildcard `_`: satisfies remaining cases.
-- [ ] **W5.3.8** Test: `match opt { Some(v) => v }` → error "non-exhaustive match, missing `None`".
+- [x] **W5.3.1** Implement `fn typeMatches(expected: String, actual: String) -> Bool` — handle generics (Result<T,E>, Option<T>, List<T>).
+- [x] **W5.3.2** Implement `fn checkMatchExhaustiveness(module: ModuleInfo, match: MatchExpr)` — verify exhaustiveness.
+- [x] **W5.3.3** Handle `Result<T,E>` exhaustiveness: must cover `Ok` and `Err`.
+- [x] **W5.3.4** Handle `Option<T>` exhaustiveness: must cover `Some` and `None`.
+- [x] **W5.3.5** Handle `Bool` exhaustiveness: must cover `true` and `false`.
+- [x] **W5.3.6** Handle enum exhaustiveness: must cover all variants.
+- [x] **W5.3.7** Handle wildcard `_` and name bindings: satisfies remaining cases.
+- [x] **W5.3.8** Test: `match opt { Some(v) => v }` → error "non-exhaustive match for `Option`".
 
 ---
 
