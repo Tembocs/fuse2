@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// 1
+// hello
+
+fn first<A, B>(a: A, b: B) -> A => a
+fn second<A, B>(a: A, b: B) -> B => b
+
+@entrypoint
+fn main() {
+  println(first(1, "hello"))
+  println(second(1, "hello"))
+}

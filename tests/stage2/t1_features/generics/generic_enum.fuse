@@ -1,0 +1,22 @@
+// EXPECTED OUTPUT:
+// has value: 42
+// empty
+
+enum Maybe<T> {
+  Just(T),
+  Nothing
+}
+
+@entrypoint
+fn main() {
+  val a = Maybe.Just(42)
+  match a {
+    Maybe.Just(v) => println(f"has value: {v}"),
+    Maybe.Nothing => println("empty")
+  }
+  val b: Maybe<Int> = Maybe.Nothing
+  match b {
+    Maybe.Just(v) => println(f"has value: {v}"),
+    Maybe.Nothing => println("empty")
+  }
+}

@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// 3
+// 3
+
+import stdlib.core.list
+
+fn count<T>(xs: List<T>) -> Int => xs.len()
+
+@entrypoint
+fn main() {
+  println(count([1, 2, 3]))
+  println(count(["a", "b", "c"]))
+}

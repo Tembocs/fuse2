@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// true
+// false
+
+fn isEqual<T: Equatable>(a: T, b: T) -> Bool => a == b
+
+@entrypoint
+fn main() {
+  println(isEqual(1, 1))
+  println(isEqual("a", "b"))
+}

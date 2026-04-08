@@ -1,0 +1,10 @@
+// EXPECTED OUTPUT:
+// Pair(1, hello)
+
+data class Pair<A, B>(val first: A, val second: B)
+
+@entrypoint
+fn main() {
+  val p = Pair(1, "hello")
+  println(p)
+}

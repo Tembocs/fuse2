@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// Some(42)
+// None
+
+@entrypoint
+fn main() {
+  val xs: List<Option<Int>> = [Some(42), None]
+  for item in xs {
+    println(item)
+  }
+}

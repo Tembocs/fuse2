@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// hello
+// 42
+
+fn show<T: Printable>(x: T) {
+  println(x)
+}
+
+@entrypoint
+fn main() {
+  show("hello")
+  show(42)
+}

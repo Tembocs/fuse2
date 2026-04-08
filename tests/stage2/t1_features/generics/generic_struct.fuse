@@ -1,0 +1,15 @@
+// EXPECTED OUTPUT:
+// 42
+// hello
+
+struct Box<T> {
+  val item: T
+}
+
+@entrypoint
+fn main() {
+  val intBox = Box(42)
+  println(intBox.item)
+  val strBox = Box("hello")
+  println(strBox.item)
+}

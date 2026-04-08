@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// 42
+// hello
+// true
+
+fn id<T>(x: T) -> T => x
+
+@entrypoint
+fn main() {
+  println(id(42))
+  println(id("hello"))
+  println(id(true))
+}
