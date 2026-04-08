@@ -267,27 +267,27 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W0.1 — Module & Context Management
 
-- [ ] **W0.1.1** Define opaque handle types: `FfiModule`, `FfiContext`, `FfiSignature`.
-- [ ] **W0.1.2** `cranelift_ffi_module_new() -> Ptr` — create ObjectModule with native ISA.
-- [ ] **W0.1.3** `cranelift_ffi_module_free(module: Ptr)` — destroy module.
-- [ ] **W0.1.4** `cranelift_ffi_context_new() -> Ptr` — create `codegen::Context`.
-- [ ] **W0.1.5** `cranelift_ffi_context_free(ctx: Ptr)` — destroy context.
-- [ ] **W0.1.6** `cranelift_ffi_module_target_pointer_type(module: Ptr) -> Int` — return pointer width (8 for 64-bit).
-- [ ] **W0.1.7** `cranelift_ffi_module_declare_function(module: Ptr, name: Ptr, name_len: Int, sig: Ptr, linkage: Int) -> Int` — declare function, return FuncId as integer.
-- [ ] **W0.1.8** `cranelift_ffi_module_define_function(module: Ptr, func_id: Int, ctx: Ptr) -> Int` — define function body. Returns 0 on success.
-- [ ] **W0.1.9** `cranelift_ffi_module_finish(module: Ptr, path: Ptr, path_len: Int) -> Int` — emit object file to disk.
-- [ ] **W0.1.10** Test: call module_new / module_free from a Fuse program compiled by Stage 1.
+- [x] **W0.1.1** Define opaque handle types: `FfiModule`, `FfiContext`, `FfiSignature`.
+- [x] **W0.1.2** `cranelift_ffi_module_new() -> Ptr` — create ObjectModule with native ISA.
+- [x] **W0.1.3** `cranelift_ffi_module_free(module: Ptr)` — destroy module.
+- [x] **W0.1.4** `cranelift_ffi_context_new() -> Ptr` — create `codegen::Context`.
+- [x] **W0.1.5** `cranelift_ffi_context_free(ctx: Ptr)` — destroy context.
+- [x] **W0.1.6** `cranelift_ffi_module_target_pointer_type(module: Ptr) -> Int` — return pointer width (8 for 64-bit).
+- [x] **W0.1.7** `cranelift_ffi_module_declare_function(module: Ptr, name: Ptr, name_len: Int, sig: Ptr, linkage: Int) -> Int` — declare function, return FuncId as integer.
+- [x] **W0.1.8** `cranelift_ffi_module_define_function(module: Ptr, func_id: Int, ctx: Ptr) -> Int` — define function body. Returns 0 on success.
+- [x] **W0.1.9** `cranelift_ffi_module_finish(module: Ptr, path: Ptr, path_len: Int) -> Int` — emit object file to disk.
+- [x] **W0.1.10** Test: call module_new / module_free from a Fuse program compiled by Stage 1.
 
 ---
 
 ### Phase W0.2 — Signature & Type Building
 
-- [ ] **W0.2.1** `cranelift_ffi_signature_new(module: Ptr, call_conv: Int) -> Ptr` — create Signature.
-- [ ] **W0.2.2** `cranelift_ffi_signature_free(sig: Ptr)` — destroy signature.
-- [ ] **W0.2.3** `cranelift_ffi_signature_add_param(sig: Ptr, type_id: Int)` — add parameter (type_id maps to I8=0, I32=1, I64=2, F64=3, Ptr=4).
-- [ ] **W0.2.4** `cranelift_ffi_signature_add_return(sig: Ptr, type_id: Int)` — add return type.
-- [ ] **W0.2.5** `cranelift_ffi_signature_clone(sig: Ptr) -> Ptr` — clone for reuse.
-- [ ] **W0.2.6** Test: create signature with (Ptr, Ptr) -> Ptr, verify round-trip.
+- [x] **W0.2.1** `cranelift_ffi_signature_new(module: Ptr, call_conv: Int) -> Ptr` — create Signature.
+- [x] **W0.2.2** `cranelift_ffi_signature_free(sig: Ptr)` — destroy signature.
+- [x] **W0.2.3** `cranelift_ffi_signature_add_param(sig: Ptr, type_id: Int, module: Ptr)` — add parameter (type_id maps to I8=0, I32=1, I64=2, F64=3, Ptr=4). Module needed for pointer type resolution.
+- [x] **W0.2.4** `cranelift_ffi_signature_add_return(sig: Ptr, type_id: Int, module: Ptr)` — add return type. Module needed for pointer type resolution.
+- [x] **W0.2.5** `cranelift_ffi_signature_clone(sig: Ptr) -> Ptr` — clone for reuse.
+- [x] **W0.2.6** Test: create signature with (Ptr, Ptr) -> Ptr, verify round-trip.
 
 ---
 

@@ -279,9 +279,16 @@ pub unsafe extern "C" fn cranelift_ffi_module_finish(
 // =========================================================================
 
 /// Create a new function signature.
+///
+/// `call_conv` — calling convention as FuseHandle<Int>:
+///   0 = default (module's native convention, typically SystemV or WindowsFastcall)
+///
+/// Currently only the default convention is used. The parameter exists for
+/// future extensibility (e.g. tail-call convention).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn cranelift_ffi_signature_new(
     module: FuseHandle,
+    _call_conv: FuseHandle,
 ) -> FuseHandle {
     let m = unsafe { &*to_ptr::<FfiModule>(module) };
     from_ptr(Box::into_raw(Box::new(FfiSignature {

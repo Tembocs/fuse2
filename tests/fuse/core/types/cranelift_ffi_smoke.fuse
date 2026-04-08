@@ -1,6 +1,8 @@
 // EXPECTED OUTPUT:
 // version: 2
 // pointer_bytes: 8
+// signature created
+// signature cloned and freed
 // module created and freed
 
 extern fn cranelift_ffi_version() -> Int
@@ -9,6 +11,11 @@ extern fn cranelift_ffi_module_free(module: Ptr) -> Unit
 extern fn cranelift_ffi_module_target_pointer_type(module: Ptr) -> Int
 extern fn cranelift_ffi_context_new() -> Ptr
 extern fn cranelift_ffi_context_free(ctx: Ptr) -> Unit
+extern fn cranelift_ffi_signature_new(module: Ptr, call_conv: Int) -> Ptr
+extern fn cranelift_ffi_signature_free(sig: Ptr) -> Unit
+extern fn cranelift_ffi_signature_add_param(sig: Ptr, type_id: Int, module: Ptr) -> Unit
+extern fn cranelift_ffi_signature_add_return(sig: Ptr, type_id: Int, module: Ptr) -> Unit
+extern fn cranelift_ffi_signature_clone(sig: Ptr) -> Ptr
 
 @entrypoint
 fn main() {
@@ -21,6 +28,18 @@ fn main() {
 
   val ctx = cranelift_ffi_context_new()
   cranelift_ffi_context_free(ctx)
+
+  // W0.2: Signature round-trip — (Ptr, Ptr) -> Ptr
+  val sig = cranelift_ffi_signature_new(module, 0)
+  cranelift_ffi_signature_add_param(sig, 4, module)
+  cranelift_ffi_signature_add_param(sig, 4, module)
+  cranelift_ffi_signature_add_return(sig, 4, module)
+  println("signature created")
+
+  val sig2 = cranelift_ffi_signature_clone(sig)
+  cranelift_ffi_signature_free(sig)
+  cranelift_ffi_signature_free(sig2)
+  println("signature cloned and freed")
 
   cranelift_ffi_module_free(module)
   println("module created and freed")
