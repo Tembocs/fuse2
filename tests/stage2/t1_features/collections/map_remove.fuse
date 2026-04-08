@@ -2,8 +2,6 @@
 // true
 // false
 
-import stdlib.core.map
-
 @entrypoint
 fn main() {
   var m = Map::<String, Int>.new()

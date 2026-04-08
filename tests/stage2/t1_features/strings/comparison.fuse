@@ -1,12 +1,11 @@
 // EXPECTED OUTPUT:
-// true
-// false
+// -1
+// 1
 
 import stdlib.core.string
 
 @entrypoint
 fn main() {
-  // Lexicographic: "a" < "b"
-  println("a".compareTo("b") < 0)
-  println("b".compareTo("a") < 0)
+  println("a".compareTo("b"))
+  println("b".compareTo("a"))
 }

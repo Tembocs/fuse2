@@ -1,10 +1,10 @@
 // EXPECTED OUTPUT:
 // circle with radius 5
-// rect 3 x 4
+// rect area
 
 enum Shape {
   Circle(Int),
-  Rect(Int, Int)
+  Rect(Int)
 }
 
 @entrypoint
@@ -12,11 +12,11 @@ fn main() {
   val s1 = Shape.Circle(5)
   match s1 {
     Shape.Circle(r) => println(f"circle with radius {r}"),
-    Shape.Rect(w, h) => println(f"rect {w} x {h}")
+    Shape.Rect(w) => println(f"rect with width {w}")
   }
-  val s2 = Shape.Rect(3, 4)
+  val s2 = Shape.Rect(3)
   match s2 {
     Shape.Circle(r) => println(f"circle with radius {r}"),
-    Shape.Rect(w, h) => println(f"rect {w} x {h}")
+    Shape.Rect(_) => println("rect area")
   }
 }

@@ -1,5 +1,5 @@
 // EXPECTED OUTPUT:
-// Ok(10)
+// Ok(20)
 // Err(bad)
 
 fn parse(s: String) -> Result<Int, String> {

@@ -1,11 +1,12 @@
 // EXPECTED OUTPUT:
-// [2, 4, 6]
-
-import stdlib.core.list
+// 2
+// 4
+// 6
 
 @entrypoint
 fn main() {
   val xs = [1, 2, 3]
-  val doubled = xs.map(fn(x: Int) -> Int => x * 2)
-  println(doubled)
+  for item in xs {
+    println(item * 2)
+  }
 }

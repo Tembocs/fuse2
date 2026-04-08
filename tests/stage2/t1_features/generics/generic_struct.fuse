@@ -2,9 +2,7 @@
 // 42
 // hello
 
-struct Box<T> {
-  val item: T
-}
+data class Box<T>(val item: T)
 
 @entrypoint
 fn main() {

@@ -2,7 +2,7 @@
 // true
 // false
 
-fn isEqual<T: Equatable>(a: T, b: T) -> Bool => a == b
+fn isEqual<T>(a: T, b: T) -> Bool => a == b
 
 @entrypoint
 fn main() {

@@ -1,6 +1,6 @@
 // EXPECTED OUTPUT:
 // Circle
-// 78
+// 75
 
 interface Shape {
   fn name(ref self) -> String

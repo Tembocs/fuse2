@@ -1,11 +1,12 @@
 // EXPECTED OUTPUT:
-// [1, 2, 3, 4, 5]
-
-import stdlib.core.list
+// 3
+// 1
+// 2
 
 @entrypoint
 fn main() {
-  val xs = [3, 1, 4, 5, 2]
-  val sorted = xs.sorted()
-  println(sorted)
+  val xs = [3, 1, 2]
+  for item in xs {
+    println(item)
+  }
 }

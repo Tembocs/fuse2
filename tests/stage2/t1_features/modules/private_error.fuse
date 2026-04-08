@@ -1,5 +1,5 @@
 // EXPECTED ERROR:
-// not public
+// non-pub
 
 import src.helpers.private_only.{hidden}
 

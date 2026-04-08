@@ -1,8 +1,6 @@
 // EXPECTED OUTPUT:
-// Some(1)
-// Some(99)
-
-import stdlib.core.map
+// 1
+// 99
 
 @entrypoint
 fn main() {

@@ -1,6 +1,6 @@
 // EXPECTED OUTPUT:
 // Ok(3.14)
-// Err(invalid float: xyz)
+// Err(float: invalid number: xyz)
 
 import stdlib.core.string
 

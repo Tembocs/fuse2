@@ -1,6 +1,6 @@
 // EXPECTED OUTPUT:
 // Ok(42)
-// Err(invalid integer: abc)
+// Err(int: invalid number: abc)
 
 import stdlib.core.string
 

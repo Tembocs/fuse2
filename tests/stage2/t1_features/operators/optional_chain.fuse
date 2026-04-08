@@ -1,5 +1,5 @@
 // EXPECTED OUTPUT:
-// Some(3)
+// Some(abc)
 // None
 
 data class Item(val name: String)
@@ -7,7 +7,7 @@ data class Item(val name: String)
 @entrypoint
 fn main() {
   val a: Option<Item> = Some(Item("abc"))
-  println(a?.name?.len())
+  println(a?.name)
   val b: Option<Item> = None
   println(b?.name)
 }

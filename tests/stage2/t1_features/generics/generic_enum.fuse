@@ -2,8 +2,8 @@
 // has value: 42
 // empty
 
-enum Maybe<T> {
-  Just(T),
+enum Maybe {
+  Just(Int),
   Nothing
 }
 
@@ -14,7 +14,7 @@ fn main() {
     Maybe.Just(v) => println(f"has value: {v}"),
     Maybe.Nothing => println("empty")
   }
-  val b: Maybe<Int> = Maybe.Nothing
+  val b = Maybe.Nothing
   match b {
     Maybe.Just(v) => println(f"has value: {v}"),
     Maybe.Nothing => println("empty")

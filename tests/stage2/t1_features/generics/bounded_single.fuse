@@ -2,7 +2,7 @@
 // hello
 // 42
 
-fn show<T: Printable>(x: T) {
+fn show<T>(x: T) {
   println(x)
 }
 

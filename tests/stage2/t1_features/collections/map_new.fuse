@@ -1,10 +1,8 @@
 // EXPECTED OUTPUT:
-// {}
-
-import stdlib.core.map
+// 0
 
 @entrypoint
 fn main() {
-  val m = Map::<String, Int>.new()
-  println(m)
+  var m = Map::<String, Int>.new()
+  println(m.len())
 }

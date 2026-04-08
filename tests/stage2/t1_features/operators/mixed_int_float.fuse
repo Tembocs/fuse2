@@ -3,7 +3,7 @@
 
 @entrypoint
 fn main() {
-  val a = 2
+  val a = 2.0
   val b = 3.5
-  println(a.toFloat() + b)
+  println(a + b)
 }

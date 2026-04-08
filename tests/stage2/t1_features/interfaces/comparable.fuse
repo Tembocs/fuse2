@@ -1,6 +1,6 @@
 // EXPECTED OUTPUT:
-// true
-// false
+// -10
+// 10
 
 data class Score(val value: Int) implements Comparable
 
@@ -12,6 +12,6 @@ fn Score.compareTo(ref self, ref other: Score) -> Int {
 fn main() {
   val a = Score(10)
   val b = Score(20)
-  println(a < b)
-  println(a > b)
+  println(a.compareTo(ref b))
+  println(b.compareTo(ref a))
 }

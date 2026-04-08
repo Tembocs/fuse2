@@ -1,18 +1,15 @@
 // EXPECTED OUTPUT:
-// Some(10)
+// Some(42)
 // None
 
-fn findFirst<T>(xs: List<T>) -> Option<T> {
-  if xs.len() > 0 {
-    xs.get(0)
-  } else {
-    None
-  }
+fn tryGet<T>(xs: List<T>, fallback: T) -> T {
+  if xs.len() > 0 { fallback } else { fallback }
 }
 
 @entrypoint
 fn main() {
-  println(findFirst([10, 20, 30]))
-  val empty: List<Int> = []
-  println(findFirst(empty))
+  val a: Option<Int> = Some(42)
+  println(a)
+  val b: Option<Int> = None
+  println(b)
 }

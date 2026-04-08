@@ -1,13 +1,11 @@
 // EXPECTED OUTPUT:
-// 10
-// world
+// [10]
+// [world]
 
 fn wrap<T>(x: T) -> List<T> => [x]
 
 @entrypoint
 fn main() {
-  val xs = wrap(10)
-  println(xs.get(0))
-  val ys = wrap("world")
-  println(ys.get(0))
+  println(wrap(10))
+  println(wrap("world"))
 }

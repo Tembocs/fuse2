@@ -6,6 +6,7 @@ struct Counter {
   var count: Int
 }
 
+fn Counter.getCount(ref self) -> Int => self.count
 fn Counter.increment(mutref self) {
   self.count = self.count + 1
 }
@@ -14,7 +15,7 @@ fn Counter.increment(mutref self) {
 fn main() {
   var c = Counter(0)
   c.increment()
-  println(c.count)
+  println(c.getCount())
   c.increment()
-  println(c.count)
+  println(c.getCount())
 }
