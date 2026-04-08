@@ -796,14 +796,14 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W7.3 — Linking
 
-- [ ] **W7.3.1** After emitting `.o` file, generate Rust wrapper crate (same strategy as Stage 1).
-- [ ] **W7.3.2** Generate `Cargo.toml` pointing to `fuse-runtime` dependency.
-- [ ] **W7.3.3** Generate `build.rs` that links the `.o` file.
-- [ ] **W7.3.4** Generate `main.rs` with `extern "C" { fn fuse_user_entry(); }` and call.
-- [ ] **W7.3.5** Run `cargo build --release` via `process.run()`.
-- [ ] **W7.3.6** Copy resulting binary to output path.
-- [ ] **W7.3.7** Request 8 MB stack via linker flags in `build.rs`.
-- [ ] **W7.3.8** Test: compile and link `four_functions.fuse` → run binary, verify output.
+- [x] **W7.3.1** After emitting `.o` file, generate Rust wrapper crate (same strategy as Stage 1).
+- [x] **W7.3.2** Generate `Cargo.toml` pointing to `fuse-runtime` dependency.
+- [x] **W7.3.3** Generate `build.rs` that links the `.o` file.
+- [x] **W7.3.4** Generate `main.rs` with `extern "C" { fn fuse_user_entry(); }` and call.
+- [x] **W7.3.5** Run `cargo build --release` via `process.run()`.
+- [x] **W7.3.6** Copy resulting binary to output path.
+- [x] **W7.3.7** Request 8 MB stack via linker flags in `build.rs`.
+- [x] **W7.3.8** Test: compile and link `four_functions.fuse` → run binary, verify output.
 
 ---
 

@@ -11,6 +11,9 @@ import stdlib.core.string
 import stdlib.full.sys
 import stdlib.full.os
 import stdlib.full.path
+import stdlib.full.io
+import stdlib.full.process
+import stdlib.full.env
 import codegen
 import runtime
 import module
@@ -319,13 +322,20 @@ fn runCompile(file: String, output: String) {
 
   // 7. Finish module — write object file.
   val objectPath = f"{path.stem(output)}.o"
-  val result = codegen.finishModule(ffiModule, objectPath)
-  if result != 0 {
+  val finishResult = codegen.finishModule(ffiModule, objectPath)
+  if finishResult != 0 {
     println(f"error: failed to write object file: {objectPath}")
     sys.exit(1)
   }
 
-  println(f"compiled {file} → {objectPath}")
+  // 8. Link — generate Rust wrapper crate and build native binary.
+  match buildWrapper(objectPath, output) {
+    Err(msg) => {
+      println(f"error: {msg}")
+      sys.exit(1)
+    },
+    Ok(_) => {}
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -424,4 +434,163 @@ fn compileFunctionsInModule(ffiModule: Int, runtimeDeclared: List<DeclaredFn>, u
     }
     si = si + 1
   }
+}
+
+// ---------------------------------------------------------------------------
+// Linking — generate Rust wrapper crate, build, copy binary (W7.3)
+// ---------------------------------------------------------------------------
+
+extern fn fuse_rt_string_replace(s: String, from: String, to: String) -> String
+extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
+
+fn buildWrapper(objectPath: String, output: String) -> Result<Int, String> {
+  val repoRoot = findRepoRoot()?
+  val stage1Root = path.join(repoRoot, "stage1")
+  val generatedRoot = path.join(stage1Root, "target", "generated")
+  val workdir = path.join(generatedRoot, "wrapper")
+  val srcDir = path.join(workdir, "src")
+
+  // Create directories.
+  match os.mkdirAll(srcDir) {
+    Err(e) => return Err(f"failed to create wrapper directory: {e.message}"),
+    Ok(_) => {}
+  }
+
+  // Write object file with unique name based on output stem.
+  val objExt = if sys.platform() == "windows" { "obj" } else { "o" }
+  val objStem = path.stem(output)
+  val objectName = f"{objStem}.{objExt}"
+  val objectDst = path.join(workdir, objectName)
+
+  // Copy object file to wrapper directory.
+  match os.copyFile(objectPath, objectDst) {
+    Err(e) => return Err(f"failed to copy object file: {e.message}"),
+    Ok(_) => {}
+  }
+
+  // Escape paths for Cargo.toml (forward slashes).
+  val runtimePath = escapePath(path.join(stage1Root, "fuse-runtime"))
+  val craneliftFfiPath = escapePath(path.join(stage1Root, "cranelift-ffi"))
+
+  // Write Cargo.toml.
+  val cargoToml = f"[package]\nname = \"fuse_generated_wrapper\"\nversion = \"0.1.0\"\nedition = \"2024\"\nbuild = \"build.rs\"\n\n[workspace]\n\n[dependencies]\nfuse-runtime = {{ path = \"{runtimePath}\" }}\ncranelift-ffi = {{ path = \"{craneliftFfiPath}\" }}\n"
+
+  match io.writeFile(path.join(workdir, "Cargo.toml"), cargoToml) {
+    Err(e) => return Err(f"failed to write wrapper Cargo.toml: {e.message}"),
+    Ok(_) => {}
+  }
+
+  // Write build.rs — link object file and request 8 MB stack on Windows.
+  val objectLiteral = escapeString(objectDst)
+  val buildRs = f"fn main() {{\n    println!(\"cargo:rerun-if-changed={objectLiteral}\");\n    println!(\"cargo:rustc-link-arg={objectLiteral}\");\n    if cfg!(target_os = \"windows\") {{\n        println!(\"cargo:rustc-link-arg=/STACK:8388608\");\n    }}\n}}\n"
+
+  match io.writeFile(path.join(workdir, "build.rs"), buildRs) {
+    Err(e) => return Err(f"failed to write wrapper build.rs: {e.message}"),
+    Ok(_) => {}
+  }
+
+  // Write src/main.rs — extern declaration + call fuse_user_entry.
+  val mainRs = "use fuse_runtime as _;\nuse cranelift_ffi as _;\n\nunsafe extern \"C\" {\n    fn fuse_user_entry() -> i32;\n}\n\nfn main() {\n    std::process::exit(unsafe { fuse_user_entry() });\n}\n"
+
+  match io.writeFile(path.join(srcDir, "main.rs"), mainRs) {
+    Err(e) => return Err(f"failed to write wrapper main.rs: {e.message}"),
+    Ok(_) => {}
+  }
+
+  // Build with cargo.
+  val targetDir = path.join(stage1Root, "target", "generated-target")
+  match os.mkdirAll(targetDir) {
+    Err(e) => return Err(f"failed to create wrapper target dir: {e.message}"),
+    Ok(_) => {}
+  }
+
+  val buildResult = process.run("cargo", ["build", "--release", "--target-dir", targetDir, "--manifest-path", path.join(workdir, "Cargo.toml")])
+  match buildResult {
+    Err(e) => return Err(f"failed to launch cargo build: {e.message}"),
+    Ok(buildOutput) => {
+      if buildOutput.success == false {
+        return Err(f"generated wrapper build failed\n{buildOutput.stderr}")
+      }
+    }
+  }
+
+  // Copy resulting binary to output path.
+  val exeSuffix = if sys.platform() == "windows" { ".exe" } else { "" }
+  val builtBinary = path.join(targetDir, "release", f"fuse_generated_wrapper{exeSuffix}")
+
+  // Ensure output parent directory exists.
+  match path.parent(output) {
+    Some(parentDir) => {
+      if parentDir != "." and parentDir != "" {
+        match os.mkdirAll(parentDir) {
+          Err(_) => {},
+          Ok(_) => {}
+        }
+      }
+    },
+    None => {}
+  }
+
+  match os.copyFile(builtBinary, output) {
+    Err(e) => return Err(f"failed to copy generated executable: {e.message}"),
+    Ok(_) => {}
+  }
+
+  Ok(0)
+}
+
+// ---------------------------------------------------------------------------
+// Find repository root by walking up from executable path
+// ---------------------------------------------------------------------------
+
+fn findRepoRoot() -> Result<String, String> {
+  // Try FUSE_REPO_ROOT environment variable first.
+  match env.get("FUSE_REPO_ROOT") {
+    Some(root) => {
+      if looksLikeRepoRoot(root) { return Ok(root) }
+    },
+    None => {}
+  }
+
+  // Walk up from current working directory.
+  match sys.cwd() {
+    Ok(cwd) => {
+      match walkUpForRoot(cwd) {
+        Some(root) => return Ok(root),
+        None => {}
+      }
+    },
+    Err(_) => {}
+  }
+
+  Err("cannot find repository root (expected stage1/ and stdlib/ directories). Set FUSE_REPO_ROOT environment variable.")
+}
+
+fn walkUpForRoot(dir: String) -> Option<String> {
+  if looksLikeRepoRoot(dir) { return Some(dir) }
+  match path.parent(dir) {
+    Some(parentDir) => {
+      if parentDir == dir { return None }
+      walkUpForRoot(parentDir)
+    },
+    None => None
+  }
+}
+
+fn looksLikeRepoRoot(dir: String) -> Bool {
+  os.isDir(path.join(dir, "stage1")) and os.isDir(path.join(dir, "stdlib"))
+}
+
+// ---------------------------------------------------------------------------
+// Path escaping utilities
+// ---------------------------------------------------------------------------
+
+// Escape path for Cargo.toml string values (forward slashes, strip \\?\).
+fn escapePath(p: String) -> String {
+  fuse_rt_string_replace(p, "\\", "/")
+}
+
+// Escape path for build.rs println! strings (double backslashes).
+fn escapeString(p: String) -> String {
+  fuse_rt_string_replace(p, "\\", "\\\\")
 }
