@@ -3,6 +3,7 @@
 // Matches Stage 1 (stage1/fusec/src/parser/parser.rs) structure.
 // Recursive descent with precedence climbing.
 
+import stdlib.core.string
 import token
 import ast
 
@@ -88,10 +89,613 @@ fn Parser.atEnd(ref self) -> Bool {
 }
 
 // ---------------------------------------------------------------------------
-// Top-level dispatch (stub — will be filled in W2.3)
+// Top-level dispatch
 // ---------------------------------------------------------------------------
 
 fn Parser.parseTopLevel(mutref self) -> Result<Declaration, String> {
+  // Collect annotations
+  var annotations: List<Annotation> = []
+  while self.peek(0).kind == TokenKind.At {
+    self.take()
+    val ann = self.parseAnnotation()?
+    annotations = annotations.concat([ann])
+  }
+  // Check pub
+  val isPub = self.peek(0).kind == TokenKind.Pub
+  if isPub { self.take() }
+
   val tok = self.peek(0)
-  Err(f"parseTopLevel not yet implemented at {self.filename}:{tok.line}:{tok.column}")
+  if tok.kind == TokenKind.Import {
+    return Ok(Declaration.Import(self.parseImport()?))
+  }
+  if tok.kind == TokenKind.Fn {
+    val func = self.parseFunction(annotations, isPub)?
+    return Ok(Declaration.Function(func))
+  }
+  if tok.kind == TokenKind.Data {
+    val dc = self.parseDataClass(annotations, isPub)?
+    return Ok(Declaration.DataClass(dc))
+  }
+  if tok.kind == TokenKind.Enum {
+    val ed = self.parseEnum(isPub)?
+    return Ok(Declaration.Enum(ed))
+  }
+  if tok.kind == TokenKind.Extern {
+    val ef = self.parseExternFn(isPub)?
+    return Ok(Declaration.ExternFn(ef))
+  }
+  if tok.kind == TokenKind.Struct {
+    val sd = self.parseStruct(annotations, isPub)?
+    return Ok(Declaration.Struct(sd))
+  }
+  if tok.kind == TokenKind.Interface {
+    val id = self.parseInterface(isPub)?
+    return Ok(Declaration.Interface(id))
+  }
+  if tok.kind == TokenKind.Val {
+    val cd = self.parseConst(isPub)?
+    return Ok(Declaration.Const(cd))
+  }
+  Err(f"unexpected top-level token `{tok.text}` at {self.filename}:{tok.line}:{tok.column}")
+}
+
+// ---------------------------------------------------------------------------
+// Annotation parsing
+// ---------------------------------------------------------------------------
+
+fn Parser.parseAnnotation(mutref self) -> Result<Annotation, String> {
+  val nameTok = self.expect(TokenKind.Identifier, "expected annotation name")?
+  var args: List<AnnotationArg> = []
+  match self.matchKind(TokenKind.LParen) {
+    Some(_) => {
+      while true {
+        if self.peek(0).kind == TokenKind.RParen { break }
+        val argTok = self.peek(0)
+        if argTok.kind == TokenKind.Int {
+          self.take()
+          val n = argTok.text.toInt()
+          match n {
+            Ok(v) => { args = args.concat([AnnotationArg.Int(v)]) },
+            Err(_) => { args = args.concat([AnnotationArg.Int(0)]) }
+          }
+        } else if argTok.kind == TokenKind.String {
+          self.take()
+          args = args.concat([AnnotationArg.String(argTok.text)])
+        } else if argTok.kind == TokenKind.Identifier {
+          self.take()
+          args = args.concat([AnnotationArg.Name(argTok.text)])
+        } else {
+          return Err(f"unexpected token `{argTok.text}` in annotation at {self.filename}:{argTok.line}:{argTok.column}")
+        }
+        match self.matchKind(TokenKind.Comma) {
+          Some(_) => {},
+          None => { break }
+        }
+      }
+      self.expect(TokenKind.RParen, "expected `)` after annotation arguments")?
+    },
+    None => {}
+  }
+  Ok(Annotation(nameTok.text, args, Span(nameTok.line, nameTok.column)))
+}
+
+// ---------------------------------------------------------------------------
+// Type name extraction
+// ---------------------------------------------------------------------------
+
+fn Parser.parseTypeName(mutref self, stop1: TokenKind, stop2: TokenKind, stop3: TokenKind) -> String {
+  var out = ""
+  var depth = 0
+  while true {
+    val tok = self.peek(0)
+    if tok.kind == TokenKind.Eof { break }
+    if depth == 0 {
+      if tok.kind == stop1 or tok.kind == stop2 or tok.kind == stop3 { break }
+    }
+    if tok.kind == TokenKind.Lt or tok.kind == TokenKind.LParen or tok.kind == TokenKind.LBracket {
+      depth = depth + 1
+    }
+    if tok.kind == TokenKind.Gt or tok.kind == TokenKind.RParen or tok.kind == TokenKind.RBracket {
+      depth = depth - 1
+    }
+    out = f"{out}{tok.text}"
+    self.take()
+  }
+  out.trim()
+}
+
+// ---------------------------------------------------------------------------
+// Block parsing
+// ---------------------------------------------------------------------------
+
+fn Parser.parseBlock(mutref self) -> Result<Block, String> {
+  val start = self.expect(TokenKind.LBrace, "expected `{` to start block")?
+  var stmts: List<Statement> = []
+  while self.peek(0).kind != TokenKind.RBrace {
+    val s = self.parseStatement()?
+    stmts = stmts.concat([s])
+    self.matchKind(TokenKind.Semi)
+  }
+  self.expect(TokenKind.RBrace, "expected `}` to close block")?
+  Ok(Block(stmts, Span(start.line, start.column)))
+}
+
+// Statement parsing (stub — will be filled in W2.4)
+fn Parser.parseStatement(mutref self) -> Result<Statement, String> {
+  val tok = self.peek(0)
+  Err(f"parseStatement not yet implemented at {self.filename}:{tok.line}:{tok.column}")
+}
+
+// Expression parsing (stub — will be filled in W2.4/W2.5)
+fn Parser.parseExpression(mutref self) -> Result<Expr, String> {
+  val tok = self.peek(0)
+  Err(f"parseExpression not yet implemented at {self.filename}:{tok.line}:{tok.column}")
+}
+
+// ---------------------------------------------------------------------------
+// Import parsing
+// ---------------------------------------------------------------------------
+
+fn Parser.parseImport(mutref self) -> Result<ImportDecl, String> {
+  val start = self.expect(TokenKind.Import, "expected `import`")?
+  val first = self.expect(TokenKind.Identifier, "expected import path segment")?
+  var path = first.text
+  while self.peek(0).kind == TokenKind.Dot and self.peek(1).kind == TokenKind.Identifier {
+    self.take()
+    val seg = self.expect(TokenKind.Identifier, "expected import path segment")?
+    path = f"{path}.{seg.text}"
+  }
+  // Selective import: import foo.bar.{A, B}
+  var items: Option<List<String>> = None
+  if self.peek(0).kind == TokenKind.Dot and self.peek(1).kind == TokenKind.LBrace {
+    self.take()
+    self.expect(TokenKind.LBrace, "expected `{` after import path")?
+    val firstItem = self.expect(TokenKind.Identifier, "expected import item")?
+    var imported: List<String> = [firstItem.text]
+    while self.peek(0).kind == TokenKind.Comma {
+      self.take()
+      val item = self.expect(TokenKind.Identifier, "expected import item")?
+      imported = imported.concat([item.text])
+    }
+    self.expect(TokenKind.RBrace, "expected `}` after import items")?
+    items = Some(imported)
+  }
+  Ok(ImportDecl(path, items, Span(start.line, start.column)))
+}
+
+// ---------------------------------------------------------------------------
+// Function parsing
+// ---------------------------------------------------------------------------
+
+fn Parser.parseFunction(mutref self, annotations: List<Annotation>, isPub: Bool) -> Result<FunctionDecl, String> {
+  val start = self.expect(TokenKind.Fn, "expected `fn`")?
+  val first = self.expect(TokenKind.Identifier, "expected function name or receiver type")?
+  var receiverType: Option<String> = None
+  var name = first.text
+  // Extension method: Type.method
+  match self.matchKind(TokenKind.Dot) {
+    Some(_) => {
+      receiverType = Some(first.text)
+      val methodTok = self.take()
+      if methodTok.kind == TokenKind.Eof {
+        return Err(f"expected extension function name at {self.filename}:{methodTok.line}:{methodTok.column}")
+      }
+      name = methodTok.text
+    },
+    None => {}
+  }
+  // Type parameters
+  var typeParams: List<String> = []
+  match self.matchKind(TokenKind.Lt) {
+    Some(_) => {
+      while true {
+        val tp = self.expect(TokenKind.Identifier, "expected type parameter name")?
+        var tpName = tp.text
+        // Optional interface bound: T: Hashable
+        match self.matchKind(TokenKind.Colon) {
+          Some(_) => {
+            val bound = self.expect(TokenKind.Identifier, "expected interface bound")?
+            tpName = f"{tpName}: {bound.text}"
+          },
+          None => {}
+        }
+        typeParams = typeParams.concat([tpName])
+        match self.matchKind(TokenKind.Comma) {
+          Some(_) => {},
+          None => { break }
+        }
+      }
+      self.expect(TokenKind.Gt, "expected `>` after type parameters")?
+    },
+    None => {}
+  }
+  // Parameters
+  self.expect(TokenKind.LParen, "expected `(` after function name")?
+  var params: List<Param> = []
+  if self.peek(0).kind != TokenKind.RParen {
+    while true {
+      val p = self.parseParam()?
+      params = params.concat([p])
+      match self.matchKind(TokenKind.Comma) {
+        Some(_) => {},
+        None => { break }
+      }
+    }
+  }
+  self.expect(TokenKind.RParen, "expected `)` after parameters")?
+  // Return type
+  var returnType: Option<String> = None
+  match self.matchKind(TokenKind.Arrow) {
+    Some(_) => {
+      returnType = Some(self.parseTypeName(TokenKind.LBrace, TokenKind.FatArrow, TokenKind.Eof))
+    },
+    None => {}
+  }
+  // Body: block or => expr
+  val body = if self.peek(0).kind == TokenKind.FatArrow {
+    self.take()
+    val expr = self.parseExpression()?
+    Block([Statement.Expr(ExprStmt(expr, Span(start.line, start.column)))], Span(start.line, start.column))
+  } else {
+    self.parseBlock()?
+  }
+  Ok(FunctionDecl(name, typeParams, params, returnType, body, isPub, annotations, receiverType, Span(start.line, start.column)))
+}
+
+// ---------------------------------------------------------------------------
+// Parameter parsing
+// ---------------------------------------------------------------------------
+
+fn Parser.parseParam(mutref self) -> Result<Param, String> {
+  val startTok = self.peek(0)
+  // Convention: ref, mutref, owned
+  var convention: Option<String> = None
+  if startTok.kind == TokenKind.Ref {
+    convention = Some("ref")
+    self.take()
+  } else if startTok.kind == TokenKind.MutRef {
+    convention = Some("mutref")
+    self.take()
+  } else if startTok.kind == TokenKind.Owned {
+    convention = Some("owned")
+    self.take()
+  }
+  val nameTok = self.expect(TokenKind.Identifier, "expected parameter name")?
+  var variadic = false
+  var typeName: Option<String> = None
+  match self.matchKind(TokenKind.Colon) {
+    Some(_) => {
+      val raw = self.parseTypeName(TokenKind.Comma, TokenKind.RParen, TokenKind.Eof)
+      if raw.endsWith("...") {
+        variadic = true
+        typeName = Some(fuse_rt_string_slice(raw, 0, raw.len() - 3))
+      } else {
+        typeName = Some(raw)
+      }
+    },
+    None => {}
+  }
+  Ok(Param(convention, nameTok.text, typeName, variadic, Span(startTok.line, startTok.column)))
+}
+
+extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
+
+// ---------------------------------------------------------------------------
+// Data class parsing
+// ---------------------------------------------------------------------------
+
+fn Parser.parseDataClass(mutref self, annotations: List<Annotation>, isPub: Bool) -> Result<DataClassDecl, String> {
+  val start = self.expect(TokenKind.Data, "expected `data`")?
+  self.expect(TokenKind.Class, "expected `class` after `data`")?
+  val nameTok = self.expect(TokenKind.Identifier, "expected data class name")?
+  // Type parameters
+  var typeParams: List<String> = []
+  match self.matchKind(TokenKind.Lt) {
+    Some(_) => {
+      while true {
+        val tp = self.expect(TokenKind.Identifier, "expected type parameter name")?
+        typeParams = typeParams.concat([tp.text])
+        match self.matchKind(TokenKind.Comma) {
+          Some(_) => {},
+          None => { break }
+        }
+      }
+      self.expect(TokenKind.Gt, "expected `>` after type parameters")?
+    },
+    None => {}
+  }
+  // Fields
+  self.expect(TokenKind.LParen, "expected `(` after data class name")?
+  var fields: List<FieldDecl> = []
+  if self.peek(0).kind != TokenKind.RParen {
+    while true {
+      val fieldTok = self.take()
+      var mutable = false
+      if fieldTok.kind == TokenKind.Var {
+        mutable = true
+      } else if fieldTok.kind != TokenKind.Val {
+        return Err(f"expected `val` or `var` field at {self.filename}:{fieldTok.line}:{fieldTok.column}")
+      }
+      val fieldName = self.expect(TokenKind.Identifier, "expected field name")?
+      var fieldType: Option<String> = None
+      match self.matchKind(TokenKind.Colon) {
+        Some(_) => {
+          fieldType = Some(self.parseTypeName(TokenKind.Comma, TokenKind.RParen, TokenKind.Eof))
+        },
+        None => {}
+      }
+      fields = fields.concat([FieldDecl(mutable, fieldName.text, fieldType, Span(fieldTok.line, fieldTok.column))])
+      match self.matchKind(TokenKind.Comma) {
+        Some(_) => {},
+        None => { break }
+      }
+    }
+  }
+  self.expect(TokenKind.RParen, "expected `)` after fields")?
+  // Implements
+  var interfaces: List<String> = []
+  match self.matchKind(TokenKind.Implements) {
+    Some(_) => {
+      while true {
+        val iface = self.expect(TokenKind.Identifier, "expected interface name")?
+        interfaces = interfaces.concat([iface.text])
+        match self.matchKind(TokenKind.Comma) {
+          Some(_) => {},
+          None => { break }
+        }
+      }
+    },
+    None => {}
+  }
+  // Methods (optional body block)
+  var methods: List<FunctionDecl> = []
+  match self.matchKind(TokenKind.LBrace) {
+    Some(_) => {
+      while self.peek(0).kind != TokenKind.RBrace {
+        var methodAnns: List<Annotation> = []
+        while self.peek(0).kind == TokenKind.At {
+          self.take()
+          val ann = self.parseAnnotation()?
+          methodAnns = methodAnns.concat([ann])
+        }
+        val methodPub = self.peek(0).kind == TokenKind.Pub
+        if methodPub { self.take() }
+        val m = self.parseFunction(methodAnns, methodPub)?
+        methods = methods.concat([m])
+      }
+      self.expect(TokenKind.RBrace, "expected `}` after data class body")?
+    },
+    None => {}
+  }
+  Ok(DataClassDecl(nameTok.text, typeParams, fields, methods, isPub, annotations, interfaces, Span(start.line, start.column)))
+}
+
+// ---------------------------------------------------------------------------
+// Enum parsing
+// ---------------------------------------------------------------------------
+
+fn Parser.parseEnum(mutref self, isPub: Bool) -> Result<EnumDecl, String> {
+  val start = self.expect(TokenKind.Enum, "expected `enum`")?
+  val nameTok = self.expect(TokenKind.Identifier, "expected enum name")?
+  // Implements
+  var interfaces: List<String> = []
+  match self.matchKind(TokenKind.Implements) {
+    Some(_) => {
+      while true {
+        val iface = self.expect(TokenKind.Identifier, "expected interface name")?
+        interfaces = interfaces.concat([iface.text])
+        match self.matchKind(TokenKind.Comma) {
+          Some(_) => {},
+          None => { break }
+        }
+      }
+    },
+    None => {}
+  }
+  self.expect(TokenKind.LBrace, "expected `{` after enum name")?
+  var variants: List<EnumVariant> = []
+  while self.peek(0).kind != TokenKind.RBrace {
+    val variantTok = self.expect(TokenKind.Identifier, "expected variant name")?
+    var arity = 0
+    match self.matchKind(TokenKind.LParen) {
+      Some(_) => {
+        if self.peek(0).kind != TokenKind.RParen {
+          while true {
+            self.parseTypeName(TokenKind.Comma, TokenKind.RParen, TokenKind.Eof)
+            arity = arity + 1
+            match self.matchKind(TokenKind.Comma) {
+              Some(_) => {},
+              None => { break }
+            }
+          }
+        }
+        self.expect(TokenKind.RParen, "expected `)` after enum payload")?
+      },
+      None => {}
+    }
+    variants = variants.concat([EnumVariant(variantTok.text, arity, Span(variantTok.line, variantTok.column))])
+    self.matchKind(TokenKind.Comma)
+  }
+  self.expect(TokenKind.RBrace, "expected `}` after enum")?
+  Ok(EnumDecl(nameTok.text, variants, isPub, interfaces, Span(start.line, start.column)))
+}
+
+// ---------------------------------------------------------------------------
+// Struct parsing
+// ---------------------------------------------------------------------------
+
+fn Parser.parseStruct(mutref self, annotations: List<Annotation>, isPub: Bool) -> Result<StructDecl, String> {
+  val start = self.expect(TokenKind.Struct, "expected `struct`")?
+  val nameTok = self.expect(TokenKind.Identifier, "expected struct name")?
+  // Implements
+  var interfaces: List<String> = []
+  match self.matchKind(TokenKind.Implements) {
+    Some(_) => {
+      while true {
+        val iface = self.expect(TokenKind.Identifier, "expected interface name")?
+        interfaces = interfaces.concat([iface.text])
+        match self.matchKind(TokenKind.Comma) {
+          Some(_) => {},
+          None => { break }
+        }
+      }
+    },
+    None => {}
+  }
+  self.expect(TokenKind.LBrace, "expected `{` after struct name")?
+  var fields: List<FieldDecl> = []
+  var methods: List<FunctionDecl> = []
+  while self.peek(0).kind != TokenKind.RBrace {
+    val cur = self.peek(0)
+    if cur.kind == TokenKind.Val or cur.kind == TokenKind.Var {
+      val fieldTok = self.take()
+      val mutable = fieldTok.kind == TokenKind.Var
+      val fieldName = self.expect(TokenKind.Identifier, "expected field name")?
+      var fieldType: Option<String> = None
+      match self.matchKind(TokenKind.Colon) {
+        Some(_) => {
+          fieldType = Some(self.parseTypeName(TokenKind.Val, TokenKind.Var, TokenKind.Fn))
+          // Also stop on At, Pub, RBrace — check if we overshot
+        },
+        None => {}
+      }
+      fields = fields.concat([FieldDecl(mutable, fieldName.text, fieldType, Span(fieldTok.line, fieldTok.column))])
+    } else if cur.kind == TokenKind.Fn or cur.kind == TokenKind.At or cur.kind == TokenKind.Pub {
+      var methodAnns: List<Annotation> = []
+      while self.peek(0).kind == TokenKind.At {
+        self.take()
+        val ann = self.parseAnnotation()?
+        methodAnns = methodAnns.concat([ann])
+      }
+      val methodPub = self.peek(0).kind == TokenKind.Pub
+      if methodPub { self.take() }
+      val m = self.parseFunction(methodAnns, methodPub)?
+      methods = methods.concat([m])
+    } else {
+      return Err(f"expected field or method in struct, got `{cur.text}` at {self.filename}:{cur.line}:{cur.column}")
+    }
+  }
+  self.expect(TokenKind.RBrace, "expected `}` to close struct")?
+  Ok(StructDecl(nameTok.text, fields, methods, isPub, annotations, interfaces, Span(start.line, start.column)))
+}
+
+// ---------------------------------------------------------------------------
+// Extern function parsing
+// ---------------------------------------------------------------------------
+
+fn Parser.parseExternFn(mutref self, isPub: Bool) -> Result<ExternFnDecl, String> {
+  val start = self.expect(TokenKind.Extern, "expected `extern`")?
+  self.expect(TokenKind.Fn, "expected `fn` after `extern`")?
+  val nameTok = self.expect(TokenKind.Identifier, "expected extern function name")?
+  self.expect(TokenKind.LParen, "expected `(` after extern function name")?
+  var params: List<Param> = []
+  if self.peek(0).kind != TokenKind.RParen {
+    while true {
+      val p = self.parseParam()?
+      params = params.concat([p])
+      match self.matchKind(TokenKind.Comma) {
+        Some(_) => {},
+        None => { break }
+      }
+    }
+  }
+  self.expect(TokenKind.RParen, "expected `)` after parameters")?
+  var returnType: Option<String> = None
+  match self.matchKind(TokenKind.Arrow) {
+    Some(_) => {
+      returnType = Some(self.parseTypeName(TokenKind.Fn, TokenKind.Extern, TokenKind.Eof))
+    },
+    None => {}
+  }
+  Ok(ExternFnDecl(nameTok.text, params, returnType, isPub, Span(start.line, start.column)))
+}
+
+// ---------------------------------------------------------------------------
+// Interface parsing
+// ---------------------------------------------------------------------------
+
+fn Parser.parseInterface(mutref self, isPub: Bool) -> Result<InterfaceDecl, String> {
+  val start = self.expect(TokenKind.Interface, "expected `interface`")?
+  val nameTok = self.expect(TokenKind.Identifier, "expected interface name")?
+  // Type parameters
+  var typeParams: List<String> = []
+  match self.matchKind(TokenKind.Lt) {
+    Some(_) => {
+      while true {
+        val tp = self.expect(TokenKind.Identifier, "expected type parameter name")?
+        typeParams = typeParams.concat([tp.text])
+        match self.matchKind(TokenKind.Comma) {
+          Some(_) => {},
+          None => { break }
+        }
+      }
+      self.expect(TokenKind.Gt, "expected `>` after type parameters")?
+    },
+    None => {}
+  }
+  // Parent interfaces
+  var parents: List<String> = []
+  match self.matchKind(TokenKind.Colon) {
+    Some(_) => {
+      while true {
+        val parent = self.expect(TokenKind.Identifier, "expected parent interface name")?
+        parents = parents.concat([parent.text])
+        match self.matchKind(TokenKind.Comma) {
+          Some(_) => {},
+          None => { break }
+        }
+      }
+    },
+    None => {}
+  }
+  self.expect(TokenKind.LBrace, "expected `{` after interface header")?
+  var methods: List<InterfaceMethod> = []
+  while self.peek(0).kind != TokenKind.RBrace {
+    val methodStart = self.expect(TokenKind.Fn, "expected `fn` for interface method")?
+    val methodName = self.expect(TokenKind.Identifier, "expected method name")?
+    self.expect(TokenKind.LParen, "expected `(` after method name")?
+    var params: List<Param> = []
+    if self.peek(0).kind != TokenKind.RParen {
+      while true {
+        val p = self.parseParam()?
+        params = params.concat([p])
+        match self.matchKind(TokenKind.Comma) {
+          Some(_) => {},
+          None => { break }
+        }
+      }
+    }
+    self.expect(TokenKind.RParen, "expected `)` after method parameters")?
+    var returnType: Option<String> = None
+    match self.matchKind(TokenKind.Arrow) {
+      Some(_) => {
+        returnType = Some(self.parseTypeName(TokenKind.Fn, TokenKind.RBrace, TokenKind.Eof))
+      },
+      None => {}
+    }
+    methods = methods.concat([InterfaceMethod(methodName.text, params, returnType, Span(methodStart.line, methodStart.column))])
+  }
+  self.expect(TokenKind.RBrace, "expected `}` after interface body")?
+  Ok(InterfaceDecl(nameTok.text, typeParams, parents, methods, isPub, Span(start.line, start.column)))
+}
+
+// ---------------------------------------------------------------------------
+// Constant parsing
+// ---------------------------------------------------------------------------
+
+fn Parser.parseConst(mutref self, isPub: Bool) -> Result<ConstDecl, String> {
+  val start = self.expect(TokenKind.Val, "expected `val`")?
+  val owner = self.expect(TokenKind.Identifier, "expected type or module name")?
+  self.expect(TokenKind.Dot, "expected `.` after type name in constant")?
+  val nameTok = self.expect(TokenKind.Identifier, "expected constant name")?
+  var typeName: Option<String> = None
+  match self.matchKind(TokenKind.Colon) {
+    Some(_) => {
+      typeName = Some(self.parseTypeName(TokenKind.Eq, TokenKind.Eof, TokenKind.Eof))
+    },
+    None => {}
+  }
+  self.expect(TokenKind.Eq, "expected `=` in constant")?
+  val value = self.parseExpression()?
+  Ok(ConstDecl(owner.text, nameTok.text, typeName, value, isPub, Span(start.line, start.column)))
 }

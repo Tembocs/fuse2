@@ -464,21 +464,21 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W2.3 — Declaration Parsing
 
-- [ ] **W2.3.1** Implement `fn parseTopLevel() -> Result<Declaration, String>` — dispatch on token kind.
-- [ ] **W2.3.2** Implement `fn parseFunction() -> Result<FunctionDecl, String>` — name, type params `<T>`, params, return type `->`, body (block or `=>` expr).
-- [ ] **W2.3.3** Implement `fn parseParam() -> Result<Param, String>` — convention (ref/mutref/owned), name, `:`, type.
-- [ ] **W2.3.4** Implement `fn parseDataClass() -> Result<DataClassDecl, String>` — `data class Name(fields) implements X { methods }`.
-- [ ] **W2.3.5** Implement `fn parseEnum() -> Result<EnumDecl, String>` — `enum Name implements X { variants }`.
-- [ ] **W2.3.6** Implement `fn parseStruct() -> Result<StructDecl, String>` — `struct Name implements X { fields, methods }`.
-- [ ] **W2.3.7** Implement `fn parseExternFn() -> Result<ExternFnDecl, String>` — `extern fn name(params) -> Type`.
-- [ ] **W2.3.8** Implement `fn parseInterface() -> Result<InterfaceDecl, String>`.
-- [ ] **W2.3.9** Implement `fn parseImport() -> Result<ImportDecl, String>`.
-- [ ] **W2.3.10** Implement `fn parseConst() -> Result<ConstDecl, String>`.
-- [ ] **W2.3.11** Implement `fn parseAnnotation() -> Result<Annotation, String>` — `@name` or `@name(args)`.
-- [ ] **W2.3.12** Implement `fn parseBlock() -> Result<Block, String>`.
-- [ ] **W2.3.13** Implement `fn parseTypeName(stops: List<TokenKind>) -> String` — raw type name extraction.
-- [ ] **W2.3.14** Test: parse `fn add(a: Int, b: Int) -> Int { a + b }`.
-- [ ] **W2.3.15** Test: parse `data class Point(val x: Int, val y: Int)`.
+- [x] **W2.3.1** Implement `fn parseTopLevel() -> Result<Declaration, String>` — dispatch on token kind.
+- [x] **W2.3.2** Implement `fn parseFunction() -> Result<FunctionDecl, String>` — name, type params `<T>`, params, return type `->`, body (block or `=>` expr).
+- [x] **W2.3.3** Implement `fn parseParam() -> Result<Param, String>` — convention (ref/mutref/owned), name, `:`, type.
+- [x] **W2.3.4** Implement `fn parseDataClass() -> Result<DataClassDecl, String>` — `data class Name(fields) implements X { methods }`.
+- [x] **W2.3.5** Implement `fn parseEnum() -> Result<EnumDecl, String>` — `enum Name implements X { variants }`.
+- [x] **W2.3.6** Implement `fn parseStruct() -> Result<StructDecl, String>` — `struct Name implements X { fields, methods }`.
+- [x] **W2.3.7** Implement `fn parseExternFn() -> Result<ExternFnDecl, String>` — `extern fn name(params) -> Type`.
+- [x] **W2.3.8** Implement `fn parseInterface() -> Result<InterfaceDecl, String>`.
+- [x] **W2.3.9** Implement `fn parseImport() -> Result<ImportDecl, String>`.
+- [x] **W2.3.10** Implement `fn parseConst() -> Result<ConstDecl, String>`.
+- [x] **W2.3.11** Implement `fn parseAnnotation() -> Result<Annotation, String>` — `@name` or `@name(args)`.
+- [x] **W2.3.12** Implement `fn parseBlock() -> Result<Block, String>`.
+- [x] **W2.3.13** Implement `fn parseTypeName(stops: List<TokenKind>) -> String` — raw type name extraction.
+- [x] **W2.3.14** Test: parse `fn add(a: Int, b: Int) -> Int { a + b }`.
+- [x] **W2.3.15** Test: parse `data class Point(val x: Int, val y: Int)`.
 
 ---
 

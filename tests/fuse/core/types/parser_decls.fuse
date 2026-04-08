@@ -1,0 +1,256 @@
+// EXPECTED OUTPUT:
+// --- import ---
+// import: stdlib.core.string
+// --- selective import ---
+// import: stdlib.core.math items: 2
+// --- extern fn ---
+// extern: fuse_add params: 2 ret: Int
+// p0: a type: Int
+// p1: b type: Int
+// --- enum ---
+// enum: Shape variants: 3
+// Circle arity: 1
+// Square arity: 1
+// Point arity: 0
+// --- data class ---
+// data class: Point fields: 2
+// field x mutable: false type: Int
+// field y mutable: false type: Int
+// --- annotation ---
+// ann: entrypoint args: 0
+// --- interface ---
+// interface: Printable methods: 1
+// method: toString ret: String
+
+import stage2.src.lexer
+import stage2.src.parser
+import stage2.src.token
+import stage2.src.ast
+
+@entrypoint
+fn main() {
+  // --- import ---
+  println("--- import ---")
+  val r1 = lexer.lex("import stdlib.core.string", "t.fuse")
+  match r1 {
+    Ok(tokens) => {
+      val pr = parser.parse(tokens, "t.fuse")
+      match pr {
+        Ok(prog) => {
+          match prog.declarations.get(0) {
+            Some(d) => {
+              match d {
+                Declaration.Import(imp) => println(f"import: {imp.modulePath}"),
+                _ => println("wrong type")
+              }
+            },
+            None => println("no decl")
+          }
+        },
+        Err(msg) => println(f"parse error: {msg}")
+      }
+    },
+    Err(msg) => println(f"lex error: {msg}")
+  }
+
+  // --- selective import ---
+  println("--- selective import ---")
+  val r2 = lexer.lex("import stdlib.core.math.{abs, max}", "t.fuse")
+  match r2 {
+    Ok(tokens) => {
+      val pr = parser.parse(tokens, "t.fuse")
+      match pr {
+        Ok(prog) => {
+          match prog.declarations.get(0) {
+            Some(d) => {
+              match d {
+                Declaration.Import(imp) => {
+                  match imp.items {
+                    Some(items) => println(f"import: {imp.modulePath} items: {items.len()}"),
+                    None => println(f"import: {imp.modulePath} items: none")
+                  }
+                },
+                _ => println("wrong type")
+              }
+            },
+            None => println("no decl")
+          }
+        },
+        Err(msg) => println(f"parse error: {msg}")
+      }
+    },
+    Err(msg) => println(f"lex error: {msg}")
+  }
+
+  // --- extern fn ---
+  println("--- extern fn ---")
+  val r3 = lexer.lex("extern fn fuse_add(a: Int, b: Int) -> Int", "t.fuse")
+  match r3 {
+    Ok(tokens) => {
+      val pr = parser.parse(tokens, "t.fuse")
+      match pr {
+        Ok(prog) => {
+          match prog.declarations.get(0) {
+            Some(d) => {
+              match d {
+                Declaration.ExternFn(ef) => {
+                  match ef.returnType {
+                    Some(rt) => println(f"extern: {ef.name} params: {ef.params.len()} ret: {rt}"),
+                    None => println(f"extern: {ef.name} params: {ef.params.len()} ret: none")
+                  }
+                  match ef.params.get(0) {
+                    Some(p) => {
+                      match p.typeName {
+                        Some(t) => println(f"p0: {p.name} type: {t}"),
+                        None => println(f"p0: {p.name} type: none")
+                      }
+                    },
+                    None => {}
+                  }
+                  match ef.params.get(1) {
+                    Some(p) => {
+                      match p.typeName {
+                        Some(t) => println(f"p1: {p.name} type: {t}"),
+                        None => println(f"p1: {p.name} type: none")
+                      }
+                    },
+                    None => {}
+                  }
+                },
+                _ => println("wrong type")
+              }
+            },
+            None => println("no decl")
+          }
+        },
+        Err(msg) => println(f"parse error: {msg}")
+      }
+    },
+    Err(msg) => println(f"lex error: {msg}")
+  }
+
+  // --- enum ---
+  println("--- enum ---")
+  val r4 = lexer.lex("enum Shape { Circle(Int), Square(Int), Point }", "t.fuse")
+  match r4 {
+    Ok(tokens) => {
+      val pr = parser.parse(tokens, "t.fuse")
+      match pr {
+        Ok(prog) => {
+          match prog.declarations.get(0) {
+            Some(d) => {
+              match d {
+                Declaration.Enum(ed) => {
+                  println(f"enum: {ed.name} variants: {ed.variants.len()}")
+                  var i = 0
+                  while i < ed.variants.len() {
+                    match ed.variants.get(i) {
+                      Some(v) => println(f"{v.name} arity: {v.arity}"),
+                      None => {}
+                    }
+                    i = i + 1
+                  }
+                },
+                _ => println("wrong type")
+              }
+            },
+            None => println("no decl")
+          }
+        },
+        Err(msg) => println(f"parse error: {msg}")
+      }
+    },
+    Err(msg) => println(f"lex error: {msg}")
+  }
+
+  // --- data class ---
+  println("--- data class ---")
+  val r5 = lexer.lex("data class Point(val x: Int, val y: Int)", "t.fuse")
+  match r5 {
+    Ok(tokens) => {
+      val pr = parser.parse(tokens, "t.fuse")
+      match pr {
+        Ok(prog) => {
+          match prog.declarations.get(0) {
+            Some(d) => {
+              match d {
+                Declaration.DataClass(dc) => {
+                  println(f"data class: {dc.name} fields: {dc.fields.len()}")
+                  var i = 0
+                  while i < dc.fields.len() {
+                    match dc.fields.get(i) {
+                      Some(f) => {
+                        match f.typeName {
+                          Some(t) => println(f"field {f.name} mutable: {f.mutable} type: {t}"),
+                          None => println(f"field {f.name} mutable: {f.mutable} type: none")
+                        }
+                      },
+                      None => {}
+                    }
+                    i = i + 1
+                  }
+                },
+                _ => println("wrong type")
+              }
+            },
+            None => println("no decl")
+          }
+        },
+        Err(msg) => println(f"parse error: {msg}")
+      }
+    },
+    Err(msg) => println(f"lex error: {msg}")
+  }
+
+  // --- annotation ---
+  println("--- annotation ---")
+  val r6 = lexer.lex("@entrypoint\nimport stdlib.core.string", "t.fuse")
+  match r6 {
+    Ok(tokens) => {
+      var p = parser.Parser(tokens, 0, "t.fuse")
+      // Consume @
+      p.matchKind(TokenKind.At)
+      val annResult = p.parseAnnotation()
+      match annResult {
+        Ok(ann) => println(f"ann: {ann.name} args: {ann.args.len()}"),
+        Err(msg) => println(f"error: {msg}")
+      }
+    },
+    Err(msg) => println(f"lex error: {msg}")
+  }
+
+  // --- interface ---
+  println("--- interface ---")
+  val r7 = lexer.lex("interface Printable {\n  fn toString(ref self) -> String\n}", "t.fuse")
+  match r7 {
+    Ok(tokens) => {
+      val pr = parser.parse(tokens, "t.fuse")
+      match pr {
+        Ok(prog) => {
+          match prog.declarations.get(0) {
+            Some(d) => {
+              match d {
+                Declaration.Interface(id) => {
+                  println(f"interface: {id.name} methods: {id.methods.len()}")
+                  match id.methods.get(0) {
+                    Some(m) => {
+                      match m.returnType {
+                        Some(rt) => println(f"method: {m.name} ret: {rt}"),
+                        None => println(f"method: {m.name} ret: none")
+                      }
+                    },
+                    None => {}
+                  }
+                },
+                _ => println("wrong type")
+              }
+            },
+            None => println("no decl")
+          }
+        },
+        Err(msg) => println(f"parse error: {msg}")
+      }
+    },
+    Err(msg) => println(f"lex error: {msg}")
+  }
+}
