@@ -13,9 +13,10 @@ use std::fs;
 use std::path::Path;
 use std::slice;
 
-use cranelift_codegen::ir::{self, types, AbiParam, Function, UserFuncName};
+use cranelift_codegen::ir::{self, types, AbiParam, Block};
 use cranelift_codegen::settings;
-use cranelift_module::{default_libcall_names, DataDescription, FuncId, Linkage, Module};
+use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
+use cranelift_module::{default_libcall_names, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 
 use fuse_runtime::{FuseHandle, fuse_int, fuse_unit};
@@ -42,6 +43,22 @@ pub struct FfiContext {
 /// Wraps a Signature (parameter + return types for a function).
 pub struct FfiSignature {
     sig: ir::Signature,
+}
+
+/// Wraps a FunctionBuilder for building a single function's body.
+///
+/// This is a self-referential struct: `builder` borrows from `builder_ctx`
+/// and from the `FfiContext.ctx.func` passed at creation. The caller must
+/// ensure the `FfiContext` outlives this `FfiBuilder`.
+///
+/// `entry_block` caches the entry block created during `builder_new`.
+pub struct FfiBuilder {
+    /// Owned FunctionBuilderContext — must not move after builder is created.
+    builder_ctx: *mut FunctionBuilderContext,
+    /// The FunctionBuilder with erased lifetime (borrows builder_ctx + ctx.func).
+    builder: *mut FunctionBuilder<'static>,
+    /// The entry block, created during new().
+    entry_block: Block,
 }
 
 // ---------------------------------------------------------------------------
@@ -342,4 +359,241 @@ pub unsafe extern "C" fn cranelift_ffi_signature_clone(
     from_ptr(Box::into_raw(Box::new(FfiSignature {
         sig: s.sig.clone(),
     })))
+}
+
+// =========================================================================
+// Phase W0.3 — Function Builder & Blocks
+// =========================================================================
+
+/// Create a FunctionBuilder from a context and signature.
+///
+/// Sets up the context's function with the given signature and creates an
+/// entry block with parameters matching the signature. The caller must keep
+/// `ctx` alive until after `builder_finalize` or `builder_free`.
+///
+/// Returns an opaque builder handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_builder_new(
+    module: FuseHandle,
+    ctx: FuseHandle,
+    sig: FuseHandle,
+) -> FuseHandle {
+    let _m = unsafe { &*to_ptr::<FfiModule>(module) };
+    let c = unsafe { &mut *to_ptr::<FfiContext>(ctx) };
+    let s = unsafe { &*to_ptr::<FfiSignature>(sig) };
+
+    // Set up the function in the context with the given signature.
+    c.ctx.func = ir::Function::with_name_signature(
+        ir::UserFuncName::default(),
+        s.sig.clone(),
+    );
+
+    // Heap-allocate the FunctionBuilderContext so it stays pinned.
+    let builder_ctx = Box::into_raw(Box::new(FunctionBuilderContext::new()));
+
+    // Create FunctionBuilder borrowing ctx.func and builder_ctx.
+    // Safety: we erase lifetimes — the caller must keep `ctx` alive until
+    // finalize/free, and we drop builder before builder_ctx in free().
+    let builder_ref: &'static mut FunctionBuilderContext =
+        unsafe { &mut *builder_ctx };
+    let func_ref: &'static mut ir::Function =
+        unsafe { std::mem::transmute(&mut c.ctx.func) };
+    let mut builder = Box::new(FunctionBuilder::new(func_ref, builder_ref));
+
+    // Create entry block with function params.
+    let entry = builder.create_block();
+    builder.append_block_params_for_function_params(entry);
+    builder.switch_to_block(entry);
+    builder.seal_block(entry);
+
+    let builder_ptr = Box::into_raw(builder);
+    from_ptr(Box::into_raw(Box::new(FfiBuilder {
+        builder_ctx,
+        builder: builder_ptr,
+        entry_block: entry,
+    })))
+}
+
+/// Finalize and destroy a builder.
+///
+/// Calls `builder.finalize()` then drops builder and builder context.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_builder_free(
+    bld: FuseHandle,
+) -> FuseHandle {
+    let ptr = to_ptr::<FfiBuilder>(bld);
+    if !ptr.is_null() {
+        let ffi_bld = unsafe { Box::from_raw(ptr) };
+        // Drop builder first (it borrows builder_ctx).
+        if !ffi_bld.builder.is_null() {
+            let mut builder = unsafe { Box::from_raw(ffi_bld.builder) };
+            builder.finalize();
+        }
+        // Then drop the builder context.
+        if !ffi_bld.builder_ctx.is_null() {
+            unsafe { drop(Box::from_raw(ffi_bld.builder_ctx)) };
+        }
+    }
+    unit()
+}
+
+/// Create a new block. Returns block id as integer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_builder_create_block(
+    bld: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let block = builder.create_block();
+    from_i64(block.as_u32() as i64)
+}
+
+/// Switch the builder's current block.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_builder_switch_to_block(
+    bld: FuseHandle,
+    block: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    builder.switch_to_block(Block::from_u32(to_i64(block) as u32));
+    unit()
+}
+
+/// Seal a block (declare that no more predecessors will be added).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_builder_seal_block(
+    bld: FuseHandle,
+    block: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    builder.seal_block(Block::from_u32(to_i64(block) as u32));
+    unit()
+}
+
+/// Seal all blocks at once.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_builder_seal_all_blocks(
+    bld: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    builder.seal_all_blocks();
+    unit()
+}
+
+/// Append a block parameter. Returns the Value id as integer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_builder_append_block_param(
+    bld: FuseHandle,
+    block: FuseHandle,
+    type_id: FuseHandle,
+    module: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let m = unsafe { &*to_ptr::<FfiModule>(module) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let ty = type_from_id(to_i64(type_id), m.pointer_type);
+    let val = builder.append_block_param(Block::from_u32(to_i64(block) as u32), ty);
+    from_i64(val.as_u32() as i64)
+}
+
+/// Fill `out` array with the Value ids for a block's parameters.
+/// Returns the number of values written (capped at `max`).
+///
+/// `out` — pointer to an array of i64 (FuseHandle-sized slots).
+/// `max` — maximum number of entries to write.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_builder_block_params(
+    bld: FuseHandle,
+    block: FuseHandle,
+    out: FuseHandle,
+    max: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &*ffi_bld.builder };
+    let params = builder.block_params(Block::from_u32(to_i64(block) as u32));
+    let max_n = to_i64(max) as usize;
+    let out_ptr = to_i64(out) as *mut i64;
+    let count = params.len().min(max_n);
+    for i in 0..count {
+        unsafe { *out_ptr.add(i) = params[i].as_u32() as i64 };
+    }
+    from_i64(count as i64)
+}
+
+/// Return the entry block id (created during builder_new).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_builder_entry_block(
+    bld: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    from_i64(ffi_bld.entry_block.as_u32() as i64)
+}
+
+/// Finalize the builder without destroying it.
+///
+/// After this call, the context is ready for `module_define_function`.
+/// The builder handle must still be freed with `builder_free`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_builder_finalize(
+    bld: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &mut *to_ptr::<FfiBuilder>(bld) };
+    if !ffi_bld.builder.is_null() {
+        let builder = unsafe { Box::from_raw(ffi_bld.builder) };
+        builder.finalize();
+        // Mark as null so builder_free doesn't double-finalize.
+        ffi_bld.builder = std::ptr::null_mut();
+    }
+    unit()
+}
+
+/// Import a module-level function into the current function for calling.
+/// Returns a FuncRef id as integer.
+///
+/// `func_id` — the integer index returned by `module_declare_function`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_builder_declare_func_in_func(
+    bld: FuseHandle,
+    module: FuseHandle,
+    func_id: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let m = unsafe { &mut *to_ptr::<FfiModule>(module) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let idx = to_i64(func_id) as usize;
+    let fid = match m.func_ids.get(idx) {
+        Some(id) => *id,
+        None => return from_i64(-1),
+    };
+    let func_ref = m.module.declare_func_in_func(fid, builder.func);
+    from_i64(func_ref.as_u32() as i64)
+}
+
+/// Fill `out` array with the result Value ids from an instruction.
+/// Returns the number of values written (capped at `max`).
+///
+/// `inst` — the Inst id returned by a call/instruction function.
+/// `out` — pointer to an array of i64 slots.
+/// `max` — maximum entries to write.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_builder_inst_results(
+    bld: FuseHandle,
+    inst: FuseHandle,
+    out: FuseHandle,
+    max: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &*ffi_bld.builder };
+    let inst_id = ir::Inst::from_u32(to_i64(inst) as u32);
+    let results = builder.inst_results(inst_id);
+    let max_n = to_i64(max) as usize;
+    let out_ptr = to_i64(out) as *mut i64;
+    let count = results.len().min(max_n);
+    for i in 0..count {
+        unsafe { *out_ptr.add(i) = results[i].as_u32() as i64 };
+    }
+    from_i64(count as i64)
 }

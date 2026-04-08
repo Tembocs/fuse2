@@ -293,19 +293,19 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W0.3 — Function Builder & Blocks
 
-- [ ] **W0.3.1** `cranelift_ffi_builder_new(module: Ptr, ctx: Ptr, sig: Ptr) -> Ptr` — create FunctionBuilder from context + signature. Sets up entry block.
-- [ ] **W0.3.2** `cranelift_ffi_builder_free(builder: Ptr)` — finalize and destroy builder.
-- [ ] **W0.3.3** `cranelift_ffi_builder_create_block(builder: Ptr) -> Int` — create new block, return block id.
-- [ ] **W0.3.4** `cranelift_ffi_builder_switch_to_block(builder: Ptr, block: Int)`.
-- [ ] **W0.3.5** `cranelift_ffi_builder_seal_block(builder: Ptr, block: Int)`.
-- [ ] **W0.3.6** `cranelift_ffi_builder_seal_all_blocks(builder: Ptr)`.
-- [ ] **W0.3.7** `cranelift_ffi_builder_append_block_param(builder: Ptr, block: Int, type_id: Int) -> Int` — return Value id.
-- [ ] **W0.3.8** `cranelift_ffi_builder_block_params(builder: Ptr, block: Int, out: Ptr, max: Int) -> Int` — fill array with Value ids, return count.
-- [ ] **W0.3.9** `cranelift_ffi_builder_entry_block(builder: Ptr) -> Int` — return entry block id.
-- [ ] **W0.3.10** `cranelift_ffi_builder_finalize(builder: Ptr)` — finalize without destroying (for define_function).
-- [ ] **W0.3.11** `cranelift_ffi_builder_declare_func_in_func(builder: Ptr, module: Ptr, func_id: Int) -> Int` — import function reference for call.
-- [ ] **W0.3.12** `cranelift_ffi_builder_inst_results(builder: Ptr, inst: Int, out: Ptr, max: Int) -> Int` — fill array with result Values.
-- [ ] **W0.3.13** Test: create function with entry block, add params, finalize.
+- [x] **W0.3.1** `cranelift_ffi_builder_new(module: Ptr, ctx: Ptr, sig: Ptr) -> Ptr` — create FunctionBuilder from context + signature. Sets up entry block.
+- [x] **W0.3.2** `cranelift_ffi_builder_free(builder: Ptr)` — finalize and destroy builder.
+- [x] **W0.3.3** `cranelift_ffi_builder_create_block(builder: Ptr) -> Int` — create new block, return block id.
+- [x] **W0.3.4** `cranelift_ffi_builder_switch_to_block(builder: Ptr, block: Int)`.
+- [x] **W0.3.5** `cranelift_ffi_builder_seal_block(builder: Ptr, block: Int)`.
+- [x] **W0.3.6** `cranelift_ffi_builder_seal_all_blocks(builder: Ptr)`.
+- [x] **W0.3.7** `cranelift_ffi_builder_append_block_param(builder: Ptr, block: Int, type_id: Int, module: Ptr) -> Int` — return Value id. Module needed for type resolution.
+- [x] **W0.3.8** `cranelift_ffi_builder_block_params(builder: Ptr, block: Int, out: Ptr, max: Int) -> Int` — fill array with Value ids, return count.
+- [x] **W0.3.9** `cranelift_ffi_builder_entry_block(builder: Ptr) -> Int` — return entry block id.
+- [x] **W0.3.10** `cranelift_ffi_builder_finalize(builder: Ptr)` — finalize without destroying (for define_function).
+- [x] **W0.3.11** `cranelift_ffi_builder_declare_func_in_func(builder: Ptr, module: Ptr, func_id: Int) -> Int` — import function reference for call.
+- [x] **W0.3.12** `cranelift_ffi_builder_inst_results(builder: Ptr, inst: Int, out: Ptr, max: Int) -> Int` — fill array with result Values.
+- [x] **W0.3.13** Test: create function with entry block, add params, finalize.
 
 ---
 
