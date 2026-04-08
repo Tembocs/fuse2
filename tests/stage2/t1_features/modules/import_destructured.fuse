@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// 3
+// 6
+
+import src.helpers.math_utils.{add, multiply}
+
+@entrypoint
+fn main() {
+  println(add(1, 2))
+  println(multiply(2, 3))
+}

@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// hello from module
+// 7
+
+import src.helpers.greeter.{greet}
+import src.helpers.math_utils.{add}
+
+@entrypoint
+fn main() {
+  println(greet())
+  println(add(3, 4))
+}

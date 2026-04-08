@@ -1,0 +1,10 @@
+// EXPECTED OUTPUT:
+// hello from module
+
+import src.helpers.greeter.{greet}
+
+@entrypoint
+fn main() {
+  // greet is pub, so it's visible
+  println(greet())
+}

@@ -1,0 +1,9 @@
+// EXPECTED OUTPUT:
+// 15
+
+import src.helpers.math_utils
+
+@entrypoint
+fn main() {
+  println(math_utils.add(5, 10))
+}

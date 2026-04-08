@@ -1,0 +1,9 @@
+// EXPECTED ERROR:
+// not public
+
+import src.helpers.private_only.{hidden}
+
+@entrypoint
+fn main() {
+  println(hidden())
+}

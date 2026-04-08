@@ -1,0 +1,9 @@
+// EXPECTED OUTPUT:
+// hello from module
+
+import src.helpers.greeter.{greet}
+
+@entrypoint
+fn main() {
+  println(greet())
+}
