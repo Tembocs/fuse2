@@ -772,13 +772,13 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W7.1 — CLI & Argument Parsing
 
-- [ ] **W7.1.1** Create `stage2/src/main.fuse`.
-- [ ] **W7.1.2** Implement `@entrypoint fn main()` — read `sys.args()`, dispatch.
-- [ ] **W7.1.3** Parse arguments: `fusec2 <file> -o <output>` (compile mode).
-- [ ] **W7.1.4** Parse `--check <file>` (type-check only mode).
-- [ ] **W7.1.5** Parse `--help` and `--version`.
-- [ ] **W7.1.6** Validate: input file exists, output directory exists.
-- [ ] **W7.1.7** Test: `fusec2 --help` prints usage.
+- [x] **W7.1.1** Create `stage2/src/main.fuse`.
+- [x] **W7.1.2** Implement `@entrypoint fn main()` — read `sys.args()`, dispatch.
+- [x] **W7.1.3** Parse arguments: `fusec2 <file> -o <output>` (compile mode).
+- [x] **W7.1.4** Parse `--check <file>` (type-check only mode).
+- [x] **W7.1.5** Parse `--help` and `--version`.
+- [x] **W7.1.6** Validate: input file exists, output directory exists.
+- [x] **W7.1.7** Test: `fusec2 --help` prints usage.
 
 ---
 

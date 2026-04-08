@@ -1,0 +1,228 @@
+// main.fuse — CLI entry point for the Stage 2 self-hosted Fuse compiler.
+//
+// Matches Stage 1 (stage1/fusec/src/main.rs) argument parsing.
+// Usage:
+//   fusec2 <file> -o <output>     Compile to native binary
+//   fusec2 --check <file>         Type-check only
+//   fusec2 --help                 Print usage
+//   fusec2 --version              Print version
+
+import stdlib.core.string
+import stdlib.full.sys
+import stdlib.full.os
+import stdlib.full.path
+
+// ---------------------------------------------------------------------------
+// Version
+// ---------------------------------------------------------------------------
+
+val VERSION = "0.1.0"
+
+// ---------------------------------------------------------------------------
+// Compilation mode
+// ---------------------------------------------------------------------------
+
+enum Mode {
+  Help,
+  Version,
+  Check(String),
+  Compile(String, String)
+}
+
+// ---------------------------------------------------------------------------
+// CLI entry point
+// ---------------------------------------------------------------------------
+
+@entrypoint
+fn main() {
+  val allArgs = sys.args()
+  // Skip argv[0] (the executable name).
+  var args: List<String> = []
+  var i = 1
+  while i < allArgs.len() {
+    match allArgs.get(i) {
+      Some(a) => { args = args.concat([a]) },
+      None => {}
+    }
+    i = i + 1
+  }
+
+  val mode = parseArgs(args)
+  match mode {
+    Ok(m) => dispatch(m),
+    Err(msg) => {
+      println(f"error: {msg}")
+      println("Run `fusec2 --help` for usage.")
+      sys.exit(1)
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Argument parsing
+// ---------------------------------------------------------------------------
+
+fn parseArgs(args: List<String>) -> Result<Mode, String> {
+  if args.len() == 0 {
+    return Ok(Mode.Help)
+  }
+
+  match args.get(0) {
+    Some(first) => {
+      if first == "--help" or first == "-h" {
+        return Ok(Mode.Help)
+      }
+      if first == "--version" or first == "-V" {
+        return Ok(Mode.Version)
+      }
+      if first == "--check" {
+        // --check <file>
+        match args.get(1) {
+          Some(file) => return Ok(Mode.Check(file)),
+          None => return Err("--check requires a file argument")
+        }
+      }
+      // Compile mode: <file> -o <output>
+      val inputFile = first
+      val outputPath = parseOutputFlag(args)
+      match outputPath {
+        Some(out) => return Ok(Mode.Compile(inputFile, out)),
+        None => {
+          // Default output: strip .fuse extension, or append .out
+          val defaultOut = defaultOutputPath(inputFile)
+          return Ok(Mode.Compile(inputFile, defaultOut))
+        }
+      }
+    },
+    None => Ok(Mode.Help)
+  }
+}
+
+// Look for -o <path> in the argument list.
+fn parseOutputFlag(args: List<String>) -> Option<String> {
+  var i = 0
+  while i < args.len() {
+    match args.get(i) {
+      Some(arg) => {
+        if arg == "-o" {
+          match args.get(i + 1) {
+            Some(out) => return Some(out),
+            None => {}
+          }
+        }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  None
+}
+
+// Derive default output path from input: "foo.fuse" → "foo" (or "foo.exe" on Windows).
+fn defaultOutputPath(input: String) -> String {
+  val stem = path.stem(input)
+  if sys.platform() == "windows" {
+    f"{stem}.exe"
+  } else {
+    stem
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch
+// ---------------------------------------------------------------------------
+
+fn dispatch(mode: Mode) {
+  match mode {
+    Mode.Help => printUsage(),
+    Mode.Version => println(f"fusec2 {VERSION}"),
+    Mode.Check(file) => runCheck(file),
+    Mode.Compile(file, output) => runCompile(file, output)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Help text
+// ---------------------------------------------------------------------------
+
+fn printUsage() {
+  println("Fuse Compiler — Stage 2 (self-hosted)")
+  println("")
+  println("USAGE:")
+  println("  fusec2 <file> [-o <output>]    Compile to native binary")
+  println("  fusec2 --check <file>          Type-check only")
+  println("  fusec2 --help                  Print this help")
+  println("  fusec2 --version               Print version")
+  println("")
+  println("OPTIONS:")
+  println("  -o <path>     Output binary path (default: input stem)")
+  println("  --check       Run lexer, parser, and checker only")
+  println("  --help, -h    Show help")
+  println("  --version, -V Show version")
+}
+
+// ---------------------------------------------------------------------------
+// Validation
+// ---------------------------------------------------------------------------
+
+fn validateInputFile(file: String) -> Result<String, String> {
+  if os.isFile(file) == false {
+    return Err(f"input file not found: {file}")
+  }
+  Ok(file)
+}
+
+fn validateOutputDir(output: String) -> Result<String, String> {
+  val dir = match path.parent(output) {
+    Some(d) => d,
+    None => "."
+  }
+  if dir != "." and dir != "" {
+    if os.isDir(dir) == false {
+      return Err(f"output directory does not exist: {dir}")
+    }
+  }
+  Ok(output)
+}
+
+// ---------------------------------------------------------------------------
+// Check mode — lex, parse, report errors
+// ---------------------------------------------------------------------------
+
+fn runCheck(file: String) {
+  match validateInputFile(file) {
+    Err(msg) => {
+      println(f"error: {msg}")
+      sys.exit(1)
+    },
+    Ok(_) => {}
+  }
+  // Lex + parse (checker integration comes in W7.2).
+  println(f"checking {file}...")
+  // Placeholder: actual pipeline integration in W7.2.
+  println("check: ok")
+}
+
+// ---------------------------------------------------------------------------
+// Compile mode — full pipeline (placeholder for W7.2)
+// ---------------------------------------------------------------------------
+
+fn runCompile(file: String, output: String) {
+  match validateInputFile(file) {
+    Err(msg) => {
+      println(f"error: {msg}")
+      sys.exit(1)
+    },
+    Ok(_) => {}
+  }
+  match validateOutputDir(output) {
+    Err(msg) => {
+      println(f"error: {msg}")
+      sys.exit(1)
+    },
+    Ok(_) => {}
+  }
+  // Full pipeline: lex → parse → check → codegen → link (W7.2/W7.3).
+  println(f"compiling {file} → {output}...")
+  println("compile: not yet implemented (see W7.2)")
+}
