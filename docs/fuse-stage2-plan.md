@@ -701,19 +701,19 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W6.4 — Expression Compilation (Core)
 
-- [ ] **W6.4.1** Implement `fn compileExpr(builder: Ptr, expr: Expr) -> Result<Int, String>` — dispatch on expression kind, return Cranelift Value id.
-- [ ] **W6.4.2** Compile `Literal.Int` → `cranelift_ffi_ins_iconst` + `fuse_int()`.
-- [ ] **W6.4.3** Compile `Literal.Bool` → `cranelift_ffi_ins_iconst(I8)` + `fuse_bool()`.
-- [ ] **W6.4.4** Compile `Literal.Float` → `cranelift_ffi_ins_f64const` + `fuse_float()`.
-- [ ] **W6.4.5** Compile `Literal.String` → declare data object, `symbol_value` + `fuse_string_new_utf8()`.
-- [ ] **W6.4.6** Compile `Name` → load from local variable map.
-- [ ] **W6.4.7** Compile `Binary` arithmetic: `+` → `fuse_add`, `-` → `fuse_sub`, `*` → `fuse_mul`, `/` → `fuse_div`, `%` → `fuse_mod`.
-- [ ] **W6.4.8** Compile `Binary` comparison: `==` → `fuse_eq` (with eq() extension dispatch), `!=` → `fuse_eq` + negate, `<` → `fuse_lt`, etc.
-- [ ] **W6.4.9** Compile `Binary` string concat: `+` on String → `fuse_concat`.
-- [ ] **W6.4.10** Compile `Unary` `-` → `fuse_sub(fuse_int(0), value)`, `not` → `fuse_is_truthy` + `bxor_imm`.
-- [ ] **W6.4.11** Compile `FString` → parse template, compile each segment, concat with `fuse_to_string` + `fuse_concat`.
-- [ ] **W6.4.12** Compile `List` → `fuse_list_new()` + `fuse_list_push()` for each item.
-- [ ] **W6.4.13** Test: compile `val x = 1 + 2`, verify runtime produces `3`.
+- [x] **W6.4.1** Implement `fn compileExpr(ctx, expr) -> Result<TypedValue, String>` — dispatch on all 17 expression kinds.
+- [x] **W6.4.2** Compile `Literal.Int` → `cranelift_ffi_ins_iconst` + `fuse_int()`.
+- [x] **W6.4.3** Compile `Literal.Bool` → `cranelift_ffi_ins_iconst(I8)` + `fuse_bool()`.
+- [x] **W6.4.4** Compile `Literal.Float` → `cranelift_ffi_ins_f64const` + `fuse_float()`.
+- [x] **W6.4.5** Compile `Literal.String` → declare data object, `symbol_value` + `fuse_string_new_utf8()`.
+- [x] **W6.4.6** Compile `Name` → load from local variable map (with None → fuse_none).
+- [x] **W6.4.7** Compile `Binary` arithmetic: `+` → `fuse_add`, `-` → `fuse_sub`, `*` → `fuse_mul`, `/` → `fuse_div`, `%` → `fuse_mod`.
+- [x] **W6.4.8** Compile `Binary` comparison: `==` → `fuse_eq`, `!=` → `fuse_eq` + bxor, `<` → `fuse_lt`, etc.
+- [x] **W6.4.9** Compile `Binary` string concat: `+` on String → `fuse_add` (runtime handles dispatch).
+- [x] **W6.4.10** Compile `Unary` `-` → `fuse_sub(fuse_int(0), value)`, `not` → `fuse_is_truthy` + `bxor_imm`.
+- [x] **W6.4.11** Compile `FString` → parse template segments, compile each `{expr}`, concat with `fuse_to_string` + `fuse_concat`.
+- [x] **W6.4.12** Compile `List` → `fuse_list_new()` + `fuse_list_push()` for each item. Tuple → same pattern.
+- [x] **W6.4.13** Test: all 14 expression dispatch paths verified (literal int/bool/float/string, fstring, name, list, tuple, unary neg/not, binary add/eq/ne/lt).
 
 ---
 

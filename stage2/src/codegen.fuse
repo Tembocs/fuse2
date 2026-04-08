@@ -400,3 +400,429 @@ pub fn loadModuleRecursive(filePath: String, cache: List<CachedLoad>) -> Result<
 
   Ok(newCache)
 }
+
+// ===========================================================================
+// Expression Compilation (W6.4)
+// ===========================================================================
+//
+// Compiler state passed to all compile functions. The builder, module, and
+// declared function IDs are stored as opaque Int handles (cranelift-ffi
+// pointers). Locals map variable names to Cranelift Variable indices.
+
+import runtime
+
+pub data class LocalBinding(val name: String, val varIdx: Int, val typeName: Option<String>)
+
+pub data class CompileCtx(
+  var ffiModule: Int,
+  var builder: Int,
+  var locals: List<LocalBinding>,
+  var nextVar: Int,
+  var declaredFns: List<DeclaredFn>,
+  var userFnIds: List<DeclaredFn>,
+  var modulePath: String,
+  var stringCount: Int,
+  var loadedModules: List<CachedLoad>
+)
+
+fn findLocal(ctx: CompileCtx, name: String) -> Option<LocalBinding> {
+  var i = ctx.locals.len() - 1
+  while i >= 0 {
+    match ctx.locals.get(i) {
+      Some(lb) => { if lb.name == name { return Some(lb) } },
+      None => {}
+    }
+    i = i - 1
+  }
+  None
+}
+
+fn runtimeFuncId(ctx: CompileCtx, name: String) -> Int {
+  match runtime.findDeclaredFn(ctx.declaredFns, name) {
+    Some(id) => id,
+    _ => 0
+  }
+}
+
+fn userFuncId(ctx: CompileCtx, name: String) -> Int {
+  match runtime.findDeclaredFn(ctx.userFnIds, name) {
+    Some(id) => id,
+    _ => 0
+  }
+}
+
+// ---------------------------------------------------------------------------
+// FFI call helpers — emit a call instruction and extract result
+// ---------------------------------------------------------------------------
+
+// Call a runtime function with args, return the result value.
+fn emitCall(mutref ctx: CompileCtx, funcName: String, args: List<Int>) -> Int {
+  val funcId = runtimeFuncId(ctx, funcName)
+  val funcRef = cranelift_ffi_builder_declare_func_in_func(ctx.builder, ctx.ffiModule, funcId)
+  // Build args array (in practice passed via cranelift_ffi_ins_call).
+  // For simplicity, handle 0-4 arg cases.
+  val argCount = args.len()
+  val inst = cranelift_ffi_ins_call_n(ctx.builder, funcRef, args, argCount)
+  // Extract the first result.
+  cranelift_ffi_builder_inst_result(ctx.builder, inst, 0)
+}
+
+// Call with no return (void).
+fn emitCallVoid(mutref ctx: CompileCtx, funcName: String, args: List<Int>) {
+  val funcId = runtimeFuncId(ctx, funcName)
+  val funcRef = cranelift_ffi_builder_declare_func_in_func(ctx.builder, ctx.ffiModule, funcId)
+  val argCount = args.len()
+  cranelift_ffi_ins_call_n(ctx.builder, funcRef, args, argCount)
+}
+
+// ---------------------------------------------------------------------------
+// Core expression compiler
+// ---------------------------------------------------------------------------
+
+pub data class TypedValue(val value: Int, val typeName: Option<String>)
+
+pub fn compileExpr(mutref ctx: CompileCtx, expr: Expr) -> Result<TypedValue, String> {
+  match expr {
+    Expr.Literal(lit) => compileLiteral(mutref ctx, lit),
+    Expr.FString(fs) => compileFString(mutref ctx, fs.template),
+    Expr.Name(nameExpr) => compileName(mutref ctx, nameExpr.value),
+    Expr.List(listExpr) => compileList(mutref ctx, listExpr),
+    Expr.Tuple(tupleExpr) => compileTuple(mutref ctx, tupleExpr),
+    Expr.Unary(unary) => compileUnary(mutref ctx, unary),
+    Expr.Binary(binary) => compileBinary(mutref ctx, binary),
+    Expr.Call(call) => compileCall(mutref ctx, call),
+    Expr.Member(member) => compileMember(mutref ctx, member),
+    Expr.Move(mv) => compileExpr(mutref ctx, mv.value),
+    Expr.Ref(rf) => compileExpr(mutref ctx, rf.value),
+    Expr.MutRef(mr) => compileExpr(mutref ctx, mr.value),
+    Expr.Question(q) => compileQuestion(mutref ctx, q),
+    Expr.If(ifE) => compileIf(mutref ctx, ifE),
+    Expr.Match(matchE) => compileMatch(mutref ctx, matchE),
+    Expr.When(whenE) => compileWhen(mutref ctx, whenE),
+    Expr.Lambda(_) => {
+      // Lambda compilation deferred — return unit for now.
+      Ok(TypedValue(emitCall(mutref ctx, "fuse_unit", []), Some("Unit")))
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Literal compilation
+// ---------------------------------------------------------------------------
+
+fn compileLiteral(mutref ctx: CompileCtx, lit: LiteralExpr) -> Result<TypedValue, String> {
+  match lit.value {
+    LiteralValue.Int(n) => {
+      val raw = cranelift_ffi_ins_iconst(ctx.builder, 2, n, ctx.ffiModule)
+      val boxed = emitCall(mutref ctx, "fuse_int", [raw])
+      Ok(TypedValue(boxed, Some("Int")))
+    },
+    LiteralValue.Bool(b) => {
+      val raw = cranelift_ffi_ins_iconst(ctx.builder, 0, if b { 1 } else { 0 }, ctx.ffiModule)
+      val boxed = emitCall(mutref ctx, "fuse_bool", [raw])
+      Ok(TypedValue(boxed, Some("Bool")))
+    },
+    LiteralValue.Float(f) => {
+      val raw = cranelift_ffi_ins_f64const(ctx.builder, f)
+      val boxed = emitCall(mutref ctx, "fuse_float", [raw])
+      Ok(TypedValue(boxed, Some("Float")))
+    },
+    LiteralValue.String(s) => {
+      val sv = compileStringValue(mutref ctx, s)?
+      Ok(TypedValue(sv, Some("String")))
+    }
+  }
+}
+
+fn compileStringValue(mutref ctx: CompileCtx, s: String) -> Result<Int, String> {
+  // Declare a data object for the string bytes.
+  val symName = layout.stringDataSymbol(ctx.modulePath, ctx.stringCount)
+  ctx.stringCount = ctx.stringCount + 1
+  val dataId = cranelift_ffi_module_declare_data(ctx.ffiModule, symName, symName.len(), 0)
+  cranelift_ffi_module_define_data(ctx.ffiModule, dataId, s, s.len())
+  // Load address via symbol_value, then call fuse_string_new_utf8(ptr, len).
+  val ptr = cranelift_ffi_ins_symbol_value(ctx.builder, ctx.ffiModule, dataId, 4)
+  val len = cranelift_ffi_ins_iconst(ctx.builder, 2, s.len(), ctx.ffiModule)
+  val result = emitCall(mutref ctx, "fuse_string_new_utf8", [ptr, len])
+  Ok(result)
+}
+
+// ---------------------------------------------------------------------------
+// Name compilation — load from locals or handle special names
+// ---------------------------------------------------------------------------
+
+fn compileName(mutref ctx: CompileCtx, name: String) -> Result<TypedValue, String> {
+  if name == "None" {
+    val v = emitCall(mutref ctx, "fuse_none", [])
+    return Ok(TypedValue(v, Some("Option")))
+  }
+  val binding = findLocal(ctx, name)
+  match binding {
+    Some(lb) => {
+      val v = cranelift_ffi_builder_use_var(ctx.builder, lb.varIdx)
+      Ok(TypedValue(v, lb.typeName))
+    },
+    _ => Err(f"unknown binding `{name}`")
+  }
+}
+
+// ---------------------------------------------------------------------------
+// List compilation — fuse_list_new + fuse_list_push for each item
+// ---------------------------------------------------------------------------
+
+fn compileList(mutref ctx: CompileCtx, listExpr: ListExpr) -> Result<TypedValue, String> {
+  val handle = emitCall(mutref ctx, "fuse_list_new", [])
+  var i = 0
+  while i < listExpr.items.len() {
+    match listExpr.items.get(i) {
+      Some(item) => {
+        val itemVal = compileExpr(mutref ctx, item)?
+        emitCallVoid(mutref ctx, "fuse_list_push", [handle, itemVal.value])
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  Ok(TypedValue(handle, Some("List")))
+}
+
+// Tuple → list internally (same as Stage 1)
+fn compileTuple(mutref ctx: CompileCtx, tupleExpr: TupleExpr) -> Result<TypedValue, String> {
+  val handle = emitCall(mutref ctx, "fuse_list_new", [])
+  var i = 0
+  while i < tupleExpr.items.len() {
+    match tupleExpr.items.get(i) {
+      Some(item) => {
+        val itemVal = compileExpr(mutref ctx, item)?
+        emitCallVoid(mutref ctx, "fuse_list_push", [handle, itemVal.value])
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  Ok(TypedValue(handle, Some("Tuple")))
+}
+
+// ---------------------------------------------------------------------------
+// Unary compilation
+// ---------------------------------------------------------------------------
+
+fn compileUnary(mutref ctx: CompileCtx, unary: UnaryOp) -> Result<TypedValue, String> {
+  if unary.op == "-" {
+    val inner = compileExpr(mutref ctx, unary.value)?
+    val rawZero = cranelift_ffi_ins_iconst(ctx.builder, 2, 0, ctx.ffiModule)
+    val zero = emitCall(mutref ctx, "fuse_int", [rawZero])
+    val result = emitCall(mutref ctx, "fuse_sub", [zero, inner.value])
+    return Ok(TypedValue(result, inner.typeName))
+  }
+  if unary.op == "not" {
+    val inner = compileExpr(mutref ctx, unary.value)?
+    val truthy = emitCall(mutref ctx, "fuse_is_truthy", [inner.value])
+    val inverted = cranelift_ffi_ins_bxor_imm(ctx.builder, truthy, 1)
+    val result = emitCall(mutref ctx, "fuse_bool", [inverted])
+    return Ok(TypedValue(result, Some("Bool")))
+  }
+  Err(f"unsupported unary operator `{unary.op}`")
+}
+
+// ---------------------------------------------------------------------------
+// Binary compilation
+// ---------------------------------------------------------------------------
+
+fn compileBinary(mutref ctx: CompileCtx, binary: BinaryOp) -> Result<TypedValue, String> {
+  // Short-circuit and/or handled in W6.5 (control flow).
+  // Elvis ?: handled in W6.5 (control flow).
+  // For now, compile basic arithmetic and comparison.
+  val left = compileExpr(mutref ctx, binary.left)?
+  val right = compileExpr(mutref ctx, binary.right)?
+
+  // Determine runtime function based on operator.
+  if binary.op == "+" {
+    val result = emitCall(mutref ctx, "fuse_add", [left.value, right.value])
+    val ty = if left.typeName == Some("String") or right.typeName == Some("String") { Some("String") } else { left.typeName }
+    return Ok(TypedValue(result, ty))
+  }
+  if binary.op == "-" {
+    val result = emitCall(mutref ctx, "fuse_sub", [left.value, right.value])
+    return Ok(TypedValue(result, left.typeName))
+  }
+  if binary.op == "*" {
+    val result = emitCall(mutref ctx, "fuse_mul", [left.value, right.value])
+    return Ok(TypedValue(result, left.typeName))
+  }
+  if binary.op == "/" {
+    val result = emitCall(mutref ctx, "fuse_div", [left.value, right.value])
+    return Ok(TypedValue(result, left.typeName))
+  }
+  if binary.op == "%" {
+    val result = emitCall(mutref ctx, "fuse_mod", [left.value, right.value])
+    return Ok(TypedValue(result, left.typeName))
+  }
+  if binary.op == "==" {
+    val result = emitCall(mutref ctx, "fuse_eq", [left.value, right.value])
+    return Ok(TypedValue(result, Some("Bool")))
+  }
+  if binary.op == "!=" {
+    val eqVal = emitCall(mutref ctx, "fuse_eq", [left.value, right.value])
+    val truthy = emitCall(mutref ctx, "fuse_is_truthy", [eqVal])
+    val inverted = cranelift_ffi_ins_bxor_imm(ctx.builder, truthy, 1)
+    val result = emitCall(mutref ctx, "fuse_bool", [inverted])
+    return Ok(TypedValue(result, Some("Bool")))
+  }
+  if binary.op == "<" {
+    val result = emitCall(mutref ctx, "fuse_lt", [left.value, right.value])
+    return Ok(TypedValue(result, Some("Bool")))
+  }
+  if binary.op == "<=" {
+    val result = emitCall(mutref ctx, "fuse_le", [left.value, right.value])
+    return Ok(TypedValue(result, Some("Bool")))
+  }
+  if binary.op == ">" {
+    val result = emitCall(mutref ctx, "fuse_gt", [left.value, right.value])
+    return Ok(TypedValue(result, Some("Bool")))
+  }
+  if binary.op == ">=" {
+    val result = emitCall(mutref ctx, "fuse_ge", [left.value, right.value])
+    return Ok(TypedValue(result, Some("Bool")))
+  }
+  // and/or/?:  — stubs for now, full SSA control flow in W6.5
+  if binary.op == "and" or binary.op == "or" or binary.op == "?:" {
+    val result = emitCall(mutref ctx, "fuse_unit", [])
+    return Ok(TypedValue(result, Some("Bool")))
+  }
+  Err(f"unsupported binary operator `{binary.op}`")
+}
+
+// ---------------------------------------------------------------------------
+// F-string compilation — parse template segments, concat with to_string
+// ---------------------------------------------------------------------------
+
+fn compileFString(mutref ctx: CompileCtx, template: String) -> Result<TypedValue, String> {
+  var current = compileStringValue(mutref ctx, "")?
+  var rest = template
+  while true {
+    val braceIdx = rest.indexOf("{")
+    match braceIdx {
+      Some(startIdx) => {
+        // Literal segment before {
+        if startIdx > 0 {
+          val piece = fuse_rt_string_slice(rest, 0, startIdx)
+          val pieceVal = compileStringValue(mutref ctx, piece)?
+          current = emitCall(mutref ctx, "fuse_concat", [current, pieceVal])
+        }
+        // Find matching }
+        val afterBrace = fuse_rt_string_slice(rest, startIdx + 1, rest.len())
+        val endIdx = fstringBraceEnd(afterBrace)
+        match endIdx {
+          Some(end) => {
+            val exprText = fuse_rt_string_slice(afterBrace, 0, end)
+            // Parse the expression.
+            val wrapSrc = f"fn __fstr__() => {exprText}"
+            val toks = lexer.lex(wrapSrc, "<fstring>")
+            match toks {
+              Ok(ts) => {
+                val prog = parser.parse(ts, "<fstring>")
+                match prog {
+                  Ok(p) => {
+                    match p.declarations.get(0) {
+                      Some(d) => {
+                        match d {
+                          Declaration.Function(fd) => {
+                            match fd.body.statements.get(0) {
+                              Some(stmt) => {
+                                match stmt {
+                                  Statement.Expr(es) => {
+                                    val exprVal = compileExpr(mutref ctx, es.expr)?
+                                    val rendered = emitCall(mutref ctx, "fuse_to_string", [exprVal.value])
+                                    current = emitCall(mutref ctx, "fuse_concat", [current, rendered])
+                                  },
+                                  _ => {}
+                                }
+                              },
+                              None => {}
+                            }
+                          },
+                          _ => {}
+                        }
+                      },
+                      None => {}
+                    }
+                  },
+                  Err(_) => {}
+                }
+              },
+              Err(_) => {}
+            }
+            rest = fuse_rt_string_slice(afterBrace, end + 1, afterBrace.len())
+          },
+          None => { break }
+        }
+      },
+      None => { break }
+    }
+  }
+  // Trailing literal.
+  if rest.len() > 0 {
+    val piece = compileStringValue(mutref ctx, rest)?
+    current = emitCall(mutref ctx, "fuse_concat", [current, piece])
+  }
+  Ok(TypedValue(current, Some("String")))
+}
+
+fn fstringBraceEnd(s: String) -> Option<Int> {
+  var depth = 0
+  var i = 0
+  while i < s.len() {
+    val ch = s.byteAt(i)
+    if ch == 123 { depth = depth + 1 }
+    if ch == 125 {
+      if depth == 0 { return Some(i) }
+      depth = depth - 1
+    }
+    i = i + 1
+  }
+  None
+}
+
+// ---------------------------------------------------------------------------
+// Stubs for W6.5 — control flow and calls (will be filled next phase)
+// ---------------------------------------------------------------------------
+
+fn compileCall(mutref ctx: CompileCtx, call: CallExpr) -> Result<TypedValue, String> {
+  Ok(TypedValue(emitCall(mutref ctx, "fuse_unit", []), None))
+}
+
+fn compileMember(mutref ctx: CompileCtx, member: MemberExpr) -> Result<TypedValue, String> {
+  Ok(TypedValue(emitCall(mutref ctx, "fuse_unit", []), None))
+}
+
+fn compileQuestion(mutref ctx: CompileCtx, q: QuestionExpr) -> Result<TypedValue, String> {
+  Ok(TypedValue(emitCall(mutref ctx, "fuse_unit", []), None))
+}
+
+fn compileIf(mutref ctx: CompileCtx, ifE: IfExpr) -> Result<TypedValue, String> {
+  Ok(TypedValue(emitCall(mutref ctx, "fuse_unit", []), None))
+}
+
+fn compileMatch(mutref ctx: CompileCtx, matchE: MatchExpr) -> Result<TypedValue, String> {
+  Ok(TypedValue(emitCall(mutref ctx, "fuse_unit", []), None))
+}
+
+fn compileWhen(mutref ctx: CompileCtx, whenE: WhenExpr) -> Result<TypedValue, String> {
+  Ok(TypedValue(emitCall(mutref ctx, "fuse_unit", []), None))
+}
+
+// ---------------------------------------------------------------------------
+// Cranelift FFI extern declarations for expression compilation
+// ---------------------------------------------------------------------------
+
+extern fn cranelift_ffi_ins_iconst(builder: Int, typeId: Int, value: Int, ffiModule: Int) -> Int
+extern fn cranelift_ffi_ins_f64const(builder: Int, value: Float) -> Int
+extern fn cranelift_ffi_ins_bxor_imm(builder: Int, value: Int, imm: Int) -> Int
+extern fn cranelift_ffi_ins_call_n(builder: Int, funcRef: Int, args: List<Int>, argCount: Int) -> Int
+extern fn cranelift_ffi_builder_declare_func_in_func(builder: Int, ffiModule: Int, funcId: Int) -> Int
+extern fn cranelift_ffi_builder_inst_result(builder: Int, inst: Int, index: Int) -> Int
+extern fn cranelift_ffi_builder_use_var(builder: Int, varIdx: Int) -> Int
+extern fn cranelift_ffi_module_declare_data(ffiModule: Int, name: String, nameLen: Int, writable: Int) -> Int
+extern fn cranelift_ffi_module_define_data(ffiModule: Int, dataId: Int, bytes: String, byteLen: Int) -> Int
+extern fn cranelift_ffi_ins_symbol_value(builder: Int, ffiModule: Int, dataId: Int, typeId: Int) -> Int

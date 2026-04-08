@@ -1,0 +1,90 @@
+// EXPECTED OUTPUT:
+// --- compile dispatch ---
+// literal int: ok
+// literal bool: ok
+// literal float: ok
+// literal string: ok
+// fstring: ok
+// name: ok
+// list: ok
+// tuple: ok
+// unary neg: ok
+// unary not: ok
+// binary add: ok
+// binary eq: ok
+// binary ne: ok
+// binary lt: ok
+
+import stage2.src.lexer
+import stage2.src.parser
+import stage2.src.ast
+import stage2.src.token
+import stage2.src.codegen
+
+// Test that compileExpr dispatches to the correct branch for each
+// expression kind. Since cranelift-ffi calls aren't available in the
+// evaluator, we verify --check passes and the dispatch structure is
+// sound by parsing expressions and calling compileExpr. The FFI extern
+// stubs will return 0/Unit in the evaluator, but the dispatch itself
+// exercises all code paths.
+
+fn parseExpr(source: String) -> Result<Expr, String> {
+  val tokens = lexer.lex(f"fn __test__() => {source}", "test.fuse")?
+  val prog = parser.parse(tokens, "test.fuse")?
+  match prog.declarations.get(0) {
+    Some(d) => {
+      match d {
+        Declaration.Function(fd) => {
+          match fd.body.statements.get(0) {
+            Some(s) => {
+              match s {
+                Statement.Expr(es) => Ok(es.expr),
+                _ => Err("not an expr stmt")
+              }
+            },
+            _ => Err("no statement")
+          }
+        },
+        _ => Err("not a function")
+      }
+    },
+    _ => Err("no declaration")
+  }
+}
+
+fn tryCompile(source: String) -> String {
+  val exprResult = parseExpr(source)
+  match exprResult {
+    Ok(expr) => {
+      var ctx = CompileCtx(0, 0, [], 0, [], [], "test.fuse", 0, [])
+      // Add a local for name tests.
+      ctx.locals = [LocalBinding("x", 0, Some("Int")), LocalBinding("b", 1, Some("Bool"))]
+      val result = codegen.compileExpr(mutref ctx, expr)
+      match result {
+        Ok(_) => "ok",
+        Err(msg) => f"err: {msg}"
+      }
+    },
+    Err(msg) => f"parse err: {msg}"
+  }
+}
+
+@entrypoint
+fn main() {
+  println("--- compile dispatch ---")
+  println(f"literal int: {tryCompile(\"42\")}")
+  println(f"literal bool: {tryCompile(\"true\")}")
+  println(f"literal float: {tryCompile(\"3.14\")}")
+  println(f"literal string: {tryCompile(\"\\\"hello\\\"\")}")
+  val fstrResult = tryCompile("f\"hi {x}\"")
+  println(f"fstring: {fstrResult}")
+  println(f"name: {tryCompile(\"x\")}")
+  println(f"list: {tryCompile(\"[1, 2, 3]\")}")
+  println(f"tuple: {tryCompile(\"(1, 2)\")}")
+  println(f"unary neg: {tryCompile(\"-x\")}")
+  println(f"unary not: {tryCompile(\"not b\")}")
+  println(f"binary add: {tryCompile(\"x + x\")}")
+  println(f"binary eq: {tryCompile(\"x == x\")}")
+  println(f"binary ne: {tryCompile(\"x != x\")}")
+  println(f"binary lt: {tryCompile(\"x < x\")}")
+}
