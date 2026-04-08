@@ -685,17 +685,17 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W6.3 — Runtime Function Declaration
 
-- [ ] **W6.3.1** Declare all ~103 runtime functions via `cranelift_ffi_module_declare_function()`.
-- [ ] **W6.3.2** Store function IDs in `var runtimeFns: Map<String, Int>`.
-- [ ] **W6.3.3** Declare core runtime: `fuse_unit`, `fuse_int`, `fuse_float`, `fuse_bool`, `fuse_string_new_utf8`, `fuse_to_string`, `fuse_concat`.
-- [ ] **W6.3.4** Declare arithmetic: `fuse_add`, `fuse_sub`, `fuse_mul`, `fuse_div`, `fuse_mod`.
-- [ ] **W6.3.5** Declare comparison: `fuse_eq`, `fuse_lt`, `fuse_le`, `fuse_gt`, `fuse_ge`, `fuse_is_truthy`, `fuse_extract_int`.
-- [ ] **W6.3.6** Declare collections: `fuse_list_new`, `fuse_list_push`, `fuse_list_get`, `fuse_list_len`, `fuse_map_new`, `fuse_map_set`, `fuse_map_get`.
-- [ ] **W6.3.7** Declare Option/Result: `fuse_none`, `fuse_some`, `fuse_ok`, `fuse_err`, `fuse_option_is_some`, `fuse_option_unwrap`, `fuse_result_is_ok`, `fuse_result_unwrap`.
-- [ ] **W6.3.8** Declare data/enum: `fuse_data_new`, `fuse_data_set_field`, `fuse_data_get_field`, `fuse_enum_new`, `fuse_enum_tag`, `fuse_enum_payload`.
-- [ ] **W6.3.9** Declare memory: `fuse_release`, `fuse_asap_release`, `fuse_println`.
-- [ ] **W6.3.10** Declare all user functions (two-pass: declare first, compile second).
-- [ ] **W6.3.11** Test: all runtime functions declared without error.
+- [x] **W6.3.1** Declare all 158 runtime functions via `RuntimeRegistry` with `declareAllRuntime()` calling `cranelift_ffi_module_declare_function()`.
+- [x] **W6.3.2** Store function IDs in `List<DeclaredFn>` with `findDeclaredFn` lookup.
+- [x] **W6.3.3** Declare core runtime: `fuse_unit`, `fuse_int`, `fuse_float`, `fuse_bool`, `fuse_string_new_utf8`, `fuse_to_string`, `fuse_concat`.
+- [x] **W6.3.4** Declare arithmetic: `fuse_add`, `fuse_sub`, `fuse_mul`, `fuse_div`, `fuse_mod`.
+- [x] **W6.3.5** Declare comparison: `fuse_eq`, `fuse_lt`, `fuse_le`, `fuse_gt`, `fuse_ge`, `fuse_is_truthy`, `fuse_extract_int`.
+- [x] **W6.3.6** Declare collections: `fuse_list_new`, `fuse_list_push`, `fuse_list_get`, `fuse_list_len`, `fuse_map_new`, `fuse_map_set`, `fuse_map_get`.
+- [x] **W6.3.7** Declare Option/Result: `fuse_none`, `fuse_some`, `fuse_ok`, `fuse_err`, `fuse_option_is_some`, `fuse_option_unwrap`, `fuse_result_is_ok`, `fuse_result_unwrap`.
+- [x] **W6.3.8** Declare data/enum: `fuse_data_new`, `fuse_data_set_field`, `fuse_data_get_field`, `fuse_enum_new`, `fuse_enum_tag`, `fuse_enum_payload`.
+- [x] **W6.3.9** Declare memory: `fuse_release`, `fuse_asap_release`, `fuse_builtin_println`.
+- [x] **W6.3.10** Declare all user functions (two-pass: declare first, compile second).
+- [x] **W6.3.11** Test: all 158 runtime functions registered with correct param/return counts.
 
 ---
 

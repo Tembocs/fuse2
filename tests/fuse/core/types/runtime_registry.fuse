@@ -1,0 +1,120 @@
+// EXPECTED OUTPUT:
+// --- registry ---
+// total functions: 158
+// --- core ---
+// fuse_unit: true
+// fuse_int: true
+// fuse_float: true
+// fuse_bool: true
+// fuse_string_new_utf8: true
+// fuse_concat: true
+// --- arithmetic ---
+// fuse_add: true
+// fuse_sub: true
+// fuse_mul: true
+// fuse_div: true
+// fuse_mod: true
+// --- comparison ---
+// fuse_eq: true
+// fuse_is_truthy: true
+// fuse_extract_int: true
+// --- collections ---
+// fuse_list_new: true
+// fuse_list_push: true
+// fuse_map_new: true
+// fuse_map_set: true
+// --- option/result ---
+// fuse_none: true
+// fuse_some: true
+// fuse_ok: true
+// fuse_err: true
+// --- data/enum ---
+// fuse_data_new: true
+// fuse_enum_new: true
+// fuse_enum_tag: true
+// --- memory ---
+// fuse_release: true
+// fuse_asap_release: true
+// fuse_builtin_println: true
+// --- sized ints ---
+// fuse_rt_i8_new: true
+// fuse_rt_u64_to_string: true
+// --- param counts ---
+// fuse_unit params: 0 returns: 1
+// fuse_add params: 2 returns: 1
+// fuse_builtin_println params: 1 returns: 0
+// fuse_data_new params: 4 returns: 1
+
+import stage2.src.runtime
+
+@entrypoint
+fn main() {
+  val reg = runtime.buildRegistry()
+
+  println("--- registry ---")
+  println(f"total functions: {reg.functions.len()}")
+
+  println("--- core ---")
+  println(f"fuse_unit: {runtime.hasRuntimeFn(reg, \"fuse_unit\")}")
+  println(f"fuse_int: {runtime.hasRuntimeFn(reg, \"fuse_int\")}")
+  println(f"fuse_float: {runtime.hasRuntimeFn(reg, \"fuse_float\")}")
+  println(f"fuse_bool: {runtime.hasRuntimeFn(reg, \"fuse_bool\")}")
+  println(f"fuse_string_new_utf8: {runtime.hasRuntimeFn(reg, \"fuse_string_new_utf8\")}")
+  println(f"fuse_concat: {runtime.hasRuntimeFn(reg, \"fuse_concat\")}")
+
+  println("--- arithmetic ---")
+  println(f"fuse_add: {runtime.hasRuntimeFn(reg, \"fuse_add\")}")
+  println(f"fuse_sub: {runtime.hasRuntimeFn(reg, \"fuse_sub\")}")
+  println(f"fuse_mul: {runtime.hasRuntimeFn(reg, \"fuse_mul\")}")
+  println(f"fuse_div: {runtime.hasRuntimeFn(reg, \"fuse_div\")}")
+  println(f"fuse_mod: {runtime.hasRuntimeFn(reg, \"fuse_mod\")}")
+
+  println("--- comparison ---")
+  println(f"fuse_eq: {runtime.hasRuntimeFn(reg, \"fuse_eq\")}")
+  println(f"fuse_is_truthy: {runtime.hasRuntimeFn(reg, \"fuse_is_truthy\")}")
+  println(f"fuse_extract_int: {runtime.hasRuntimeFn(reg, \"fuse_extract_int\")}")
+
+  println("--- collections ---")
+  println(f"fuse_list_new: {runtime.hasRuntimeFn(reg, \"fuse_list_new\")}")
+  println(f"fuse_list_push: {runtime.hasRuntimeFn(reg, \"fuse_list_push\")}")
+  println(f"fuse_map_new: {runtime.hasRuntimeFn(reg, \"fuse_map_new\")}")
+  println(f"fuse_map_set: {runtime.hasRuntimeFn(reg, \"fuse_map_set\")}")
+
+  println("--- option/result ---")
+  println(f"fuse_none: {runtime.hasRuntimeFn(reg, \"fuse_none\")}")
+  println(f"fuse_some: {runtime.hasRuntimeFn(reg, \"fuse_some\")}")
+  println(f"fuse_ok: {runtime.hasRuntimeFn(reg, \"fuse_ok\")}")
+  println(f"fuse_err: {runtime.hasRuntimeFn(reg, \"fuse_err\")}")
+
+  println("--- data/enum ---")
+  println(f"fuse_data_new: {runtime.hasRuntimeFn(reg, \"fuse_data_new\")}")
+  println(f"fuse_enum_new: {runtime.hasRuntimeFn(reg, \"fuse_enum_new\")}")
+  println(f"fuse_enum_tag: {runtime.hasRuntimeFn(reg, \"fuse_enum_tag\")}")
+
+  println("--- memory ---")
+  println(f"fuse_release: {runtime.hasRuntimeFn(reg, \"fuse_release\")}")
+  println(f"fuse_asap_release: {runtime.hasRuntimeFn(reg, \"fuse_asap_release\")}")
+  println(f"fuse_builtin_println: {runtime.hasRuntimeFn(reg, \"fuse_builtin_println\")}")
+
+  println("--- sized ints ---")
+  println(f"fuse_rt_i8_new: {runtime.hasRuntimeFn(reg, \"fuse_rt_i8_new\")}")
+  println(f"fuse_rt_u64_to_string: {runtime.hasRuntimeFn(reg, \"fuse_rt_u64_to_string\")}")
+
+  println("--- param counts ---")
+  match runtime.findRuntimeFn(reg, "fuse_unit") {
+    Some(f) => println(f"fuse_unit params: {f.paramCount} returns: {f.returnCount}"),
+    _ => println("not found")
+  }
+  match runtime.findRuntimeFn(reg, "fuse_add") {
+    Some(f) => println(f"fuse_add params: {f.paramCount} returns: {f.returnCount}"),
+    _ => println("not found")
+  }
+  match runtime.findRuntimeFn(reg, "fuse_builtin_println") {
+    Some(f) => println(f"fuse_builtin_println params: {f.paramCount} returns: {f.returnCount}"),
+    _ => println("not found")
+  }
+  match runtime.findRuntimeFn(reg, "fuse_data_new") {
+    Some(f) => println(f"fuse_data_new params: {f.paramCount} returns: {f.returnCount}"),
+    _ => println("not found")
+  }
+}
