@@ -1,0 +1,20 @@
+// EXPECTED OUTPUT:
+// 1
+// 2
+
+struct Counter {
+  var count: Int
+}
+
+fn Counter.increment(mutref self) {
+  self.count = self.count + 1
+}
+
+@entrypoint
+fn main() {
+  var c = Counter(0)
+  c.increment()
+  println(c.count)
+  c.increment()
+  println(c.count)
+}

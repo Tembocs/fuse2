@@ -1,0 +1,10 @@
+// EXPECTED OUTPUT:
+// Point(1, 2)
+
+data class Point(val x: Int, val y: Int)
+
+@entrypoint
+fn main() {
+  val p = Point(1, 2)
+  println(p)
+}

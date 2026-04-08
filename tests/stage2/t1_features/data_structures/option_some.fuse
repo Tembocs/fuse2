@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// Some(42)
+// 42
+
+@entrypoint
+fn main() {
+  val o: Option<Int> = Some(42)
+  println(o)
+  match o {
+    Some(v) => println(v),
+    None => println("none")
+  }
+}

@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// 25
+
+data class Rect(val w: Int, val h: Int)
+
+fn Rect.area(ref self) -> Int => self.w * self.h
+
+@entrypoint
+fn main() {
+  val r = Rect(5, 5)
+  println(r.area())
+}

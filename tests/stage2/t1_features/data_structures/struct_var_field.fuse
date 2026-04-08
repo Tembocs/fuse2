@@ -1,0 +1,15 @@
+// EXPECTED OUTPUT:
+// 10
+// 20
+
+struct Box {
+  var value: Int
+}
+
+@entrypoint
+fn main() {
+  var b = Box(10)
+  println(b.value)
+  b.value = 20
+  println(b.value)
+}

@@ -1,0 +1,18 @@
+// EXPECTED OUTPUT:
+// Red
+
+enum Color {
+  Red,
+  Green,
+  Blue
+}
+
+@entrypoint
+fn main() {
+  val c = Color.Red
+  match c {
+    Color.Red => println("Red"),
+    Color.Green => println("Green"),
+    Color.Blue => println("Blue")
+  }
+}

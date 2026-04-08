@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// Alice
+
+struct Person {
+  val name: String
+}
+
+@entrypoint
+fn main() {
+  val p = Person("Alice")
+  println(p.name)
+}

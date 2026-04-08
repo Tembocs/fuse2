@@ -1,0 +1,29 @@
+// EXPECTED OUTPUT:
+// north
+// south
+// east
+// west
+
+enum Direction {
+  North,
+  South,
+  East,
+  West
+}
+
+fn dirName(d: Direction) -> String {
+  match d {
+    Direction.North => "north",
+    Direction.South => "south",
+    Direction.East => "east",
+    Direction.West => "west"
+  }
+}
+
+@entrypoint
+fn main() {
+  println(dirName(Direction.North))
+  println(dirName(Direction.South))
+  println(dirName(Direction.East))
+  println(dirName(Direction.West))
+}

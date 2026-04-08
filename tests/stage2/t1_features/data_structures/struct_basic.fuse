@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// 0
+
+struct Counter {
+  var count: Int
+}
+
+@entrypoint
+fn main() {
+  val c = Counter(0)
+  println(c.count)
+}
