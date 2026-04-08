@@ -1,5 +1,7 @@
 // EXPECTED OUTPUT:
-// [h, e, l, l, o]
+// h
+// e
+// l
 
 import stdlib.core.string
 
@@ -7,5 +9,16 @@ import stdlib.core.string
 fn main() {
   val s = "hello"
   val chars = s.chars()
-  println(chars)
+  match chars.get(0) {
+    Some(c) => println(c),
+    None => {}
+  }
+  match chars.get(1) {
+    Some(c) => println(c),
+    None => {}
+  }
+  match chars.get(2) {
+    Some(c) => println(c),
+    None => {}
+  }
 }

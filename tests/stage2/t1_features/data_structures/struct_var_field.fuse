@@ -6,15 +6,10 @@ struct Box {
   var value: Int
 }
 
-fn Box.getValue(ref self) -> Int => self.value
-fn Box.setValue(mutref self, v: Int) {
-  self.value = v
-}
-
 @entrypoint
 fn main() {
   var b = Box(10)
-  println(b.getValue())
-  b.setValue(20)
-  println(b.getValue())
+  println(b.value)
+  b.value = 20
+  println(b.value)
 }

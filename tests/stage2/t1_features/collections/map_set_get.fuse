@@ -1,12 +1,14 @@
 // EXPECTED OUTPUT:
-// alice
-// 42
+// Some(1)
+// Some(2)
+
+import stdlib.core.map
 
 @entrypoint
 fn main() {
-  var m = Map::<String, String>.new()
-  m.set("name", "alice")
-  m.set("age", "42")
-  println(m.get("name"))
-  println(m.get("age"))
+  var m = Map::<String, Int>.new()
+  m.set("a", 1)
+  m.set("b", 2)
+  println(m.get("a"))
+  println(m.get("b"))
 }

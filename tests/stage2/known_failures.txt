@@ -1,0 +1,75 @@
+# Stage 2 Known Failures
+#
+# Each line maps a test fixture to the bug that causes it to fail.
+# Format:  <fixture-path>  # <bug-id>: <short description>
+#
+# The test runner loads this file and treats listed tests as "expected
+# failures".  A known failure that PASSES is flagged (the bug may be
+# fixed — remove the line).  A known failure that FAILS is reported
+# separately from real failures, so it doesn't block the suite.
+#
+# When you fix a bug, delete its lines here.  The test will move from
+# "known fail" to "pass" automatically.
+
+# --- L002: continue in for-loop causes infinite loop ---
+t1_features/control_flow/for_continue.fuse  # L002: for-loop continue hangs
+
+# --- L003: loop with return needs trailing expr for checker ---
+t1_features/control_flow/loop_return.fuse  # L003: loop return type mismatch
+
+# --- L004: struct fields are private ---
+t1_features/data_structures/struct_basic.fuse  # L004: struct field access private
+t1_features/data_structures/struct_methods.fuse  # L004: struct field access private
+t1_features/data_structures/struct_val_field.fuse  # L004: struct field access private
+t1_features/data_structures/struct_var_field.fuse  # L004: struct field access private
+
+# --- L005: enum multi-payload destructuring limited ---
+t1_features/data_structures/enum_data_variants.fuse  # L005: multi-payload destructuring
+
+# --- L006: import stdlib.core.map causes codegen errors ---
+t1_features/collections/map_new.fuse  # L006: stdlib map codegen error
+t1_features/collections/map_set_get.fuse  # L006: stdlib map codegen error
+t1_features/collections/map_contains.fuse  # L006: stdlib map codegen error
+t1_features/collections/map_remove.fuse  # L006: stdlib map codegen error
+t1_features/collections/map_keys_values.fuse  # L006: stdlib map codegen error
+t1_features/collections/map_len_empty.fuse  # L006: stdlib map codegen error
+t1_features/collections/map_overwrite.fuse  # L006: stdlib map codegen error
+t1_features/collections/map_get_missing.fuse  # L006: stdlib map codegen error
+
+# --- L007: lambda/closure compilation crashes ---
+t1_features/collections/list_map.fuse  # L007: lambda codegen crash
+t1_features/collections/list_filter.fuse  # L007: lambda codegen crash
+t1_features/collections/list_sorted.fuse  # L007: lambda codegen crash (sorted uses stdlib)
+
+# --- L008: generic type params not supported on struct ---
+t1_features/generics/generic_struct.fuse  # L008: generic struct not parsed
+
+# --- L009: implements Interface<T> not parsed ---
+t1_features/interfaces/generic_interface.fuse  # L009: generic implements syntax
+
+# --- L010: Comparable operator codegen error ---
+t1_features/interfaces/comparable.fuse  # L010: < > on Comparable produces bad IR
+
+# --- L011: .get() on empty collections crashes ---
+t1_features/generics/type_inference.fuse  # L011: List.get on wrapped list crashes
+t1_features/generics/generic_return.fuse  # L011: generic return with get crashes
+
+# --- L012: Int.toFloat() missing ---
+t1_features/operators/mixed_int_float.fuse  # L012: Int.toFloat not available
+
+# --- L015: .hash() not available on data class ---
+t1_features/interfaces/hashable.fuse  # L015: hash() extension missing
+
+# --- L016: Optional chaining into method call ---
+t1_features/operators/optional_chain.fuse  # L016: ?.field?.method() chain fails
+t1_features/strings/charat.fuse  # L011: match on Option<String> from get()
+
+# --- L018: generic enum not supported ---
+t1_features/generics/generic_enum.fuse  # L018: enum<T> not parsed
+
+# --- L019: bounded generic params not supported ---
+t1_features/generics/bounded_single.fuse  # L019: <T: Printable> not parsed
+t1_features/generics/bounded_multiple.fuse  # L019: <T: Equatable> not parsed
+
+# --- L020: explicit type args / generic push ---
+t1_features/generics/explicit_type_args.fuse  # L020: generic list push codegen

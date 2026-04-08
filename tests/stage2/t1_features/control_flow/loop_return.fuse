@@ -7,9 +7,6 @@ fn findThree() -> Int {
     if i == 3 { return i }
     i = i + 1
   }
-  // Unreachable — loop always returns above, but checker requires
-  // a trailing expression matching the return type (see learning.md).
-  0
 }
 
 @entrypoint

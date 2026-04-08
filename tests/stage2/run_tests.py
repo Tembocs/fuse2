@@ -39,6 +39,7 @@ STAGE1_TESTS = REPO_ROOT / "tests" / "fuse"
 
 DEFAULT_COMPILER = REPO_ROOT / "stage1" / "target" / "release" / "fusec"
 STAGE1_COMPILER = DEFAULT_COMPILER  # for parity mode
+KNOWN_FAILURES_FILE = STAGE2_TESTS / "known_failures.txt"
 
 # ---------------------------------------------------------------------------
 # Fixture parsing
@@ -186,18 +187,74 @@ def discover_fixtures(root: Path, filter_pattern: str = None):
         fixtures = [f for f in fixtures if filter_pattern in f.as_posix()]
     return fixtures
 
+
+def load_known_failures(path: Path):
+    """Load known_failures.txt → dict of {fixture_posix_path: bug_id}."""
+    known = {}
+    if not path.exists():
+        return known
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        # Format: fixture_path  # bug_id: description
+        if "#" in line:
+            fixture_part, comment = line.split("#", 1)
+            fixture_part = fixture_part.strip()
+            bug_id = comment.strip()
+        else:
+            fixture_part = line
+            bug_id = "unknown"
+        if fixture_part:
+            known[fixture_part] = bug_id
+    return known
+
 # ---------------------------------------------------------------------------
 # Main runner
 # ---------------------------------------------------------------------------
 
-def run_suite(compiler: Path, fixtures: list, parallel: int = 1):
+def run_suite(compiler: Path, fixtures: list, parallel: int = 1,
+              known_failures: dict = None):
     """Run all fixtures and print results. Returns exit code."""
+    if known_failures is None:
+        known_failures = {}
+
     passed = 0
     failed = 0
     skipped = 0
+    known_failed = 0
+    known_passed = 0  # known failure that now passes — bug may be fixed
     failures = []
+    unexpected_passes = []
+    known_fail_list = []
 
     start = time.time()
+
+    def classify(name, result, detail):
+        nonlocal passed, failed, skipped, known_failed, known_passed
+        is_known = name in known_failures
+        bug_id = known_failures.get(name, "")
+
+        if result is None:
+            skipped += 1
+            print(f"  SKIP  {name}")
+        elif result:
+            if is_known:
+                known_passed += 1
+                unexpected_passes.append((name, bug_id))
+                print(f"  PASS* {name}  (was known failure: {bug_id})")
+            else:
+                passed += 1
+                print(f"  PASS  {name}")
+        else:
+            if is_known:
+                known_failed += 1
+                known_fail_list.append((name, bug_id))
+                print(f"  XFAIL {name}  ({bug_id})")
+            else:
+                failed += 1
+                failures.append((name, detail))
+                print(f"  FAIL  {name}")
 
     with tempfile.TemporaryDirectory(prefix="fuse_stage2_") as tmp_dir:
         if parallel > 1:
@@ -208,47 +265,48 @@ def run_suite(compiler: Path, fixtures: list, parallel: int = 1):
                 }
                 for future in as_completed(futures):
                     name, result, detail = future.result()
-                    if result is None:
-                        skipped += 1
-                        print(f"  SKIP  {name}")
-                    elif result:
-                        passed += 1
-                        print(f"  PASS  {name}")
-                    else:
-                        failed += 1
-                        failures.append((name, detail))
-                        print(f"  FAIL  {name}")
+                    classify(name, result, detail)
         else:
             for fixture in fixtures:
                 name, result, detail = run_test(compiler, fixture, tmp_dir)
-                if result is None:
-                    skipped += 1
-                    print(f"  SKIP  {name}")
-                elif result:
-                    passed += 1
-                    print(f"  PASS  {name}")
-                else:
-                    failed += 1
-                    failures.append((name, detail))
-                    print(f"  FAIL  {name}")
+                classify(name, result, detail)
 
     elapsed = time.time() - start
 
-    # Print failure details
+    # Print unexpected failure details
     if failures:
         print(f"\n{'='*60}")
-        print(f"FAILURES ({len(failures)}):")
+        print(f"UNEXPECTED FAILURES ({len(failures)}):")
         print(f"{'='*60}")
         for name, detail in failures:
             print(f"\n--- {name} ---")
             print(detail)
 
+    # Flag known failures that now pass
+    if unexpected_passes:
+        print(f"\n{'='*60}")
+        print(f"KNOWN FAILURES NOW PASSING ({len(unexpected_passes)}):")
+        print(f"  Remove these from known_failures.txt:")
+        print(f"{'='*60}")
+        for name, bug_id in unexpected_passes:
+            print(f"  {name}  ({bug_id})")
+
     # Summary
     print(f"\n{'='*60}")
-    print(f"  {passed} passed, {failed} failed, {skipped} skipped")
+    parts = [f"{passed} passed"]
+    if known_passed:
+        parts.append(f"{known_passed} fixed (remove from known_failures.txt)")
+    if known_failed:
+        parts.append(f"{known_failed} known failures")
+    if failed:
+        parts.append(f"{failed} FAILED")
+    if skipped:
+        parts.append(f"{skipped} skipped")
+    print(f"  {', '.join(parts)}")
     print(f"  {elapsed:.1f}s elapsed")
     print(f"{'='*60}")
 
+    # Exit code: only unexpected failures cause non-zero
     return 0 if failed == 0 else 1
 
 # ---------------------------------------------------------------------------
@@ -406,11 +464,13 @@ def main():
         print(f"No fixtures found (filter={args.filter!r})")
         return 1
 
-    print(f"Stage 2 tests: {len(fixtures)} fixtures")
+    known = load_known_failures(KNOWN_FAILURES_FILE)
+
+    print(f"Stage 2 tests: {len(fixtures)} fixtures, {len(known)} known failures")
     print(f"Compiler: {args.compiler}")
     print()
 
-    return run_suite(args.compiler, fixtures, args.parallel)
+    return run_suite(args.compiler, fixtures, args.parallel, known)
 
 
 if __name__ == "__main__":

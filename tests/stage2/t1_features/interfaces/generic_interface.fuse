@@ -1,11 +1,11 @@
 // EXPECTED OUTPUT:
 // 42
 
-interface Convertible {
-  fn convert(ref self) -> String
+interface Convertible<T> {
+  fn convert(ref self) -> T
 }
 
-data class Wrapper(val value: Int) implements Convertible
+data class Wrapper(val value: Int) implements Convertible<String>
 
 fn Wrapper.convert(ref self) -> String => f"{self.value}"
 

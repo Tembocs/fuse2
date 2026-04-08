@@ -2,15 +2,10 @@
 // 2
 // 4
 
-// Note: `continue` inside `for` loops may hang at runtime.
-// This test uses `while` as a workaround.
-
 @entrypoint
 fn main() {
-  var i = 0
-  while i < 5 {
-    i = i + 1
-    if i % 2 != 0 { continue }
-    println(i)
+  for item in [1, 2, 3, 4, 5] {
+    if item % 2 != 0 { continue }
+    println(item)
   }
 }

@@ -1,11 +1,12 @@
 // EXPECTED OUTPUT:
-// true
+// ok
 
-data class Key(val id: Int) implements Equatable
+data class Key(val id: Int) implements Hashable
 
 @entrypoint
 fn main() {
-  val a = Key(42)
-  val b = Key(42)
-  println(a == b)
+  val k = Key(42)
+  val h = k.hash()
+  // Just verify it returns something without crashing.
+  println("ok")
 }

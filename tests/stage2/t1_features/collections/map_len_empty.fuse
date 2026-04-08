@@ -1,12 +1,18 @@
 // EXPECTED OUTPUT:
 // 0
+// true
 // 2
+// false
+
+import stdlib.core.map
 
 @entrypoint
 fn main() {
   var m = Map::<String, Int>.new()
   println(m.len())
+  println(m.isEmpty())
   m.set("a", 1)
   m.set("b", 2)
   println(m.len())
+  println(m.isEmpty())
 }

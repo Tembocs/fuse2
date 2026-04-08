@@ -1,8 +1,10 @@
 // EXPECTED OUTPUT:
-// true
+// None
+
+import stdlib.core.map
 
 @entrypoint
 fn main() {
   val m = Map::<String, Int>.new()
-  println(m.contains("missing") == false)
+  println(m.get("missing"))
 }

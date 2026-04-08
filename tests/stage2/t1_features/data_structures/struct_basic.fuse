@@ -5,10 +5,8 @@ struct Counter {
   var count: Int
 }
 
-fn Counter.getCount(ref self) -> Int => self.count
-
 @entrypoint
 fn main() {
   val c = Counter(0)
-  println(c.getCount())
+  println(c.count)
 }
