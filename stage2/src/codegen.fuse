@@ -577,6 +577,149 @@ pub fn compileEntry(ffiModule: Int, declaredFns: List<DeclaredFn>, entryFuncId: 
 }
 
 // ===========================================================================
+// Forward-declare all user functions (W7.2)
+// ===========================================================================
+
+// Declare every user function (free, extension, static, extern) in the
+// Cranelift module so that function bodies can reference each other freely.
+// Returns the list of (symbol, funcId) pairs for user functions.
+pub fn declareAllUserFunctions(ffiModule: Int, loadedModules: List<CachedLoad>, runtimeDeclared: List<DeclaredFn>) -> Result<List<DeclaredFn>, String> {
+  var declared: List<DeclaredFn> = []
+  var mi = 0
+  while mi < loadedModules.len() {
+    match loadedModules.get(mi) {
+      Some(cached) => {
+        val lm = cached.loaded
+        val modPath = cached.path
+
+        // 1. Free functions.
+        var fi = 0
+        while fi < lm.functions.len() {
+          match lm.functions.get(fi) {
+            Some(nf) => {
+              val sym = layout.functionSymbol(modPath, nf.name)
+              val funcId = declareOneFunction(ffiModule, sym, nf.func.params.len(), 1)
+              declared = declared.concat([DeclaredFn(sym, funcId)])
+            },
+            None => {}
+          }
+          fi = fi + 1
+        }
+
+        // 2. Extension methods.
+        var ei = 0
+        while ei < lm.extensions.len() {
+          match lm.extensions.get(ei) {
+            Some(ne) => {
+              val receiverType = match ne.func.receiverType {
+                Some(rt) => rt,
+                None => ""
+              }
+              val sym = layout.extensionSymbol(modPath, receiverType, ne.func.name)
+              val funcId = declareOneFunction(ffiModule, sym, ne.func.params.len(), 1)
+              declared = declared.concat([DeclaredFn(sym, funcId)])
+            },
+            None => {}
+          }
+          ei = ei + 1
+        }
+
+        // 3. Static methods.
+        var si = 0
+        while si < lm.statics.len() {
+          match lm.statics.get(si) {
+            Some(ns) => {
+              val receiverType = match ns.func.receiverType {
+                Some(rt) => rt,
+                None => ""
+              }
+              val sym = layout.extensionSymbol(modPath, receiverType, ns.func.name)
+              val funcId = declareOneFunction(ffiModule, sym, ns.func.params.len(), 1)
+              declared = declared.concat([DeclaredFn(sym, funcId)])
+            },
+            None => {}
+          }
+          si = si + 1
+        }
+
+        // 4. Extern functions — Import linkage, skip if already declared by runtime.
+        var xi = 0
+        while xi < lm.externFns.len() {
+          match lm.externFns.get(xi) {
+            Some(ne) => {
+              if runtime.findDeclaredFn(runtimeDeclared, ne.name).isNone() and runtime.findDeclaredFn(declared, ne.name).isNone() {
+                val funcId = declareOneFunction(ffiModule, ne.name, ne.decl.params.len(), 0)
+                declared = declared.concat([DeclaredFn(ne.name, funcId)])
+              }
+            },
+            None => {}
+          }
+          xi = xi + 1
+        }
+      },
+      None => {}
+    }
+    mi = mi + 1
+  }
+  Ok(declared)
+}
+
+// Helper: declare a single function with N Ptr params and 1 Ptr return.
+fn declareOneFunction(ffiModule: Int, name: String, paramCount: Int, linkage: Int) -> Int {
+  val sig = cranelift_ffi_signature_new(ffiModule)
+  var pi = 0
+  while pi < paramCount {
+    cranelift_ffi_signature_add_param(sig, 4, ffiModule)
+    pi = pi + 1
+  }
+  cranelift_ffi_signature_add_return(sig, 4, ffiModule)
+  val funcId = cranelift_ffi_module_declare_function(ffiModule, name, name.len(), sig, linkage)
+  cranelift_ffi_signature_free(sig)
+  funcId
+}
+
+// Find the @entrypoint function's funcId across all loaded modules.
+pub fn findEntryFuncId(loadedModules: List<CachedLoad>, userDeclared: List<DeclaredFn>) -> Option<Int> {
+  var mi = 0
+  while mi < loadedModules.len() {
+    match loadedModules.get(mi) {
+      Some(cached) => {
+        val lm = cached.loaded
+        var fi = 0
+        while fi < lm.functions.len() {
+          match lm.functions.get(fi) {
+            Some(nf) => {
+              if hasAnnotation(nf.func.annotations, "entrypoint") {
+                val sym = layout.functionSymbol(cached.path, nf.name)
+                return runtime.findDeclaredFn(userDeclared, sym)
+              }
+            },
+            None => {}
+          }
+          fi = fi + 1
+        }
+      },
+      None => {}
+    }
+    mi = mi + 1
+  }
+  None
+}
+
+// Check if a function has a specific annotation.
+fn hasAnnotation(annotations: List<Annotation>, name: String) -> Bool {
+  var i = 0
+  while i < annotations.len() {
+    match annotations.get(i) {
+      Some(ann) => { if ann.name == name { return true } },
+      None => {}
+    }
+    i = i + 1
+  }
+  false
+}
+
+// ===========================================================================
 // Data Class Constructor Compilation (W6.6.8)
 // ===========================================================================
 
@@ -1958,3 +2101,20 @@ extern fn cranelift_ffi_builder_inst_result(builder: Int, inst: Int, index: Int)
 extern fn cranelift_ffi_builder_use_var(builder: Int, varIdx: Int) -> Int
 extern fn cranelift_ffi_builder_declare_var(builder: Int, varIdx: Int, typeId: Int)
 extern fn cranelift_ffi_builder_def_var(builder: Int, varIdx: Int, value: Int)
+
+// Module lifecycle
+extern fn cranelift_ffi_module_new() -> Int
+extern fn cranelift_ffi_module_finish(ffiModule: Int, pathPtr: String, pathLen: Int) -> Int
+extern fn cranelift_ffi_module_free(ffiModule: Int) -> Int
+
+// ---------------------------------------------------------------------------
+// Public module lifecycle wrappers (W7.2)
+// ---------------------------------------------------------------------------
+
+pub fn createModule() -> Int {
+  cranelift_ffi_module_new()
+}
+
+pub fn finishModule(ffiModule: Int, outputPath: String) -> Int {
+  cranelift_ffi_module_finish(ffiModule, outputPath, outputPath.len())
+}

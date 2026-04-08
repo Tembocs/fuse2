@@ -11,6 +11,12 @@ import stdlib.core.string
 import stdlib.full.sys
 import stdlib.full.os
 import stdlib.full.path
+import codegen
+import runtime
+import module
+import checker
+import error
+import layout
 
 // ---------------------------------------------------------------------------
 // Version
@@ -197,10 +203,35 @@ fn runCheck(file: String) {
     },
     Ok(_) => {}
   }
-  // Lex + parse (checker integration comes in W7.2).
-  println(f"checking {file}...")
-  // Placeholder: actual pipeline integration in W7.2.
-  println("check: ok")
+  // Load module (lex + parse + build symbol tables).
+  match module.loadModule(file, []) {
+    Err(msg) => {
+      println(f"error: {msg}")
+      sys.exit(1)
+    },
+    Ok(result) => {
+      val (info, cache) = result
+      // Run checker.
+      val diagnostics = checker.checkModule(info, cache)
+      // Print diagnostics.
+      var hasErrors = false
+      var i = 0
+      while i < diagnostics.len() {
+        match diagnostics.get(i) {
+          Some(d) => {
+            println(d.render())
+            if d.isError() { hasErrors = true }
+          },
+          None => {}
+        }
+        i = i + 1
+      }
+      if hasErrors {
+        sys.exit(1)
+      }
+      println("check: ok")
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -222,7 +253,175 @@ fn runCompile(file: String, output: String) {
     },
     Ok(_) => {}
   }
-  // Full pipeline: lex → parse → check → codegen → link (W7.2/W7.3).
-  println(f"compiling {file} → {output}...")
-  println("compile: not yet implemented (see W7.2)")
+
+  // 1. Load all modules recursively (lex + parse + build symbol tables).
+  val loadedModules = match codegen.loadModuleRecursive(file, []) {
+    Ok(modules) => modules,
+    Err(msg) => {
+      println(f"error: {msg}")
+      sys.exit(1)
+      return
+    }
+  }
+
+  // 2. Create Cranelift object module.
+  val ffiModule = codegen.createModule()
+
+  // 3. Declare all runtime functions.
+  val registry = runtime.buildRegistry()
+  val runtimeDeclared = match runtime.declareAllRuntime(ffiModule, registry) {
+    Ok(d) => d,
+    Err(msg) => {
+      println(f"error: {msg}")
+      sys.exit(1)
+      return
+    }
+  }
+
+  // 4. Forward-declare all user functions.
+  val userDeclared = match codegen.declareAllUserFunctions(ffiModule, loadedModules, runtimeDeclared) {
+    Ok(d) => d,
+    Err(msg) => {
+      println(f"error: {msg}")
+      sys.exit(1)
+      return
+    }
+  }
+
+  // 5. Compile all function bodies across all modules.
+  var mi = 0
+  while mi < loadedModules.len() {
+    match loadedModules.get(mi) {
+      Some(cached) => {
+        compileFunctionsInModule(ffiModule, runtimeDeclared, userDeclared, loadedModules, cached)
+      },
+      None => {}
+    }
+    mi = mi + 1
+  }
+
+  // 6. Compile entry point wrapper.
+  match codegen.findEntryFuncId(loadedModules, userDeclared) {
+    Some(entryFuncId) => {
+      match codegen.compileEntry(ffiModule, runtimeDeclared, entryFuncId) {
+        Err(msg) => {
+          println(f"error: codegen entry: {msg}")
+          sys.exit(1)
+        },
+        Ok(_) => {}
+      }
+    },
+    None => {
+      println("error: no @entrypoint function found")
+      sys.exit(1)
+    }
+  }
+
+  // 7. Finish module — write object file.
+  val objectPath = f"{path.stem(output)}.o"
+  val result = codegen.finishModule(ffiModule, objectPath)
+  if result != 0 {
+    println(f"error: failed to write object file: {objectPath}")
+    sys.exit(1)
+  }
+
+  println(f"compiled {file} → {objectPath}")
+}
+
+// ---------------------------------------------------------------------------
+// Compile all functions in a single loaded module
+// ---------------------------------------------------------------------------
+
+fn compileFunctionsInModule(ffiModule: Int, runtimeDeclared: List<DeclaredFn>, userDeclared: List<DeclaredFn>, loadedModules: List<CachedLoad>, cached: CachedLoad) {
+  val lm = cached.loaded
+  val modPath = cached.path
+
+  // Free functions.
+  var fi = 0
+  while fi < lm.functions.len() {
+    match lm.functions.get(fi) {
+      Some(nf) => {
+        val sym = layout.functionSymbol(modPath, nf.name)
+        match runtime.findDeclaredFn(userDeclared, sym) {
+          Some(funcId) => {
+            match codegen.compileFunction(ffiModule, runtimeDeclared, userDeclared, loadedModules, modPath, nf.func, funcId) {
+              Err(msg) => {
+                println(f"error: codegen {sym}: {msg}")
+                sys.exit(1)
+              },
+              Ok(_) => {}
+            }
+          },
+          None => {
+            println(f"error: function {sym} not declared")
+            sys.exit(1)
+          }
+        }
+      },
+      None => {}
+    }
+    fi = fi + 1
+  }
+
+  // Extension methods.
+  var ei = 0
+  while ei < lm.extensions.len() {
+    match lm.extensions.get(ei) {
+      Some(ne) => {
+        val receiverType = match ne.func.receiverType {
+          Some(rt) => rt,
+          None => ""
+        }
+        val sym = layout.extensionSymbol(modPath, receiverType, ne.func.name)
+        match runtime.findDeclaredFn(userDeclared, sym) {
+          Some(funcId) => {
+            match codegen.compileFunction(ffiModule, runtimeDeclared, userDeclared, loadedModules, modPath, ne.func, funcId) {
+              Err(msg) => {
+                println(f"error: codegen {sym}: {msg}")
+                sys.exit(1)
+              },
+              Ok(_) => {}
+            }
+          },
+          None => {
+            println(f"error: extension {sym} not declared")
+            sys.exit(1)
+          }
+        }
+      },
+      None => {}
+    }
+    ei = ei + 1
+  }
+
+  // Static methods.
+  var si = 0
+  while si < lm.statics.len() {
+    match lm.statics.get(si) {
+      Some(ns) => {
+        val receiverType = match ns.func.receiverType {
+          Some(rt) => rt,
+          None => ""
+        }
+        val sym = layout.extensionSymbol(modPath, receiverType, ns.func.name)
+        match runtime.findDeclaredFn(userDeclared, sym) {
+          Some(funcId) => {
+            match codegen.compileFunction(ffiModule, runtimeDeclared, userDeclared, loadedModules, modPath, ns.func, funcId) {
+              Err(msg) => {
+                println(f"error: codegen {sym}: {msg}")
+                sys.exit(1)
+              },
+              Ok(_) => {}
+            }
+          },
+          None => {
+            println(f"error: static {sym} not declared")
+            sys.exit(1)
+          }
+        }
+      },
+      None => {}
+    }
+    si = si + 1
+  }
 }

@@ -784,13 +784,13 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W7.2 — Compilation Pipeline
 
-- [ ] **W7.2.1** Implement full pipeline: read source → lex → parse → check → codegen → emit object.
-- [ ] **W7.2.2** Implement `--check` mode: run pipeline up to checker, report diagnostics.
-- [ ] **W7.2.3** Implement compile mode: full pipeline, emit `.o` object file via `cranelift_ffi_module_finish()`.
-- [ ] **W7.2.4** Handle multi-module compilation: load root file, recursively load imports.
-- [ ] **W7.2.5** Report all diagnostics with file/line/column.
-- [ ] **W7.2.6** Exit with code 1 on errors, 0 on success.
-- [ ] **W7.2.7** Test: `fusec2 --check four_functions.fuse` exits 0.
+- [x] **W7.2.1** Implement full pipeline: read source → lex → parse → check → codegen → emit object.
+- [x] **W7.2.2** Implement `--check` mode: run pipeline up to checker, report diagnostics.
+- [x] **W7.2.3** Implement compile mode: full pipeline, emit `.o` object file via `cranelift_ffi_module_finish()`.
+- [x] **W7.2.4** Handle multi-module compilation: load root file, recursively load imports.
+- [x] **W7.2.5** Report all diagnostics with file/line/column.
+- [x] **W7.2.6** Exit with code 1 on errors, 0 on success.
+- [x] **W7.2.7** Test: `fusec2 --check four_functions.fuse` exits 0.
 
 ---
 
