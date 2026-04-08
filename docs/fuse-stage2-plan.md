@@ -746,18 +746,18 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W6.6 — Functions & ASAP
 
-- [ ] **W6.6.1** Implement `fn compileFunction(module: LoadedModule, function: FunctionDecl)` — create Cranelift function context, build entry block, compile body, finalize.
-- [ ] **W6.6.2** Implement local variable tracking: `var locals: Map<String, Int>` (name → Cranelift Variable).
-- [ ] **W6.6.3** Implement `compileStatements(stmts: List<Statement>)` — iterate, compile each, ASAP release between statements.
-- [ ] **W6.6.4** Implement ASAP destruction: after each statement, call `fuse_asap_release()` for bindings not used in remaining statements.
-- [ ] **W6.6.5** Implement `computeFutureUses(stmts: List<Statement>, index: Int) -> List<String>` — collect names referenced in remaining statements.
-- [ ] **W6.6.6** Implement `releaseDeadBindings(futureUses: List<String>)` — release bindings not in future set.
-- [ ] **W6.6.7** Implement scope cleanup at function exit: `releaseRemaining()`.
-- [ ] **W6.6.8** Implement data class constructor compilation: `fuse_data_new(field_count)` + `fuse_data_set_field()` per field.
-- [ ] **W6.6.9** Implement field access compilation: `fuse_data_get_field(obj, index)`.
-- [ ] **W6.6.10** Implement `@entrypoint` wrapper: `_start` / `main` → call user entry, release result.
-- [ ] **W6.6.11** Test: compile function with data class construction and field access.
-- [ ] **W6.6.12** Test: compile function with ASAP destruction (verify correct output ordering).
+- [x] **W6.6.1** Implement `fn compileFunction(module: LoadedModule, function: FunctionDecl)` — create Cranelift function context, build entry block, compile body, finalize.
+- [x] **W6.6.2** Implement local variable tracking: `var locals: Map<String, Int>` (name → Cranelift Variable).
+- [x] **W6.6.3** Implement `compileStatements(stmts: List<Statement>)` — iterate, compile each, ASAP release between statements.
+- [x] **W6.6.4** Implement ASAP destruction: after each statement, call `fuse_asap_release()` for bindings not used in remaining statements.
+- [x] **W6.6.5** Implement `computeFutureUses(stmts: List<Statement>, index: Int) -> List<String>` — collect names referenced in remaining statements.
+- [x] **W6.6.6** Implement `releaseDeadBindings(futureUses: List<String>)` — release bindings not in future set.
+- [x] **W6.6.7** Implement scope cleanup at function exit: `releaseRemaining()`.
+- [x] **W6.6.8** Implement data class constructor compilation: `fuse_data_new(field_count)` + `fuse_data_set_field()` per field.
+- [x] **W6.6.9** Implement field access compilation: `fuse_data_get_field(obj, index)`.
+- [x] **W6.6.10** Implement `@entrypoint` wrapper: `_start` / `main` → call user entry, release result.
+- [x] **W6.6.11** Test: compile function with data class construction and field access.
+- [x] **W6.6.12** Test: compile function with ASAP destruction (verify correct output ordering).
 
 ---
 

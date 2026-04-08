@@ -411,7 +411,7 @@ pub fn loadModuleRecursive(filePath: String, cache: List<CachedLoad>) -> Result<
 
 import runtime
 
-pub data class LocalBinding(val name: String, val varIdx: Int, val typeName: Option<String>)
+pub data class LocalBinding(val name: String, val varIdx: Int, val typeName: Option<String>, val destroy: Bool)
 
 pub data class CompileCtx(
   var ffiModule: Int,
@@ -424,6 +424,195 @@ pub data class CompileCtx(
   var stringCount: Int,
   var loadedModules: List<CachedLoad>
 )
+
+// ===========================================================================
+// Function Compilation (W6.6.1)
+// ===========================================================================
+
+// Compile a single user function into Cranelift IR, define it in the module.
+pub fn compileFunction(ffiModule: Int, declaredFns: List<DeclaredFn>, userFnIds: List<DeclaredFn>, loadedModules: List<CachedLoad>, modulePath: String, func: FunctionDecl, funcId: Int) -> Result<Int, String> {
+  // 1. Create a Cranelift function context.
+  val ffiCtx = cranelift_ffi_context_new()
+
+  // 2. Build a signature: all params are Ptr (type_id=4), one Ptr return.
+  val sig = cranelift_ffi_signature_new(ffiModule)
+  var pi = 0
+  while pi < func.params.len() {
+    cranelift_ffi_signature_add_param(sig, 4, ffiModule)
+    pi = pi + 1
+  }
+  cranelift_ffi_signature_add_return(sig, 4, ffiModule)
+
+  // 3. Create builder (entry block, append params, switch, seal entry).
+  val builder = cranelift_ffi_builder_new(ffiModule, ffiCtx, sig)
+  val entryBlock = cranelift_ffi_builder_entry_block(builder)
+
+  // 4. Build compile context.
+  var ctx = CompileCtx(ffiModule, builder, [], 0, declaredFns, userFnIds, modulePath, 0, loadedModules)
+
+  // 5. Bind function parameters as local variables.
+  var paramIdx = 0
+  while paramIdx < func.params.len() {
+    match func.params.get(paramIdx) {
+      Some(p) => {
+        val varIdx = ctx.nextVar
+        ctx.nextVar = ctx.nextVar + 1
+        cranelift_ffi_builder_declare_var(builder, varIdx, 4)
+        val paramVal = cranelift_ffi_builder_block_param(builder, entryBlock, paramIdx)
+        cranelift_ffi_builder_def_var(builder, varIdx, paramVal)
+        val isOwned = match p.convention {
+          Some(conv) => conv == "owned",
+          None => false
+        }
+        ctx.locals = ctx.locals.concat([LocalBinding(p.name, varIdx, p.typeName, isOwned)])
+      },
+      None => {}
+    }
+    paramIdx = paramIdx + 1
+  }
+
+  // 6. Split body: prefix statements + optional final expression.
+  val stmtCount = func.body.statements.len()
+  val hasReturnType = match func.returnType {
+    Some(_) => true,
+    None => false
+  }
+
+  if stmtCount > 0 and hasReturnType {
+    // Last statement might be an expression (implicit return).
+    val lastIdx = stmtCount - 1
+    var prefixStmts: List<Statement> = []
+    var si = 0
+    while si < lastIdx {
+      match func.body.statements.get(si) {
+        Some(s) => { prefixStmts = prefixStmts.concat([s]) },
+        None => {}
+      }
+      si = si + 1
+    }
+    // Compile prefix with ASAP.
+    compileStatements(mutref ctx, prefixStmts)?
+    // Compile final expression.
+    match func.body.statements.get(lastIdx) {
+      Some(lastStmt) => {
+        match lastStmt {
+          Statement.Expr(es) => {
+            val result = compileExpr(mutref ctx, es.expr)?
+            cranelift_ffi_ins_return(ctx.builder, [result.value], 1)
+          },
+          _ => {
+            // Not an expression — compile normally and return unit.
+            compileStatement(mutref ctx, lastStmt)?
+            releaseRemaining(mutref ctx)
+            val u = emitCall(mutref ctx, "fuse_unit", [])
+            cranelift_ffi_ins_return(ctx.builder, [u], 1)
+          }
+        }
+      },
+      None => {}
+    }
+  } else {
+    // No return type or empty body.
+    compileStatements(mutref ctx, func.body.statements)?
+    releaseRemaining(mutref ctx)
+    val u = emitCall(mutref ctx, "fuse_unit", [])
+    cranelift_ffi_ins_return(ctx.builder, [u], 1)
+  }
+
+  // 7. Seal all blocks and finalize.
+  cranelift_ffi_builder_seal_all_blocks(builder)
+  cranelift_ffi_builder_finalize(builder)
+
+  // 8. Verify and define.
+  cranelift_ffi_context_verify(ffiCtx, ffiModule)
+  cranelift_ffi_module_define_function(ffiModule, funcId, ffiCtx)
+
+  // 9. Free context.
+  cranelift_ffi_context_free(ffiCtx)
+
+  Ok(0)
+}
+
+// ===========================================================================
+// @entrypoint Wrapper (W6.6.10)
+// ===========================================================================
+
+// Compile the `fuse_user_entry` exported wrapper that calls the user's
+// @entrypoint function, releases the result, and returns I32(0).
+pub fn compileEntry(ffiModule: Int, declaredFns: List<DeclaredFn>, entryFuncId: Int) -> Result<Int, String> {
+  // Declare `fuse_user_entry` as an exported function with entry signature (no params, returns I32).
+  val entrySym = layout.entrySymbol()
+  val sig = cranelift_ffi_signature_new(ffiModule)
+  cranelift_ffi_signature_add_return(sig, 1, ffiModule)  // type_id=1 → I32
+  val entryId = cranelift_ffi_module_declare_function(ffiModule, entrySym, entrySym.len(), sig, 2)  // linkage=2 → Export
+
+  val ffiCtx = cranelift_ffi_context_new()
+  val builder = cranelift_ffi_builder_new(ffiModule, ffiCtx, sig)
+  val entryBlock = cranelift_ffi_builder_entry_block(builder)
+
+  // Call the user's entry function (no args).
+  val funcRef = cranelift_ffi_builder_declare_func_in_func(builder, ffiModule, entryFuncId)
+  val inst = cranelift_ffi_ins_call_n(builder, funcRef, [], 0)
+  val result = cranelift_ffi_builder_inst_result(builder, inst, 0)
+
+  // Release the result.
+  val releaseFn = match runtime.findDeclaredFn(declaredFns, "fuse_release") {
+    Some(id) => id,
+    _ => 0
+  }
+  val releaseRef = cranelift_ffi_builder_declare_func_in_func(builder, ffiModule, releaseFn)
+  cranelift_ffi_ins_call_n(builder, releaseRef, [result], 1)
+
+  // Return I32(0).
+  val zero = cranelift_ffi_ins_iconst(builder, 1, 0, ffiModule)  // type_id=1 → I32
+  cranelift_ffi_ins_return(builder, [zero], 1)
+
+  cranelift_ffi_builder_seal_all_blocks(builder)
+  cranelift_ffi_builder_finalize(builder)
+  cranelift_ffi_context_verify(ffiCtx, ffiModule)
+  cranelift_ffi_module_define_function(ffiModule, entryId, ffiCtx)
+  cranelift_ffi_context_free(ffiCtx)
+
+  Ok(0)
+}
+
+// ===========================================================================
+// Data Class Constructor Compilation (W6.6.8)
+// ===========================================================================
+
+// Compile a data class constructor call: fuse_data_new + fuse_data_set_field per arg.
+fn compileDataClassConstructor(mutref ctx: CompileCtx, typeName: String, fields: List<FieldDecl>, args: List<Expr>) -> Result<TypedValue, String> {
+  // Compile type name as a string.
+  val nameStr = compileStringValue(mutref ctx, typeName)?
+  val nameLen = cranelift_ffi_ins_iconst(ctx.builder, 2, typeName.len(), ctx.ffiModule)
+  val nameLenH = emitCall(mutref ctx, "fuse_int", [nameLen])
+  val fieldCountVal = cranelift_ffi_ins_iconst(ctx.builder, 2, fields.len(), ctx.ffiModule)
+  val fieldCountH = emitCall(mutref ctx, "fuse_int", [fieldCountVal])
+  // No destructor pointer for now (null = 0).
+  val nullDestructor = cranelift_ffi_ins_iconst(ctx.builder, 4, 0, ctx.ffiModule)
+  val handle = emitCall(mutref ctx, "fuse_data_new", [nameStr, nameLenH, fieldCountH, nullDestructor])
+
+  // Set each field.
+  var i = 0
+  while i < args.len() and i < fields.len() {
+    match args.get(i) {
+      Some(arg) => {
+        val argVal = compileExpr(mutref ctx, arg)?
+        val idxVal = cranelift_ffi_ins_iconst(ctx.builder, 2, i, ctx.ffiModule)
+        val idxH = emitCall(mutref ctx, "fuse_int", [idxVal])
+        emitCallVoid(mutref ctx, "fuse_data_set_field", [handle, idxH, argVal.value])
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+
+  Ok(TypedValue(handle, Some(typeName)))
+}
+
+// ---------------------------------------------------------------------------
+// Lookup helpers
+// ---------------------------------------------------------------------------
 
 fn findLocal(ctx: CompileCtx, name: String) -> Option<LocalBinding> {
   var i = ctx.locals.len() - 1
@@ -896,7 +1085,23 @@ fn compileNamedCall(mutref ctx: CompileCtx, name: String, args: List<Expr>) -> R
     val result = cranelift_ffi_builder_inst_result(ctx.builder, inst, 0)
     return Ok(TypedValue(result, None))
   }
-  // Data class constructor — emit fuse_data_new.
+  // Data class constructor — look up in loaded modules.
+  var di = 0
+  while di < ctx.loadedModules.len() {
+    match ctx.loadedModules.get(di) {
+      Some(cl) => {
+        val dc = findLoadedData(cl.loaded.dataClasses, name)
+        match dc {
+          Some(dataDecl) => {
+            return compileDataClassConstructor(mutref ctx, name, dataDecl.fields, args)
+          },
+          None => {}
+        }
+      },
+      None => {}
+    }
+    di = di + 1
+  }
   Ok(TypedValue(emitCall(mutref ctx, "fuse_unit", []), None))
 }
 
@@ -1061,7 +1266,7 @@ fn compileMatch(mutref ctx: CompileCtx, matchE: MatchExpr) -> Result<TypedValue,
                       ctx.nextVar = ctx.nextVar + 1
                       cranelift_ffi_builder_declare_var(ctx.builder, varIdx, 4)
                       cranelift_ffi_builder_def_var(ctx.builder, varIdx, payload)
-                      ctx.locals = ctx.locals.concat([LocalBinding(np.name, varIdx, None)])
+                      ctx.locals = ctx.locals.concat([LocalBinding(np.name, varIdx, None, false)])
                     },
                     _ => {}
                   }
@@ -1075,7 +1280,7 @@ fn compileMatch(mutref ctx: CompileCtx, matchE: MatchExpr) -> Result<TypedValue,
             ctx.nextVar = ctx.nextVar + 1
             cranelift_ffi_builder_declare_var(ctx.builder, varIdx, 4)
             cranelift_ffi_builder_def_var(ctx.builder, varIdx, subject.value)
-            ctx.locals = ctx.locals.concat([LocalBinding(np.name, varIdx, None)])
+            ctx.locals = ctx.locals.concat([LocalBinding(np.name, varIdx, None, false)])
           },
           _ => {}
         }
@@ -1172,23 +1377,331 @@ fn compileQuestion(mutref ctx: CompileCtx, q: QuestionExpr) -> Result<TypedValue
   Ok(TypedValue(unwrapped, None))
 }
 
+// ===========================================================================
+// ASAP Destruction (W6.6.3 – W6.6.7)
+// ===========================================================================
+
 // ---------------------------------------------------------------------------
-// Block compilation — compile statements, return last expr value
+// Name collection — collect all referenced variable names from AST nodes
 // ---------------------------------------------------------------------------
 
-pub fn compileBlock(mutref ctx: CompileCtx, block: Block) -> Result<Int, String> {
-  var lastVal = emitCall(mutref ctx, "fuse_unit", [])
+fn collectExprNames(expr: Expr) -> List<String> {
+  match expr {
+    Expr.Literal(_) => [],
+    Expr.FString(_) => [],
+    Expr.Name(nameExpr) => [nameExpr.value],
+    Expr.List(listExpr) => {
+      var names: List<String> = []
+      var i = 0
+      while i < listExpr.items.len() {
+        match listExpr.items.get(i) {
+          Some(item) => { names = names.concat(collectExprNames(item)) },
+          None => {}
+        }
+        i = i + 1
+      }
+      names
+    },
+    Expr.Tuple(tupleExpr) => {
+      var names: List<String> = []
+      var i = 0
+      while i < tupleExpr.items.len() {
+        match tupleExpr.items.get(i) {
+          Some(item) => { names = names.concat(collectExprNames(item)) },
+          None => {}
+        }
+        i = i + 1
+      }
+      names
+    },
+    Expr.Unary(unary) => collectExprNames(unary.value),
+    Expr.Binary(binary) => {
+      var names = collectExprNames(binary.left)
+      names = names.concat(collectExprNames(binary.right))
+      names
+    },
+    Expr.Call(call) => {
+      var names = collectExprNames(call.callee)
+      var i = 0
+      while i < call.args.len() {
+        match call.args.get(i) {
+          Some(arg) => { names = names.concat(collectExprNames(arg)) },
+          None => {}
+        }
+        i = i + 1
+      }
+      names
+    },
+    Expr.Member(member) => collectExprNames(member.object),
+    Expr.Move(mv) => collectExprNames(mv.value),
+    Expr.Ref(rf) => collectExprNames(rf.value),
+    Expr.MutRef(mr) => collectExprNames(mr.value),
+    Expr.Question(q) => collectExprNames(q.value),
+    Expr.If(ifE) => {
+      var names = collectExprNames(ifE.condition)
+      names = names.concat(collectBlockNames(ifE.thenBranch))
+      match ifE.elseBranch {
+        Some(eb) => {
+          match eb {
+            ElseBranch.Block(blk) => { names = names.concat(collectBlockNames(blk)) },
+            ElseBranch.IfExpr(inner) => { names = names.concat(collectExprNames(Expr.If(inner))) }
+          }
+        },
+        None => {}
+      }
+      names
+    },
+    Expr.Match(matchE) => {
+      var names = collectExprNames(matchE.subject)
+      var i = 0
+      while i < matchE.arms.len() {
+        match matchE.arms.get(i) {
+          Some(arm) => {
+            match arm.body {
+              ArmBody.Block(blk) => { names = names.concat(collectBlockNames(blk)) },
+              ArmBody.Expr(expr) => { names = names.concat(collectExprNames(expr)) }
+            }
+          },
+          None => {}
+        }
+        i = i + 1
+      }
+      names
+    },
+    Expr.When(whenE) => {
+      var names: List<String> = []
+      var i = 0
+      while i < whenE.arms.len() {
+        match whenE.arms.get(i) {
+          Some(arm) => {
+            match arm.condition {
+              Some(cond) => { names = names.concat(collectExprNames(cond)) },
+              None => {}
+            }
+            match arm.body {
+              ArmBody.Block(blk) => { names = names.concat(collectBlockNames(blk)) },
+              ArmBody.Expr(expr) => { names = names.concat(collectExprNames(expr)) }
+            }
+          },
+          None => {}
+        }
+        i = i + 1
+      }
+      names
+    },
+    Expr.Lambda(lambda) => collectBlockNames(lambda.body)
+  }
+}
+
+fn collectStmtNames(stmt: Statement) -> List<String> {
+  match stmt {
+    Statement.VarDecl(vd) => collectExprNames(vd.value),
+    Statement.Assign(assign) => {
+      var names = collectExprNames(assign.target)
+      names = names.concat(collectExprNames(assign.value))
+      names
+    },
+    Statement.Return(ret) => {
+      match ret.value {
+        Some(expr) => collectExprNames(expr),
+        None => []
+      }
+    },
+    Statement.While(ws) => {
+      var names = collectExprNames(ws.condition)
+      names = names.concat(collectBlockNames(ws.body))
+      names
+    },
+    Statement.For(fs) => {
+      var names = collectExprNames(fs.iterable)
+      names = names.concat(collectBlockNames(fs.body))
+      names
+    },
+    Statement.Loop(ls) => collectBlockNames(ls.body),
+    Statement.Spawn(ss) => collectBlockNames(ss.body),
+    Statement.Defer(ds) => collectExprNames(ds.expr),
+    Statement.Expr(es) => collectExprNames(es.expr),
+    Statement.TupleDestruct(td) => collectExprNames(td.value),
+    Statement.Break(_) => [],
+    Statement.Continue(_) => []
+  }
+}
+
+fn collectBlockNames(block: Block) -> List<String> {
+  var names: List<String> = []
   var i = 0
   while i < block.statements.len() {
     match block.statements.get(i) {
+      Some(stmt) => { names = names.concat(collectStmtNames(stmt)) },
+      None => {}
+    }
+    i = i + 1
+  }
+  names
+}
+
+// ---------------------------------------------------------------------------
+// computeFutureUses — for each statement index, collect all names referenced
+// by subsequent statements (used to decide ASAP release).
+// Returns a List<List<String>> with one entry per statement.
+// ---------------------------------------------------------------------------
+
+fn computeFutureUses(statements: List<Statement>) -> List<List<String>> {
+  var future: List<List<String>> = []
+  // Pre-fill the list with empty lists.
+  var k = 0
+  while k < statements.len() {
+    future = future.concat([[]])
+    k = k + 1
+  }
+  // Walk backwards: accumulate names seen so far.
+  var seen: List<String> = []
+  var idx = statements.len() - 1
+  while idx >= 0 {
+    // future[idx] = seen (copy)
+    future = listSet(future, idx, seen)
+    match statements.get(idx) {
+      Some(stmt) => {
+        val stmtNames = collectStmtNames(stmt)
+        seen = listUnion(seen, stmtNames)
+      },
+      None => {}
+    }
+    idx = idx - 1
+  }
+  future
+}
+
+// Helper: set element at index in a list (rebuild).
+fn listSet(list: List<List<String>>, index: Int, value: List<String>) -> List<List<String>> {
+  var result: List<List<String>> = []
+  var i = 0
+  while i < list.len() {
+    if i == index {
+      result = result.concat([value])
+    } else {
+      match list.get(i) {
+        Some(item) => { result = result.concat([item]) },
+        None => {}
+      }
+    }
+    i = i + 1
+  }
+  result
+}
+
+// Helper: union of two string lists (no duplicates).
+fn listUnion(a: List<String>, b: List<String>) -> List<String> {
+  var result = a
+  var i = 0
+  while i < b.len() {
+    match b.get(i) {
+      Some(item) => {
+        if listHas(result, item) == false {
+          result = result.concat([item])
+        }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  result
+}
+
+// ---------------------------------------------------------------------------
+// releaseDeadBindings — release locals with destroy=true not in future uses
+// ---------------------------------------------------------------------------
+
+fn releaseDeadBindings(mutref ctx: CompileCtx, futureNames: List<String>) {
+  var i = 0
+  while i < ctx.locals.len() {
+    match ctx.locals.get(i) {
+      Some(lb) => {
+        if lb.destroy and listHas(futureNames, lb.name) == false {
+          val value = cranelift_ffi_builder_use_var(ctx.builder, lb.varIdx)
+          emitCallVoid(mutref ctx, "fuse_asap_release", [value])
+          // Mark as no longer destroyable.
+          ctx.locals = listSetLocal(ctx.locals, i, LocalBinding(lb.name, lb.varIdx, lb.typeName, false))
+        }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+}
+
+// Helper: set a LocalBinding at index.
+fn listSetLocal(list: List<LocalBinding>, index: Int, value: LocalBinding) -> List<LocalBinding> {
+  var result: List<LocalBinding> = []
+  var i = 0
+  while i < list.len() {
+    if i == index {
+      result = result.concat([value])
+    } else {
+      match list.get(i) {
+        Some(item) => { result = result.concat([item]) },
+        None => {}
+      }
+    }
+    i = i + 1
+  }
+  result
+}
+
+// ---------------------------------------------------------------------------
+// releaseRemaining — release all locals with destroy=true at function exit
+// ---------------------------------------------------------------------------
+
+fn releaseRemaining(mutref ctx: CompileCtx) {
+  var i = 0
+  while i < ctx.locals.len() {
+    match ctx.locals.get(i) {
+      Some(lb) => {
+        if lb.destroy {
+          val value = cranelift_ffi_builder_use_var(ctx.builder, lb.varIdx)
+          emitCallVoid(mutref ctx, "fuse_release", [value])
+          ctx.locals = listSetLocal(ctx.locals, i, LocalBinding(lb.name, lb.varIdx, lb.typeName, false))
+        }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+}
+
+// ---------------------------------------------------------------------------
+// compileStatements — compile with ASAP destruction between statements
+// ---------------------------------------------------------------------------
+
+fn compileStatements(mutref ctx: CompileCtx, statements: List<Statement>) -> Result<Int, String> {
+  val future = computeFutureUses(statements)
+  var lastVal = emitCall(mutref ctx, "fuse_unit", [])
+  var i = 0
+  while i < statements.len() {
+    match statements.get(i) {
       Some(stmt) => {
         lastVal = compileStatement(mutref ctx, stmt)?
+        // ASAP release dead bindings.
+        match future.get(i) {
+          Some(futureNames) => {
+            releaseDeadBindings(mutref ctx, futureNames)
+          },
+          None => {}
+        }
       },
       None => {}
     }
     i = i + 1
   }
   Ok(lastVal)
+}
+
+// ---------------------------------------------------------------------------
+// Block compilation — compile statements with ASAP, return last expr value
+// ---------------------------------------------------------------------------
+
+pub fn compileBlock(mutref ctx: CompileCtx, block: Block) -> Result<Int, String> {
+  compileStatements(mutref ctx, block.statements)
 }
 
 // ---------------------------------------------------------------------------
@@ -1203,7 +1716,7 @@ pub fn compileStatement(mutref ctx: CompileCtx, stmt: Statement) -> Result<Int, 
       ctx.nextVar = ctx.nextVar + 1
       cranelift_ffi_builder_declare_var(ctx.builder, varIdx, 4)
       cranelift_ffi_builder_def_var(ctx.builder, varIdx, v.value)
-      ctx.locals = ctx.locals.concat([LocalBinding(vd.name, varIdx, v.typeName)])
+      ctx.locals = ctx.locals.concat([LocalBinding(vd.name, varIdx, v.typeName, true)])
       Ok(v.value)
     },
     Statement.Assign(assign) => {
@@ -1289,7 +1802,7 @@ pub fn compileStatement(mutref ctx: CompileCtx, stmt: Statement) -> Result<Int, 
             ctx.nextVar = ctx.nextVar + 1
             cranelift_ffi_builder_declare_var(ctx.builder, varIdx, 4)
             cranelift_ffi_builder_def_var(ctx.builder, varIdx, item)
-            ctx.locals = ctx.locals.concat([LocalBinding(name, varIdx, None)])
+            ctx.locals = ctx.locals.concat([LocalBinding(name, varIdx, None, false)])
           },
           None => {}
         }
@@ -1363,7 +1876,7 @@ fn compileFor(mutref ctx: CompileCtx, fs: ForStmt) -> Result<Int, String> {
   ctx.nextVar = ctx.nextVar + 1
   cranelift_ffi_builder_declare_var(ctx.builder, itemVarIdx, 4)
   cranelift_ffi_builder_def_var(ctx.builder, itemVarIdx, itemVal)
-  ctx.locals = ctx.locals.concat([LocalBinding(fs.name, itemVarIdx, None)])
+  ctx.locals = ctx.locals.concat([LocalBinding(fs.name, itemVarIdx, None, false)])
 
   compileBlock(mutref ctx, fs.body)?
 
@@ -1399,6 +1912,31 @@ fn compileLoop(mutref ctx: CompileCtx, ls: LoopStmt) -> Result<Int, String> {
 // Cranelift FFI extern declarations
 // ---------------------------------------------------------------------------
 
+// Context lifecycle
+extern fn cranelift_ffi_context_new() -> Int
+extern fn cranelift_ffi_context_free(ctx: Int) -> Int
+extern fn cranelift_ffi_context_verify(ctx: Int, ffiModule: Int) -> Int
+
+// Signature
+extern fn cranelift_ffi_signature_new(ffiModule: Int) -> Int
+extern fn cranelift_ffi_signature_add_param(sig: Int, typeId: Int, ffiModule: Int)
+extern fn cranelift_ffi_signature_add_return(sig: Int, typeId: Int, ffiModule: Int)
+extern fn cranelift_ffi_signature_free(sig: Int) -> Int
+
+// Builder lifecycle
+extern fn cranelift_ffi_builder_new(ffiModule: Int, ctx: Int, sig: Int) -> Int
+extern fn cranelift_ffi_builder_finalize(builder: Int) -> Int
+extern fn cranelift_ffi_builder_free(builder: Int) -> Int
+extern fn cranelift_ffi_builder_seal_all_blocks(builder: Int)
+extern fn cranelift_ffi_builder_entry_block(builder: Int) -> Int
+
+// Module functions
+extern fn cranelift_ffi_module_declare_function(ffiModule: Int, name: String, nameLen: Int, sig: Int, linkage: Int) -> Int
+extern fn cranelift_ffi_module_define_function(ffiModule: Int, funcId: Int, ctx: Int) -> Int
+extern fn cranelift_ffi_module_declare_data(ffiModule: Int, name: String, nameLen: Int, writable: Int) -> Int
+extern fn cranelift_ffi_module_define_data(ffiModule: Int, dataId: Int, bytes: String, byteLen: Int) -> Int
+
+// Builder instructions
 extern fn cranelift_ffi_ins_iconst(builder: Int, typeId: Int, value: Int, ffiModule: Int) -> Int
 extern fn cranelift_ffi_ins_f64const(builder: Int, value: Float) -> Int
 extern fn cranelift_ffi_ins_bxor_imm(builder: Int, value: Int, imm: Int) -> Int
@@ -1408,6 +1946,9 @@ extern fn cranelift_ffi_ins_brif(builder: Int, cond: Int, thenBlock: Int, thenAr
 extern fn cranelift_ffi_ins_return(builder: Int, values: List<Int>, count: Int)
 extern fn cranelift_ffi_ins_icmp(builder: Int, cc: Int, a: Int, b: Int) -> Int
 extern fn cranelift_ffi_ins_iadd(builder: Int, a: Int, b: Int) -> Int
+extern fn cranelift_ffi_ins_symbol_value(builder: Int, ffiModule: Int, dataId: Int, typeId: Int) -> Int
+
+// Builder block/variable helpers
 extern fn cranelift_ffi_builder_create_block(builder: Int) -> Int
 extern fn cranelift_ffi_builder_switch_to_block(builder: Int, block: Int)
 extern fn cranelift_ffi_builder_append_block_param(builder: Int, block: Int, typeId: Int, ffiModule: Int) -> Int
@@ -1417,9 +1958,3 @@ extern fn cranelift_ffi_builder_inst_result(builder: Int, inst: Int, index: Int)
 extern fn cranelift_ffi_builder_use_var(builder: Int, varIdx: Int) -> Int
 extern fn cranelift_ffi_builder_declare_var(builder: Int, varIdx: Int, typeId: Int)
 extern fn cranelift_ffi_builder_def_var(builder: Int, varIdx: Int, value: Int)
-extern fn cranelift_ffi_module_declare_data(ffiModule: Int, name: String, nameLen: Int, writable: Int) -> Int
-extern fn cranelift_ffi_module_define_data(ffiModule: Int, dataId: Int, bytes: String, byteLen: Int) -> Int
-extern fn cranelift_ffi_ins_symbol_value(builder: Int, ffiModule: Int, dataId: Int, typeId: Int) -> Int
-extern fn cranelift_ffi_module_declare_data(ffiModule: Int, name: String, nameLen: Int, writable: Int) -> Int
-extern fn cranelift_ffi_module_define_data(ffiModule: Int, dataId: Int, bytes: String, byteLen: Int) -> Int
-extern fn cranelift_ffi_ins_symbol_value(builder: Int, ffiModule: Int, dataId: Int, typeId: Int) -> Int
