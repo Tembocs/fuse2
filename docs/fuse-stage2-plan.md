@@ -671,15 +671,15 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W6.2 — Module Loading for Codegen
 
-- [ ] **W6.2.1** Create `stage2/src/codegen.fuse`.
-- [ ] **W6.2.2** Define `data class LoadedModule(val path: String, val functions: Map<String, FunctionDecl>, val extensions: Map<String, FunctionDecl>, val statics: Map<String, FunctionDecl>, val dataClasses: Map<String, DataClassDecl>, val enums: Map<String, EnumDecl>, val externFns: Map<String, ExternFnDecl>, val consts: Map<String, ConstDecl>)`.
-- [ ] **W6.2.3** Implement `fn loadModuleRecursive(path: String, modules: Map<String, LoadedModule>) -> Result<Unit, String>` — recursively load all imports.
-- [ ] **W6.2.4** Resolve `Self` in return types and parameter types during loading.
-- [ ] **W6.2.5** Split extension functions into instance (has self) and static (no self).
-- [ ] **W6.2.6** Register struct methods as extensions/statics.
-- [ ] **W6.2.7** Register data class methods as extensions.
-- [ ] **W6.2.8** Inject default method forwarding for interfaces.
-- [ ] **W6.2.9** Test: load `four_functions.fuse`, verify all symbols resolved.
+- [x] **W6.2.1** Create `stage2/src/codegen.fuse`.
+- [x] **W6.2.2** Define `data class LoadedModule` with List-based symbol tables (functions, extensions, statics, dataClasses, structs, enums, externFns, consts, interfaceNames).
+- [x] **W6.2.3** Implement `fn loadModuleRecursive(path, cache) -> Result<List<CachedLoad>, String>` — recursively load all imports.
+- [x] **W6.2.4** Resolve `Self` in return types and parameter types during loading via `resolveSelfInFunc`.
+- [x] **W6.2.5** Split extension functions into instance (has self) and static (no self).
+- [x] **W6.2.6** Register struct methods as extensions/statics with receiver type.
+- [x] **W6.2.7** Register data class methods as extensions (skip `__del__`).
+- [x] **W6.2.8** Inject default method forwarding for interfaces.
+- [x] **W6.2.9** Test: load `four_functions.fuse`, verify all symbols resolved + Self resolution.
 
 ---
 

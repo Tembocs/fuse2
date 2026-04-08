@@ -1,0 +1,402 @@
+// codegen.fuse — Code generation for the Stage 2 self-hosted compiler.
+//
+// Matches Stage 1 (stage1/fusec/src/codegen/object_backend.rs) loading logic.
+// Uses List-based symbol tables (evaluator cannot mutate maps).
+
+import stdlib.core.string
+import stdlib.full.io
+import token
+import ast
+import lexer
+import parser
+import common
+import module
+import layout
+
+extern fn fuse_rt_string_replace(s: String, from: String, to: String) -> String
+extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
+extern fn fuse_rt_string_contains(s: String, sub: String) -> Bool
+
+// ---------------------------------------------------------------------------
+// Named list entry types for codegen module loading
+// ---------------------------------------------------------------------------
+
+pub data class NamedFuncDecl(val name: String, val func: FunctionDecl)
+pub data class NamedDataDecl(val name: String, val decl: DataClassDecl)
+pub data class NamedStructDecl(val name: String, val decl: StructDecl)
+pub data class NamedEnumDecl(val name: String, val decl: EnumDecl)
+pub data class NamedExternDecl(val name: String, val decl: ExternFnDecl)
+pub data class NamedConstDecl(val key: String, val decl: ConstDecl)
+pub data class NamedExtFunc(val key: String, val func: FunctionDecl)
+
+// ---------------------------------------------------------------------------
+// LoadedModule
+// ---------------------------------------------------------------------------
+
+pub data class LoadedModule(
+  val path: String,
+  val imports: List<ImportDecl>,
+  val functions: List<NamedFuncDecl>,
+  val extensions: List<NamedExtFunc>,
+  val statics: List<NamedExtFunc>,
+  val dataClasses: List<NamedDataDecl>,
+  val structs: List<NamedStructDecl>,
+  val enums: List<NamedEnumDecl>,
+  val externFns: List<NamedExternDecl>,
+  val consts: List<NamedConstDecl>,
+  val interfaceNames: List<String>
+)
+
+pub data class CachedLoad(val path: String, val loaded: LoadedModule)
+
+// ---------------------------------------------------------------------------
+// Lookup helpers
+// ---------------------------------------------------------------------------
+
+pub fn findLoadedFunc(funcs: List<NamedFuncDecl>, name: String) -> Option<FunctionDecl> {
+  var i = 0
+  while i < funcs.len() {
+    match funcs.get(i) {
+      Some(nf) => { if nf.name == name { return Some(nf.func) } },
+      None => {}
+    }
+    i = i + 1
+  }
+  None
+}
+
+pub fn findLoadedExt(exts: List<NamedExtFunc>, key: String) -> Option<FunctionDecl> {
+  var i = 0
+  while i < exts.len() {
+    match exts.get(i) {
+      Some(ne) => { if ne.key == key { return Some(ne.func) } },
+      None => {}
+    }
+    i = i + 1
+  }
+  None
+}
+
+pub fn hasLoadedExt(exts: List<NamedExtFunc>, key: String) -> Bool {
+  match findLoadedExt(exts, key) {
+    Some(_) => true,
+    _ => false
+  }
+}
+
+pub fn findLoadedData(datas: List<NamedDataDecl>, name: String) -> Option<DataClassDecl> {
+  var i = 0
+  while i < datas.len() {
+    match datas.get(i) {
+      Some(nd) => { if nd.name == name { return Some(nd.decl) } },
+      None => {}
+    }
+    i = i + 1
+  }
+  None
+}
+
+pub fn findLoadedEnum(enums: List<NamedEnumDecl>, name: String) -> Option<EnumDecl> {
+  var i = 0
+  while i < enums.len() {
+    match enums.get(i) {
+      Some(ne) => { if ne.name == name { return Some(ne.decl) } },
+      None => {}
+    }
+    i = i + 1
+  }
+  None
+}
+
+pub fn findLoadedStruct(structs: List<NamedStructDecl>, name: String) -> Option<StructDecl> {
+  var i = 0
+  while i < structs.len() {
+    match structs.get(i) {
+      Some(ns) => { if ns.name == name { return Some(ns.decl) } },
+      None => {}
+    }
+    i = i + 1
+  }
+  None
+}
+
+pub fn findCachedLoad(cache: List<CachedLoad>, path: String) -> Option<LoadedModule> {
+  var i = 0
+  while i < cache.len() {
+    match cache.get(i) {
+      Some(cl) => { if cl.path == path { return Some(cl.loaded) } },
+      None => {}
+    }
+    i = i + 1
+  }
+  None
+}
+
+fn hasCachedLoad(cache: List<CachedLoad>, path: String) -> Bool {
+  match findCachedLoad(cache, path) {
+    Some(_) => true,
+    _ => false
+  }
+}
+
+fn listHas(list: List<String>, item: String) -> Bool {
+  var i = 0
+  while i < list.len() {
+    match list.get(i) {
+      Some(s) => { if s == item { return true } },
+      None => {}
+    }
+    i = i + 1
+  }
+  false
+}
+
+// ---------------------------------------------------------------------------
+// Self type resolution
+// ---------------------------------------------------------------------------
+
+fn resolveSelfInType(ty: String, concreteName: String) -> String {
+  if fuse_rt_string_contains(ty, "Self") {
+    fuse_rt_string_replace(ty, "Self", concreteName)
+  } else {
+    ty
+  }
+}
+
+fn resolveSelfInFunc(func: FunctionDecl, concreteName: String) -> FunctionDecl {
+  var newReturnType = func.returnType
+  match newReturnType {
+    Some(rt) => {
+      if fuse_rt_string_contains(rt, "Self") {
+        newReturnType = Some(fuse_rt_string_replace(rt, "Self", concreteName))
+      }
+    },
+    None => {}
+  }
+  // Resolve Self in param types.
+  var newParams: List<Param> = []
+  var pi = 0
+  while pi < func.params.len() {
+    match func.params.get(pi) {
+      Some(p) => {
+        var newTypeName = p.typeName
+        match newTypeName {
+          Some(tn) => {
+            if fuse_rt_string_contains(tn, "Self") {
+              newTypeName = Some(fuse_rt_string_replace(tn, "Self", concreteName))
+            }
+          },
+          None => {}
+        }
+        newParams = newParams.concat([Param(p.convention, p.name, newTypeName, p.variadic, p.span)])
+      },
+      None => {}
+    }
+    pi = pi + 1
+  }
+  FunctionDecl(func.name, func.typeParams, newParams, newReturnType, func.body, func.isPub, func.annotations, func.receiverType, func.span)
+}
+
+fn isStaticFunc(func: FunctionDecl) -> Bool {
+  if func.params.len() == 0 { return true }
+  match func.params.get(0) {
+    Some(p) => p.name != "self",
+    _ => true
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Recursive module loading for codegen
+// ---------------------------------------------------------------------------
+
+pub fn loadModuleRecursive(filePath: String, cache: List<CachedLoad>) -> Result<List<CachedLoad>, String> {
+  if hasCachedLoad(cache, filePath) { return Ok(cache) }
+
+  // Read, lex, parse.
+  val source = readFile(filePath)?
+  val tokens = lexer.lex(source, filePath)?
+  val prog = parser.parse(tokens, filePath)?
+
+  // Walk declarations and build symbol tables.
+  var functions: List<NamedFuncDecl> = []
+  var extensions: List<NamedExtFunc> = []
+  var statics: List<NamedExtFunc> = []
+  var dataClasses: List<NamedDataDecl> = []
+  var structs: List<NamedStructDecl> = []
+  var enums: List<NamedEnumDecl> = []
+  var externFns: List<NamedExternDecl> = []
+  var consts: List<NamedConstDecl> = []
+  var ifaceNames: List<String> = []
+  var imports: List<ImportDecl> = []
+
+  var i = 0
+  while i < prog.declarations.len() {
+    match prog.declarations.get(i) {
+      Some(decl) => {
+        match decl {
+          Declaration.Import(imp) => {
+            imports = imports.concat([imp])
+          },
+          Declaration.Function(fd) => {
+            match fd.receiverType {
+              Some(rt) => {
+                // Extension or static — resolve Self, split.
+                val resolved = resolveSelfInFunc(fd, rt)
+                val key = module.extKey(rt, fd.name)
+                if isStaticFunc(resolved) {
+                  statics = statics.concat([NamedExtFunc(key, resolved)])
+                } else {
+                  extensions = extensions.concat([NamedExtFunc(key, resolved)])
+                }
+              },
+              None => {
+                functions = functions.concat([NamedFuncDecl(fd.name, fd)])
+              }
+            }
+          },
+          Declaration.DataClass(dc) => {
+            dataClasses = dataClasses.concat([NamedDataDecl(dc.name, dc)])
+            // Register inline methods.
+            var mi = 0
+            while mi < dc.methods.len() {
+              match dc.methods.get(mi) {
+                Some(method) => {
+                  if method.name != "__del__" {
+                    val resolved = resolveSelfInFunc(method, dc.name)
+                    var withReceiver = FunctionDecl(resolved.name, resolved.typeParams, resolved.params, resolved.returnType, resolved.body, resolved.isPub, resolved.annotations, Some(dc.name), resolved.span)
+                    val key = module.extKey(dc.name, method.name)
+                    if isStaticFunc(withReceiver) {
+                      statics = statics.concat([NamedExtFunc(key, withReceiver)])
+                    } else {
+                      extensions = extensions.concat([NamedExtFunc(key, withReceiver)])
+                    }
+                  }
+                },
+                None => {}
+              }
+              mi = mi + 1
+            }
+          },
+          Declaration.Enum(ed) => {
+            enums = enums.concat([NamedEnumDecl(ed.name, ed)])
+          },
+          Declaration.Struct(sd) => {
+            structs = structs.concat([NamedStructDecl(sd.name, sd)])
+            // Register struct methods as extensions/statics.
+            var mi = 0
+            while mi < sd.methods.len() {
+              match sd.methods.get(mi) {
+                Some(method) => {
+                  val resolved = resolveSelfInFunc(method, sd.name)
+                  var withReceiver = FunctionDecl(resolved.name, resolved.typeParams, resolved.params, resolved.returnType, resolved.body, resolved.isPub, resolved.annotations, Some(sd.name), resolved.span)
+                  val key = module.extKey(sd.name, method.name)
+                  if isStaticFunc(withReceiver) {
+                    statics = statics.concat([NamedExtFunc(key, withReceiver)])
+                  } else {
+                    extensions = extensions.concat([NamedExtFunc(key, withReceiver)])
+                  }
+                },
+                None => {}
+              }
+              mi = mi + 1
+            }
+          },
+          Declaration.ExternFn(ef) => {
+            externFns = externFns.concat([NamedExternDecl(ef.name, ef)])
+          },
+          Declaration.Interface(id) => {
+            ifaceNames = ifaceNames.concat([id.name])
+          },
+          Declaration.Const(cd) => {
+            val constKey = f"{cd.owner}.{cd.name}"
+            consts = consts.concat([NamedConstDecl(constKey, cd)])
+          }
+        }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+
+  // Default method forwarding: for types implementing interfaces, inject
+  // default methods (extensions whose receiver is an interface name) if the
+  // type doesn't already have its own extension.
+  // Collect default methods from extensions where receiver is an interface name.
+  // Then for each implementor, inject missing methods.
+  var di = 0
+  while di < prog.declarations.len() {
+    match prog.declarations.get(di) {
+      Some(decl) => {
+        val implInterfaces = match decl {
+          Declaration.DataClass(dc) => dc.interfaces,
+          Declaration.Enum(ed) => ed.interfaces,
+          Declaration.Struct(sd) => sd.interfaces,
+          _ => []
+        }
+        val implName = match decl {
+          Declaration.DataClass(dc) => dc.name,
+          Declaration.Enum(ed) => ed.name,
+          Declaration.Struct(sd) => sd.name,
+          _ => ""
+        }
+        if implName != "" and implInterfaces.len() > 0 {
+          var ii = 0
+          while ii < implInterfaces.len() {
+            match implInterfaces.get(ii) {
+              Some(ifaceName) => {
+                // Find default methods: extensions where receiver == ifaceName.
+                var ei = 0
+                while ei < extensions.len() {
+                  match extensions.get(ei) {
+                    Some(ext) => {
+                      val ifaceKey = module.extKey(ifaceName, "")
+                      if ext.key.startsWith(f"{ifaceName}::") {
+                        // Extract method name from key.
+                        val methodName = fuse_rt_string_slice(ext.key, ifaceName.len() + 2, ext.key.len())
+                        val typeKey = module.extKey(implName, methodName)
+                        if hasLoadedExt(extensions, typeKey) == false {
+                          // Inject forwarded default method.
+                          var forwarded = FunctionDecl(ext.func.name, ext.func.typeParams, ext.func.params, ext.func.returnType, ext.func.body, ext.func.isPub, ext.func.annotations, Some(implName), ext.func.span)
+                          extensions = extensions.concat([NamedExtFunc(typeKey, forwarded)])
+                        }
+                      }
+                    },
+                    None => {}
+                  }
+                  ei = ei + 1
+                }
+              },
+              None => {}
+            }
+            ii = ii + 1
+          }
+        }
+      },
+      None => {}
+    }
+    di = di + 1
+  }
+
+  val loaded = LoadedModule(filePath, imports, functions, extensions, statics, dataClasses, structs, enums, externFns, consts, ifaceNames)
+  var newCache = cache.concat([CachedLoad(filePath, loaded)])
+
+  // Recursively load imports.
+  var ii = 0
+  while ii < imports.len() {
+    match imports.get(ii) {
+      Some(imp) => {
+        val target = common.resolveImportPath(filePath, imp.modulePath)
+        match target {
+          Some(targetPath) => {
+            newCache = loadModuleRecursive(targetPath, newCache)?
+          },
+          None => {}
+        }
+      },
+      None => {}
+    }
+    ii = ii + 1
+  }
+
+  Ok(newCache)
+}

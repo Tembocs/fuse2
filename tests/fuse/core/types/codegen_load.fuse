@@ -1,0 +1,95 @@
+// EXPECTED OUTPUT:
+// --- load four_functions ---
+// modules loaded: 1
+// functions: 5
+// has inspect: true
+// has greet: true
+// data classes: 1
+// has Resource: true
+// extensions: 0
+// has Resource::__del__: false
+// statics: 0
+// --- Self resolution ---
+// found Point::origin: true
+// return type: Point
+
+import stdlib.full.io
+import stage2.src.codegen
+import stage2.src.module
+import stage2.src.ast
+import stage2.src.token
+
+extern fn fuse_rt_io_write_file(path: String, content: String) -> Result<Int, String>
+extern fn fuse_rt_os_remove_file(path: String) -> Result<Int, String>
+
+@entrypoint
+fn main() {
+  // --- load four_functions ---
+  println("--- load four_functions ---")
+  val content = readFile("tests/fuse/milestone/four_functions.fuse")
+  match content {
+    Ok(source) => {
+      // Write to temp to avoid path resolution issues.
+      fuse_rt_io_write_file("__cg_load_test__.fuse", source)
+      var cache: List<CachedLoad> = []
+      val result = codegen.loadModuleRecursive("__cg_load_test__.fuse", cache)
+      match result {
+        Ok(loaded) => {
+          println(f"modules loaded: {loaded.len()}")
+          match codegen.findCachedLoad(loaded, "__cg_load_test__.fuse") {
+            Some(m) => {
+              println(f"functions: {m.functions.len()}")
+              val hasInspect = match codegen.findLoadedFunc(m.functions, "inspect") { Some(_) => true, _ => false }
+              println(f"has inspect: {hasInspect}")
+              val hasGreet = match codegen.findLoadedFunc(m.functions, "greet") { Some(_) => true, _ => false }
+              println(f"has greet: {hasGreet}")
+              println(f"data classes: {m.dataClasses.len()}")
+              val hasResource = match codegen.findLoadedData(m.dataClasses, "Resource") { Some(_) => true, _ => false }
+              println(f"has Resource: {hasResource}")
+              // __del__ is skipped from extensions per Stage 1 logic.
+              println(f"extensions: {m.extensions.len()}")
+              val hasDelKey = module.extKey("Resource", "__del__")
+              val hasDel = codegen.hasLoadedExt(m.extensions, hasDelKey)
+              println(f"has Resource::__del__: {hasDel}")
+              println(f"statics: {m.statics.len()}")
+            },
+            _ => println("module not found in cache")
+          }
+        },
+        Err(msg) => println(f"error: {msg}")
+      }
+      fuse_rt_os_remove_file("__cg_load_test__.fuse")
+    },
+    Err(msg) => println(f"io error: {msg}")
+  }
+
+  // --- Self resolution ---
+  println("--- Self resolution ---")
+  val selfSrc = "data class Point(val x: Int, val y: Int)\n\nfn Point.origin() -> Self {\n  Point(0, 0)\n}\n"
+  fuse_rt_io_write_file("__cg_self_test__.fuse", selfSrc)
+  var cache2: List<CachedLoad> = []
+  val r2 = codegen.loadModuleRecursive("__cg_self_test__.fuse", cache2)
+  match r2 {
+    Ok(loaded) => {
+      match codegen.findCachedLoad(loaded, "__cg_self_test__.fuse") {
+        Some(m) => {
+          val key = module.extKey("Point", "origin")
+          val found = codegen.findLoadedExt(m.statics, key)
+          match found {
+            Some(fd) => {
+              println("found Point::origin: true")
+              match fd.returnType {
+                Some(rt) => println(f"return type: {rt}"),
+                None => println("return type: none")
+              }
+            },
+            _ => println("found Point::origin: false")
+          }
+        },
+        _ => println("module not found")
+      }
+    },
+    Err(msg) => println(f"error: {msg}")
+  }
+  fuse_rt_os_remove_file("__cg_self_test__.fuse")
+}
