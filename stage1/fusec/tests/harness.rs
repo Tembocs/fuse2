@@ -117,3 +117,61 @@ pub fn unique_wasm_path(stem: &str) -> PathBuf {
         .join("target")
         .join(format!("{stem}-{stamp}.wasm"))
 }
+
+// ---------------------------------------------------------------------------
+// Stage 2 bootstrap helpers (W7.4)
+// ---------------------------------------------------------------------------
+
+/// Build the Stage 2 compiler by compiling stage2/src/main.fuse with Stage 1.
+/// Returns the path to the resulting fusec2 binary. Cached per test run via
+/// a well-known output path.
+pub fn build_stage2_compiler() -> PathBuf {
+    let root = repo_root();
+    let stage2_main = root.join("stage2").join("src").join("main.fuse");
+    let exe_suffix = std::env::consts::EXE_SUFFIX;
+    let fusec2 = root
+        .join("stage1")
+        .join("target")
+        .join(format!("fusec2{exe_suffix}"));
+
+    // Only rebuild if the binary doesn't exist (fast path for repeat runs).
+    // The test runner can delete the binary to force a rebuild.
+    if fusec2.exists() {
+        return fusec2;
+    }
+
+    let compile = compile_fixture(&stage2_main, &fusec2);
+    assert!(
+        compile.status.success(),
+        "failed to build Stage 2 compiler:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&compile.stdout),
+        String::from_utf8_lossy(&compile.stderr)
+    );
+    fusec2
+}
+
+/// Compile a fixture using the Stage 2 compiler (fusec2).
+pub fn compile_fixture_stage2(
+    fusec2: &Path,
+    fixture: &Path,
+    output: &Path,
+) -> std::process::Output {
+    Command::new(fusec2)
+        .arg(fixture)
+        .arg("-o")
+        .arg(output)
+        .output()
+        .expect("run fusec2 compile")
+}
+
+/// Run fusec2 --check on a fixture.
+pub fn check_fixture_stage2(
+    fusec2: &Path,
+    fixture: &Path,
+) -> std::process::Output {
+    Command::new(fusec2)
+        .arg("--check")
+        .arg(fixture)
+        .output()
+        .expect("run fusec2 --check")
+}

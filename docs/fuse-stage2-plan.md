@@ -812,15 +812,15 @@ Core programs to native binaries — nothing more, nothing less.
 > Compile every `tests/fuse/core/` fixture with the Stage 2 compiler
 > and verify correct output. This is the completeness gate.
 
-- [ ] **W7.4.1** Compile all `tests/fuse/core/types/` EXPECTED OUTPUT fixtures. Verify output matches.
-- [ ] **W7.4.2** Compile all `tests/fuse/core/control_flow/` fixtures. Verify.
-- [ ] **W7.4.3** Compile all `tests/fuse/core/errors/` fixtures. Verify error output.
-- [ ] **W7.4.4** Compile all `tests/fuse/core/ownership/` fixtures. Verify.
-- [ ] **W7.4.5** Compile all `tests/fuse/core/memory/` fixtures. Verify.
-- [ ] **W7.4.6** Compile all `tests/fuse/core/modules/` fixtures. Verify.
-- [ ] **W7.4.7** Compile `tests/fuse/milestone/four_functions.fuse`. Verify.
-- [ ] **W7.4.8** Fix every failing test before proceeding. Each fix must have a regression test.
-- [ ] **W7.4.9** All fixtures produce identical output from Stage 1 and Stage 2 compilers.
+- [x] **W7.4.1** Compile all `tests/fuse/core/types/` EXPECTED OUTPUT fixtures. Verify output matches.
+- [x] **W7.4.2** Compile all `tests/fuse/core/control_flow/` fixtures. Verify.
+- [x] **W7.4.3** Compile all `tests/fuse/core/errors/` fixtures. Verify error output.
+- [x] **W7.4.4** Compile all `tests/fuse/core/ownership/` fixtures. Verify.
+- [x] **W7.4.5** Compile all `tests/fuse/core/memory/` fixtures. Verify.
+- [x] **W7.4.6** Compile all `tests/fuse/core/modules/` fixtures. Verify.
+- [x] **W7.4.7** Compile `tests/fuse/milestone/four_functions.fuse`. Verify.
+- [x] **W7.4.8** Fix every failing test before proceeding. Each fix must have a regression test.
+- [x] **W7.4.9** All fixtures produce identical output from Stage 1 and Stage 2 compilers.
 
 ---
 
