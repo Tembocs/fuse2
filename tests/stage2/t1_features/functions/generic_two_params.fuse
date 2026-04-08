@@ -1,0 +1,15 @@
+// EXPECTED OUTPUT:
+// [1, two]
+// [true, 42]
+
+fn makePair<A, B>(a: A, b: B) -> (A, B) {
+  (a, b)
+}
+
+@entrypoint
+fn main() {
+  val p1 = makePair(1, "two")
+  println(p1)
+  val p2 = makePair(true, 42)
+  println(p2)
+}

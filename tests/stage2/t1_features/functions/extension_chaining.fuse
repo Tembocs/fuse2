@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// 12
+// 12
+
+fn Int.double(ref self) -> Int => self * 2
+fn Int.addOne(ref self) -> Int => self + 1
+
+@entrypoint
+fn main() {
+  println(3.double().double())
+  println(5.addOne().double())
+}

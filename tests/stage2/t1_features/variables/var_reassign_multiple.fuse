@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// 5
+
+@entrypoint
+fn main() {
+  var x = 1
+  x = 2
+  x = 3
+  x = 4
+  x = 5
+  println(x)
+}

@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// hello from greet
+
+fn greet() {
+  println("hello from greet")
+}
+
+@entrypoint
+fn main() {
+  greet()
+}

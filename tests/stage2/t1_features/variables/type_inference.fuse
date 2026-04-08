@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// 42
+// hello
+// true
+// 3.14
+
+@entrypoint
+fn main() {
+  val n = 42
+  val s = "hello"
+  val b = true
+  val f = 3.14
+  println(n)
+  println(s)
+  println(b)
+  println(f)
+}

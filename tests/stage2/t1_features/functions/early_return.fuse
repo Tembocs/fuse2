@@ -1,0 +1,21 @@
+// EXPECTED OUTPUT:
+// positive
+// zero
+// negative
+
+fn sign(n: Int) -> String {
+  if n > 0 {
+    return "positive"
+  }
+  if n < 0 {
+    return "negative"
+  }
+  "zero"
+}
+
+@entrypoint
+fn main() {
+  println(sign(5))
+  println(sign(0))
+  println(sign(-3))
+}

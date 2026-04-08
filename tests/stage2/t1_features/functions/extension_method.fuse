@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// 10
+// true
+
+fn Int.double(ref self) -> Int => self * 2
+
+fn Int.isEven(ref self) -> Bool => self % 2 == 0
+
+@entrypoint
+fn main() {
+  println(5.double())
+  println(4.isEven())
+}

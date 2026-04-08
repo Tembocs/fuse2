@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// before
+// inside
+// after
+
+fn doWork() {
+  println("inside")
+  return
+}
+
+@entrypoint
+fn main() {
+  println("before")
+  doWork()
+  println("after")
+}

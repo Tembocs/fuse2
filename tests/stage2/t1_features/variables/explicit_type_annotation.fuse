@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// 42
+// hello
+// true
+
+@entrypoint
+fn main() {
+  val x: Int = 42
+  val s: String = "hello"
+  val b: Bool = true
+  println(x)
+  println(s)
+  println(b)
+}

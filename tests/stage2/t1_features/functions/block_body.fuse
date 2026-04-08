@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// 15
+
+fn sumThree(a: Int, b: Int, c: Int) -> Int {
+  val ab = a + b
+  val abc = ab + c
+  abc
+}
+
+@entrypoint
+fn main() {
+  println(sumThree(3, 5, 7))
+}

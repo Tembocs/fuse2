@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// 8
+// hello world
+
+fn add(a: Int, b: Int) -> Int => a + b
+
+fn join(a: String, b: String) -> String => a + " " + b
+
+@entrypoint
+fn main() {
+  println(add(3, 5))
+  println(join("hello", "world"))
+}

@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// 42
+
+fn answer() -> Int {
+  42
+}
+
+@entrypoint
+fn main() {
+  println(answer())
+}

@@ -1,0 +1,7 @@
+// EXPECTED OUTPUT:
+// program started
+
+@entrypoint
+fn main() {
+  println("program started")
+}

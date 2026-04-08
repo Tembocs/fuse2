@@ -1,0 +1,8 @@
+// EXPECTED OUTPUT:
+// 42
+
+@entrypoint
+fn main() {
+  val x = 42
+  println(x)
+}

@@ -1,0 +1,21 @@
+// EXPECTED OUTPUT:
+// true
+// true
+// false
+
+fn isEven(n: Int) -> Bool {
+  if n == 0 { return true }
+  isOdd(n - 1)
+}
+
+fn isOdd(n: Int) -> Bool {
+  if n == 0 { return false }
+  isEven(n - 1)
+}
+
+@entrypoint
+fn main() {
+  println(isEven(4))
+  println(isOdd(3))
+  println(isEven(7))
+}

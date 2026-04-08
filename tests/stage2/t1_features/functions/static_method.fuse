@@ -1,0 +1,21 @@
+// EXPECTED OUTPUT:
+// Point(0, 0)
+// Point(3, 4)
+
+data class Point(val x: Int, val y: Int)
+
+fn Point.origin() -> Point {
+  Point(0, 0)
+}
+
+fn Point.create(x: Int, y: Int) -> Point {
+  Point(x, y)
+}
+
+@entrypoint
+fn main() {
+  val p1 = Point.origin()
+  println(p1)
+  val p2 = Point.create(3, 4)
+  println(p2)
+}
