@@ -1,0 +1,20 @@
+// EXPECTED OUTPUT:
+// Circle
+// 78
+
+interface Shape {
+  fn name(ref self) -> String
+  fn area(ref self) -> Int
+}
+
+data class Circle(val radius: Int) implements Shape
+
+fn Circle.name(ref self) -> String => "Circle"
+fn Circle.area(ref self) -> Int => 3 * self.radius * self.radius
+
+@entrypoint
+fn main() {
+  val c = Circle(5)
+  println(c.name())
+  println(c.area())
+}

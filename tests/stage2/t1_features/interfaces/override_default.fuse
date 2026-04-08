@@ -1,0 +1,24 @@
+// EXPECTED OUTPUT:
+// custom debug: Gadget
+
+interface Printable {
+  fn toString(ref self) -> String
+}
+
+fn Printable.debugPrint(ref self) -> String {
+  f"[debug] {self.toString()}"
+}
+
+data class Gadget(val name: String) implements Printable
+
+fn Gadget.toString(ref self) -> String => self.name
+
+fn Gadget.debugPrint(ref self) -> String {
+  f"custom debug: {self.name}"
+}
+
+@entrypoint
+fn main() {
+  val g = Gadget("Gadget")
+  println(g.debugPrint())
+}

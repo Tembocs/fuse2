@@ -1,0 +1,18 @@
+// EXPECTED OUTPUT:
+// hello from Greeter
+
+interface Greetable {
+  fn greet(ref self) -> String
+}
+
+data class Greeter(val name: String) implements Greetable
+
+fn Greeter.greet(ref self) -> String {
+  f"hello from {self.name}"
+}
+
+@entrypoint
+fn main() {
+  val g = Greeter("Greeter")
+  println(g.greet())
+}

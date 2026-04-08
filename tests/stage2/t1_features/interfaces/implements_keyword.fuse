@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// ok
+
+interface Serializable {
+  fn serialize(ref self) -> String
+}
+
+data class Config(val key: String) implements Serializable
+
+fn Config.serialize(ref self) -> String => self.key
+
+@entrypoint
+fn main() {
+  val c = Config("debug")
+  val _ = c.serialize()
+  println("ok")
+}

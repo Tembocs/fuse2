@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// ok
+
+data class Key(val id: Int) implements Hashable
+
+@entrypoint
+fn main() {
+  val k = Key(42)
+  val h = k.hash()
+  // Just verify it returns something without crashing.
+  println("ok")
+}

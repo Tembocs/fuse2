@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// ok
+
+interface Sendable {
+}
+
+data class Message(val text: String) implements Sendable
+
+@entrypoint
+fn main() {
+  val m = Message("hi")
+  println("ok")
+}

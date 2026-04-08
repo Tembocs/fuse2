@@ -1,0 +1,23 @@
+// EXPECTED OUTPUT:
+// ok
+
+interface Printable {
+  fn toString(ref self) -> String
+}
+
+interface Serializable {
+  fn serialize(ref self) -> String
+}
+
+data class Record(val name: String) implements Printable, Serializable
+
+fn Record.toString(ref self) -> String => self.name
+fn Record.serialize(ref self) -> String => f"record:{self.name}"
+
+@entrypoint
+fn main() {
+  val r = Record("test")
+  val _ = r.toString()
+  val _ = r.serialize()
+  println("ok")
+}

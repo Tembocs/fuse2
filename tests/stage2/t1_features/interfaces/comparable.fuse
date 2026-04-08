@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// true
+// false
+
+data class Score(val value: Int) implements Comparable
+
+fn Score.compareTo(ref self, ref other: Score) -> Int {
+  self.value - other.value
+}
+
+@entrypoint
+fn main() {
+  val a = Score(10)
+  val b = Score(20)
+  println(a < b)
+  println(a > b)
+}
