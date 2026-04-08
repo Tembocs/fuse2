@@ -1,0 +1,97 @@
+// parser.fuse — Parser for the Stage 2 self-hosted compiler.
+//
+// Matches Stage 1 (stage1/fusec/src/parser/parser.rs) structure.
+// Recursive descent with precedence climbing.
+
+import token
+import ast
+
+// ---------------------------------------------------------------------------
+// Parser state
+// ---------------------------------------------------------------------------
+
+pub data class Parser(
+  var tokens: List<Token>,
+  var index: Int,
+  var filename: String
+)
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+pub fn parse(tokens: List<Token>, filename: String) -> Result<Program, String> {
+  var p = Parser(tokens, 0, filename)
+  var decls: List<Declaration> = []
+  while p.atEnd() == false {
+    val d = p.parseTopLevel()?
+    decls = decls.concat([d])
+  }
+  Ok(Program(decls, filename))
+}
+
+// ---------------------------------------------------------------------------
+// Infrastructure helpers
+// ---------------------------------------------------------------------------
+
+// Lookahead without consuming.  Returns the Eof token if past end.
+fn Parser.peek(ref self, offset: Int) -> Token {
+  val pos = self.index + offset
+  if pos >= self.tokens.len() {
+    // Return the last token (which must be Eof).
+    match self.tokens.get(self.tokens.len() - 1) {
+      Some(t) => t,
+      None => Token(TokenKind.Eof, "", 0, 0)
+    }
+  } else {
+    match self.tokens.get(pos) {
+      Some(t) => t,
+      None => Token(TokenKind.Eof, "", 0, 0)
+    }
+  }
+}
+
+// Consume and return the current token, advancing the index.
+fn Parser.take(mutref self) -> Token {
+  val tok = self.peek(0)
+  if self.index < self.tokens.len() {
+    self.index = self.index + 1
+  }
+  tok
+}
+
+// Consume the current token if it matches the given kind, otherwise return None.
+fn Parser.matchKind(mutref self, kind: TokenKind) -> Option<Token> {
+  val tok = self.peek(0)
+  if tok.kind == kind {
+    self.index = self.index + 1
+    Some(tok)
+  } else {
+    None
+  }
+}
+
+// Consume the current token if it matches the given kind, otherwise return an error.
+fn Parser.expect(mutref self, kind: TokenKind, message: String) -> Result<Token, String> {
+  val tok = self.peek(0)
+  if tok.kind == kind {
+    self.index = self.index + 1
+    Ok(tok)
+  } else {
+    Err(f"{message} at {self.filename}:{tok.line}:{tok.column}, got `{tok.text}`")
+  }
+}
+
+// True when the current token is Eof.
+fn Parser.atEnd(ref self) -> Bool {
+  self.peek(0).kind == TokenKind.Eof
+}
+
+// ---------------------------------------------------------------------------
+// Top-level dispatch (stub — will be filled in W2.3)
+// ---------------------------------------------------------------------------
+
+fn Parser.parseTopLevel(mutref self) -> Result<Declaration, String> {
+  val tok = self.peek(0)
+  Err(f"parseTopLevel not yet implemented at {self.filename}:{tok.line}:{tok.column}")
+}

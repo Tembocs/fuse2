@@ -450,15 +450,15 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W2.2 — Parser Infrastructure
 
-- [ ] **W2.2.1** Create `stage2/src/parser.fuse`.
-- [ ] **W2.2.2** Define parser state: `var tokens: List<Token>`, `var index: Int`, `var filename: String`.
-- [ ] **W2.2.3** Implement `pub fn parse(tokens: List<Token>, filename: String) -> Result<Program, String>`.
-- [ ] **W2.2.4** Implement `fn peek(offset: Int) -> Token` — lookahead without consuming.
-- [ ] **W2.2.5** Implement `fn take() -> Token` — consume and return current token.
-- [ ] **W2.2.6** Implement `fn matchKind(kind: TokenKind) -> Option<Token>` — consume if matches.
-- [ ] **W2.2.7** Implement `fn expect(kind: TokenKind, message: String) -> Result<Token, String>` — consume or error.
-- [ ] **W2.2.8** Implement `fn atEnd() -> Bool`.
-- [ ] **W2.2.9** Test: parse infrastructure with trivial token list.
+- [x] **W2.2.1** Create `stage2/src/parser.fuse`.
+- [x] **W2.2.2** Define parser state: `var tokens: List<Token>`, `var index: Int`, `var filename: String`.
+- [x] **W2.2.3** Implement `pub fn parse(tokens: List<Token>, filename: String) -> Result<Program, String>`.
+- [x] **W2.2.4** Implement `fn peek(offset: Int) -> Token` — lookahead without consuming.
+- [x] **W2.2.5** Implement `fn take() -> Token` — consume and return current token.
+- [x] **W2.2.6** Implement `fn matchKind(kind: TokenKind) -> Option<Token>` — consume if matches.
+- [x] **W2.2.7** Implement `fn expect(kind: TokenKind, message: String) -> Result<Token, String>` — consume or error.
+- [x] **W2.2.8** Implement `fn atEnd() -> Bool`.
+- [x] **W2.2.9** Test: parse infrastructure with trivial token list.
 
 ---
 

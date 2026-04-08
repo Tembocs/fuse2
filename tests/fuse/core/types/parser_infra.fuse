@@ -1,0 +1,65 @@
+// EXPECTED OUTPUT:
+// peek0: Val val 1:1
+// peek1: Identifier x 1:5
+// take0: Val val 1:1
+// peek after take: Identifier x 1:5
+// matchKind hit: Some(Token(Identifier, x, 1, 5))
+// matchKind miss: None
+// expect hit: Ok(Token(Eq, =, 1, 7))
+// expect miss: Err(expected `Identifier` at test.fuse:1:9, got `42`)
+// atEnd before: false
+// take rest: Int 42
+// take rest: Eof
+// atEnd after: true
+
+import stage2.src.lexer
+import stage2.src.parser
+import stage2.src.token
+
+@entrypoint
+fn main() {
+  val result = lexer.lex("val x = 42", "test.fuse")
+  match result {
+    Ok(tokens) => {
+      // Build a parser manually to test infrastructure
+      var p = parser.Parser(tokens, 0, "test.fuse")
+
+      // peek(0) and peek(1)
+      val p0 = p.peek(0)
+      println(f"peek0: {p0.kind} {p0.text} {p0.line}:{p0.column}")
+      val p1 = p.peek(1)
+      println(f"peek1: {p1.kind} {p1.text} {p1.line}:{p1.column}")
+
+      // take()
+      val t0 = p.take()
+      println(f"take0: {t0.kind} {t0.text} {t0.line}:{t0.column}")
+      val after = p.peek(0)
+      println(f"peek after take: {after.kind} {after.text} {after.line}:{after.column}")
+
+      // matchKind — hit
+      val m1 = p.matchKind(TokenKind.Identifier)
+      println(f"matchKind hit: {m1}")
+
+      // matchKind — miss (current is Eq, not Identifier)
+      val m2 = p.matchKind(TokenKind.Identifier)
+      println(f"matchKind miss: {m2}")
+
+      // expect — hit
+      val e1 = p.expect(TokenKind.Eq, "expected `=`")
+      println(f"expect hit: {e1}")
+
+      // expect — miss (current is Int, not Identifier)
+      val e2 = p.expect(TokenKind.Identifier, "expected `Identifier`")
+      println(f"expect miss: {e2}")
+
+      // atEnd
+      println(f"atEnd before: {p.atEnd()}")
+      val r1 = p.take()
+      println(f"take rest: {r1.kind} {r1.text}")
+      val r2 = p.take()
+      println(f"take rest: {r2.kind}")
+      println(f"atEnd after: {p.atEnd()}")
+    },
+    Err(msg) => println(f"lex error: {msg}")
+  }
+}
