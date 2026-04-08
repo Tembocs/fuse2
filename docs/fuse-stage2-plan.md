@@ -523,11 +523,11 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W3.1 — Diagnostic Types
 
-- [ ] **W3.1.1** Create `stage2/src/error.fuse`.
-- [ ] **W3.1.2** Define `enum Severity { Error, Warning }`.
-- [ ] **W3.1.3** Define `data class Diagnostic(val message: String, val filename: String, val span: Span, val severity: Severity, val hint: Option<String>)`.
-- [ ] **W3.1.4** Implement `pub fn Diagnostic.render() -> String` — single-line format: `"error: {message}\n  --> {filename}:{line}:{column}"`.
-- [ ] **W3.1.5** Test: render error diagnostic with hint.
+- [x] **W3.1.1** Create `stage2/src/error.fuse`.
+- [x] **W3.1.2** Define `enum Severity { Error, Warning }`.
+- [x] **W3.1.3** Define `data class Diagnostic(val message: String, val filename: String, val span: Span, val severity: Severity, val hint: Option<String>)`.
+- [x] **W3.1.4** Implement `pub fn Diagnostic.render() -> String` — single-line format: `"error: {message}\n  --> {filename}:{line}:{column}"`.
+- [x] **W3.1.5** Test: render error diagnostic with hint.
 
 ---
 

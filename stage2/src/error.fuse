@@ -1,0 +1,76 @@
+// error.fuse — Diagnostic types for the Stage 2 self-hosted compiler.
+//
+// Matches Stage 1 (stage1/fusec/src/error.rs) render() format exactly.
+
+import token
+
+// ---------------------------------------------------------------------------
+// Severity
+// ---------------------------------------------------------------------------
+
+pub enum Severity {
+  Error,
+  Warning
+}
+
+fn Severity.label(ref self) -> String {
+  match self {
+    Severity.Error => "error",
+    Severity.Warning => "warning"
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostic
+// ---------------------------------------------------------------------------
+
+pub data class Diagnostic(
+  val message: String,
+  val filename: String,
+  val span: Span,
+  val severity: Severity,
+  val hint: Option<String>
+)
+
+// Render in Stage 1 backward-compatible format:
+//   error: {message}
+//          {hint}           (if present)
+//     --> {filename}:{line}:{column}
+pub fn Diagnostic.render(ref self) -> String {
+  val label = self.severity.label()
+  var out = f"{label}: {self.message}"
+  match self.hint {
+    Some(h) => {
+      out = f"{out}\n       {h}"
+    },
+    None => {}
+  }
+  out = f"{out}\n  --> {self.filename}:{self.span.line}:{self.span.column}"
+  out
+}
+
+pub fn Diagnostic.isError(ref self) -> Bool {
+  match self.severity {
+    Severity.Error => true,
+    Severity.Warning => false
+  }
+}
+
+pub fn Diagnostic.isWarning(ref self) -> Bool {
+  match self.severity {
+    Severity.Warning => true,
+    Severity.Error => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Constructor helpers
+// ---------------------------------------------------------------------------
+
+pub fn error(message: String, filename: String, span: Span, hint: Option<String>) -> Diagnostic {
+  Diagnostic(message, filename, span, Severity.Error, hint)
+}
+
+pub fn warning(message: String, filename: String, span: Span, hint: Option<String>) -> Diagnostic {
+  Diagnostic(message, filename, span, Severity.Warning, hint)
+}

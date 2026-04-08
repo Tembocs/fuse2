@@ -1,0 +1,44 @@
+// EXPECTED OUTPUT:
+// --- error no hint ---
+// error: unknown variable `x`
+//   --> test.fuse:5:3
+// --- error with hint ---
+// error: type mismatch
+//        expected Int, got String
+//   --> test.fuse:10:7
+// --- warning ---
+// warning: unused variable `y`
+//   --> test.fuse:3:1
+// --- isError ---
+// err isError: true
+// err isWarning: false
+// warn isError: false
+// warn isWarning: true
+
+import stage2.src.error
+import stage2.src.token
+
+@entrypoint
+fn main() {
+  // Error without hint
+  println("--- error no hint ---")
+  val e1 = error.error("unknown variable `x`", "test.fuse", Span(5, 3), None)
+  println(e1.render())
+
+  // Error with hint
+  println("--- error with hint ---")
+  val e2 = error.error("type mismatch", "test.fuse", Span(10, 7), Some("expected Int, got String"))
+  println(e2.render())
+
+  // Warning
+  println("--- warning ---")
+  val w1 = error.warning("unused variable `y`", "test.fuse", Span(3, 1), None)
+  println(w1.render())
+
+  // isError / isWarning
+  println("--- isError ---")
+  println(f"err isError: {e1.isError()}")
+  println(f"err isWarning: {e1.isWarning()}")
+  println(f"warn isError: {w1.isError()}")
+  println(f"warn isWarning: {w1.isWarning()}")
+}
