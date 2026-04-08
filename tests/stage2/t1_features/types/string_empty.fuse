@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// 0
+
+import stdlib.core.string
+
+@entrypoint
+fn main() {
+  val s = ""
+  println(s.len())
+  println(s)
+}

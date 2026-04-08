@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// 0.0
+// 1.5
+// -3.14
+// 0.001
+
+@entrypoint
+fn main() {
+  println(0.0)
+  println(1.5)
+  println(-3.14)
+  println(0.001)
+}

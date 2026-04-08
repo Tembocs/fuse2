@@ -1,0 +1,18 @@
+// EXPECTED OUTPUT:
+// false
+// true
+
+fn side_effect() -> Bool {
+  println("should not print")
+  true
+}
+
+@entrypoint
+fn main() {
+  // false and X should not evaluate X
+  val a = false and side_effect()
+  println(a)
+  // true or X should not evaluate X
+  val b = true or side_effect()
+  println(b)
+}

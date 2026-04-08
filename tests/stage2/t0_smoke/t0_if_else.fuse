@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// yes
+
+@entrypoint
+fn main() {
+  if true {
+    println("yes")
+  } else {
+    println("no")
+  }
+}

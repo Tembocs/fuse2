@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// false
+// true
+// false
+// false
+
+@entrypoint
+fn main() {
+  println(true and false)
+  println(true and true)
+  println(false and true)
+  println(false and false)
+}

@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// 1
+// 0
+// 3
+
+@entrypoint
+fn main() {
+  println(10 % 3)
+  println(8 % 4)
+  println(3 % 5)
+}

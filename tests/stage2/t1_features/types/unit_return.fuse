@@ -1,0 +1,15 @@
+// EXPECTED OUTPUT:
+// before
+// inside
+// after
+
+fn doNothing() {
+  println("inside")
+}
+
+@entrypoint
+fn main() {
+  println("before")
+  doNothing()
+  println("after")
+}

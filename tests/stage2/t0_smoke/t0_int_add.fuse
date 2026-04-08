@@ -1,0 +1,7 @@
+// EXPECTED OUTPUT:
+// 4
+
+@entrypoint
+fn main() {
+  println(2 + 2)
+}

@@ -1,0 +1,9 @@
+// EXPECTED OUTPUT:
+// true
+// false
+
+@entrypoint
+fn main() {
+  println(true)
+  println(false)
+}

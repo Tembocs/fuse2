@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// 4611686018427387903
+// -4611686018427387903
+// 1000000000000
+
+@entrypoint
+fn main() {
+  val large = 4611686018427387903
+  println(large)
+  println(-4611686018427387903)
+  val trillion = 1000000000000
+  println(trillion)
+}

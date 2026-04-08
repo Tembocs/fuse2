@@ -1,0 +1,9 @@
+// EXPECTED OUTPUT:
+// 10
+
+fn double(x: Int) -> Int => x * 2
+
+@entrypoint
+fn main() {
+  println(double(5))
+}

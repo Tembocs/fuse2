@@ -1,0 +1,7 @@
+// EXPECTED OUTPUT:
+// Hello, world!
+
+@entrypoint
+fn main() {
+  println("Hello, world!")
+}

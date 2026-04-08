@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// 0
+// 1
+// -1
+// 999999
+
+@entrypoint
+fn main() {
+  println(0)
+  println(1)
+  println(-1)
+  println(999999)
+}

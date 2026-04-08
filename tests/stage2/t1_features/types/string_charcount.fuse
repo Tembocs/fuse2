@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// 5
+// 5
+
+import stdlib.core.string
+
+@entrypoint
+fn main() {
+  val ascii = "hello"
+  println(ascii.len())
+  println(ascii.charCount())
+}

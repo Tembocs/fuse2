@@ -1,0 +1,7 @@
+// EXPECTED OUTPUT:
+// ab
+
+@entrypoint
+fn main() {
+  println("a" + "b")
+}

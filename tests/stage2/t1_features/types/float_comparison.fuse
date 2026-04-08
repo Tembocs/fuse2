@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// true
+// false
+// true
+// true
+// true
+// false
+
+@entrypoint
+fn main() {
+  println(1.0 < 2.0)
+  println(3.0 < 1.0)
+  println(2.5 > 1.5)
+  println(1.0 <= 1.0)
+  println(3.14 >= 3.14)
+  println(1.0 == 2.0)
+}

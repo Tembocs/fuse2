@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// 5
+// 0
+// 13
+
+import stdlib.core.string
+
+@entrypoint
+fn main() {
+  println("hello".len())
+  println("".len())
+  println("hello, world!".len())
+}

@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// hello
+// world
+// tab	here
+// back\slash
+// say "hi"
+
+@entrypoint
+fn main() {
+  println("hello\nworld")
+  println("tab\there")
+  println("back\\slash")
+  println("say \"hi\"")
+}

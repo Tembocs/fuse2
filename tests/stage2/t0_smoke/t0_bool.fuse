@@ -1,0 +1,7 @@
+// EXPECTED OUTPUT:
+// true
+
+@entrypoint
+fn main() {
+  println(true)
+}
