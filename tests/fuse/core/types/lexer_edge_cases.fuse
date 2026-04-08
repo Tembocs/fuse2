@@ -1,0 +1,80 @@
+// EXPECTED OUTPUT:
+// nested braces: FString if {x > 0} {y} else {z}
+// negative: Minus Int
+// zero: Int 0
+// empty string: String ||
+// unterminated: unterminated string literal at t.fuse:1:1
+// unexpected: unexpected character `~` at t.fuse:1:1
+
+import stage2.src.lexer
+import stage2.src.token
+
+@entrypoint
+fn main() {
+  // W1.3.1: f-string nested braces
+  val r1 = lexer.lex("f\"if {x > 0} {y} else {z}\"", "t.fuse")
+  match r1 {
+    Ok(tokens) => {
+      match tokens.get(0) {
+        Some(t) => println(f"nested braces: {t.kind} {t.text}"),
+        None => {}
+      }
+    },
+    Err(msg) => println(f"error: {msg}")
+  }
+
+  // W1.3.2: negative number emits Minus + Int
+  val r2 = lexer.lex("-42", "t.fuse")
+  match r2 {
+    Ok(tokens) => {
+      match tokens.get(0) {
+        Some(t0) => {
+          match tokens.get(1) {
+            Some(t1) => println(f"negative: {t0.kind} {t1.kind}"),
+            None => {}
+          }
+        },
+        None => {}
+      }
+    },
+    Err(msg) => println(f"error: {msg}")
+  }
+
+  // W1.3.3: zero as valid integer
+  val r3 = lexer.lex("0", "t.fuse")
+  match r3 {
+    Ok(tokens) => {
+      match tokens.get(0) {
+        Some(t) => println(f"zero: {t.kind} {t.text}"),
+        None => {}
+      }
+    },
+    Err(msg) => println(f"error: {msg}")
+  }
+
+  // W1.3.4: empty string
+  val r4 = lexer.lex("\"\"", "t.fuse")
+  match r4 {
+    Ok(tokens) => {
+      match tokens.get(0) {
+        Some(t) => println(f"empty string: {t.kind} |{t.text}|"),
+        None => {}
+      }
+    },
+    Err(msg) => println(f"error: {msg}")
+  }
+
+  // W1.3.5: unterminated string
+  val r5 = lexer.lex("\"hello", "t.fuse")
+  match r5 {
+    Ok(tokens) => println("should have failed"),
+    Err(msg) => println(f"unterminated: {msg}")
+  }
+
+  // W1.3.6: unexpected character
+  val r6 = lexer.lex("~", "t.fuse")
+  match r6 {
+    Ok(tokens) => println("should have failed"),
+    Err(msg) => println(f"unexpected: {msg}")
+  }
+}

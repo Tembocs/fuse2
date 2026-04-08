@@ -1,0 +1,114 @@
+// EXPECTED OUTPUT:
+// program: 2 decls in test.fuse
+// import: stdlib.core.string
+// fn name: main
+// fn pub: true
+// fn params: 0
+// fn annotations: 1
+// annotation: entrypoint
+// var stmt mutable: false
+// var stmt name: x
+// literal int: Int(42)
+// binary op: +
+// call args: 1
+// member: name
+// pattern variant: Some
+// match arm pattern: Some
+
+import stage2.src.ast
+import stage2.src.token
+
+@entrypoint
+fn main() {
+  val span = Span(1, 1)
+
+  // W2.1.4: ImportDecl
+  val imp = ImportDecl("stdlib.core.string", None, span)
+  val imp_decl = Declaration.Import(imp)
+
+  // W2.1.14: Annotation
+  val ann = Annotation("entrypoint", [], span)
+
+  // W2.1.10: Block
+  val empty_block = Block([], span)
+
+  // W2.1.5: FunctionDecl
+  val func = FunctionDecl("main", [], [], None, empty_block, true, [ann], None, span)
+  val func_decl = Declaration.Function(func)
+
+  // W2.1.2: Program
+  val prog = Program([imp_decl, func_decl], "test.fuse")
+  println(f"program: {prog.declarations.len()} decls in {prog.filename}")
+
+  // Verify ImportDecl fields
+  match prog.declarations.get(0) {
+    Some(d) => {
+      match d {
+        Declaration.Import(id) => println(f"import: {id.modulePath}"),
+        _ => println("wrong decl type")
+      }
+    },
+    None => println("no decl")
+  }
+
+  // Verify FunctionDecl fields
+  match prog.declarations.get(1) {
+    Some(d) => {
+      match d {
+        Declaration.Function(fd) => {
+          println(f"fn name: {fd.name}")
+          println(f"fn pub: {fd.isPub}")
+          println(f"fn params: {fd.params.len()}")
+          println(f"fn annotations: {fd.annotations.len()}")
+          match fd.annotations.get(0) {
+            Some(a) => println(f"annotation: {a.name}"),
+            None => {}
+          }
+        },
+        _ => println("wrong decl type")
+      }
+    },
+    None => println("no decl")
+  }
+
+  // W2.1.11, W2.1.15: VarDeclStmt with LiteralExpr
+  val lit = LiteralExpr(LiteralValue.Int(42), span)
+  val vd = VarDeclStmt([], false, "x", None, Expr.Literal(lit), span)
+  println(f"var stmt mutable: {vd.mutable}")
+  println(f"var stmt name: {vd.name}")
+
+  // W2.1.12: Expr variants
+  println(f"literal int: {lit.value}")
+
+  // BinaryOp
+  val left = Expr.Literal(LiteralExpr(LiteralValue.Int(1), span))
+  val right = Expr.Literal(LiteralExpr(LiteralValue.Int(2), span))
+  val bin = BinaryOp(left, "+", right, span)
+  println(f"binary op: {bin.op}")
+
+  // CallExpr
+  val callee = Expr.Name(NameExpr("println", span))
+  val arg = Expr.Literal(LiteralExpr(LiteralValue.String("hi"), span))
+  val call = CallExpr(callee, [arg], span)
+  println(f"call args: {call.args.len()}")
+
+  // MemberExpr
+  val obj = Expr.Name(NameExpr("self", span))
+  val mem = MemberExpr(obj, "name", false, span)
+  println(f"member: {mem.name}")
+
+  // W2.1.13: Pattern variants
+  val pat = Pattern.Variant(VariantPattern("Some", [Pattern.Name(NamePattern("x", span))], span))
+  match pat {
+    Pattern.Variant(vp) => println(f"pattern variant: {vp.name}"),
+    _ => println("wrong pattern")
+  }
+
+  // MatchArm
+  val arm_body = ArmBody.Expr(Expr.Name(NameExpr("x", span)))
+  val arm = MatchArm(pat, arm_body, span)
+  match arm.pattern {
+    Pattern.Variant(vp) => println(f"match arm pattern: {vp.name}"),
+    _ => println("wrong")
+  }
+}

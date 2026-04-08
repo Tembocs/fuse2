@@ -406,14 +406,14 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W1.3 — Lexer Edge Cases
 
-- [ ] **W1.3.1** Handle f-string nested braces: `f"{obj.method()}"` — brace depth increments on `{`, decrements on `}`.
-- [ ] **W1.3.2** Handle negative number literals vs unary minus (lexer emits `Minus` + `Int`; parser handles negation).
-- [ ] **W1.3.3** Handle `0` as valid integer literal.
-- [ ] **W1.3.4** Handle empty string `""`.
-- [ ] **W1.3.5** Error on unterminated string literal.
-- [ ] **W1.3.6** Error on unexpected character (return descriptive error with line/column).
-- [ ] **W1.3.7** Test: lex the Stage 1 milestone file `tests/fuse/milestone/four_functions.fuse`, verify token count.
-- [ ] **W1.3.8** Test: lex all keyword variants.
+- [x] **W1.3.1** Handle f-string nested braces: `f"{obj.method()}"` — brace depth increments on `{`, decrements on `}`.
+- [x] **W1.3.2** Handle negative number literals vs unary minus (lexer emits `Minus` + `Int`; parser handles negation).
+- [x] **W1.3.3** Handle `0` as valid integer literal.
+- [x] **W1.3.4** Handle empty string `""`.
+- [x] **W1.3.5** Error on unterminated string literal.
+- [x] **W1.3.6** Error on unexpected character (return descriptive error with line/column).
+- [x] **W1.3.7** Test: lex the Stage 1 milestone file `tests/fuse/milestone/four_functions.fuse`, verify token count.
+- [x] **W1.3.8** Test: lex all keyword variants.
 
 ---
 
@@ -430,21 +430,21 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W2.1 — AST Node Definitions
 
-- [ ] **W2.1.1** Create `stage2/src/ast.fuse`.
-- [ ] **W2.1.2** Define `data class Program(val declarations: List<Declaration>, val filename: String)`.
-- [ ] **W2.1.3** Define `enum Declaration` with variants: `Import`, `Function`, `DataClass`, `Enum`, `ExternFn`, `Struct`, `Const`, `Interface`.
-- [ ] **W2.1.4** Define `data class ImportDecl(val modulePath: String, val items: Option<List<String>>, val span: Span)`.
-- [ ] **W2.1.5** Define `data class FunctionDecl(val name: String, val typeParams: List<String>, val params: List<Param>, val returnType: Option<String>, val body: Block, val isPub: Bool, val annotations: List<Annotation>, val receiverType: Option<String>, val span: Span)`.
-- [ ] **W2.1.6** Define `data class Param(val convention: Option<String>, val name: String, val typeName: Option<String>, val variadic: Bool, val span: Span)`.
-- [ ] **W2.1.7** Define `data class DataClassDecl(val name: String, val typeParams: List<String>, val fields: List<FieldDecl>, val methods: List<FunctionDecl>, val isPub: Bool, val annotations: List<Annotation>, val implements: List<String>, val span: Span)`.
-- [ ] **W2.1.8** Define `data class EnumDecl`, `data class EnumVariant`, `data class StructDecl`, `data class InterfaceDecl`, `data class InterfaceMethod`.
-- [ ] **W2.1.9** Define `data class ExternFnDecl`, `data class ConstDecl`.
-- [ ] **W2.1.10** Define `data class Block(val statements: List<Statement>, val span: Span)`.
-- [ ] **W2.1.11** Define `enum Statement` with variants: `VarDecl`, `Assign`, `Return`, `Break`, `Continue`, `Spawn`, `While`, `For`, `Loop`, `Defer`, `Expr`, `TupleDestruct`.
-- [ ] **W2.1.12** Define `enum Expr` with variants: `Literal`, `FString`, `Name`, `List`, `Tuple`, `Unary`, `Binary`, `Call`, `Member`, `Move`, `Ref`, `MutRef`, `Question`, `If`, `Match`, `When`, `Lambda`.
-- [ ] **W2.1.13** Define `enum Pattern` with variants: `Wildcard`, `Literal`, `Name`, `Variant`, `Tuple`.
-- [ ] **W2.1.14** Define `data class Annotation(val name: String, val args: List<AnnotationArg>, val span: Span)`.
-- [ ] **W2.1.15** Define all supporting data classes: `FieldDecl`, `VarDeclStmt`, `AssignStmt`, `ReturnStmt`, `WhileStmt`, `ForStmt`, `LoopStmt`, `DeferStmt`, `ExprStmt`, `BinaryOp`, `UnaryOp`, `CallExpr`, `MemberExpr`, `IfExpr`, `MatchExpr`, `MatchArm`, `WhenExpr`, `WhenArm`, `LambdaExpr`, `LiteralExpr`, `FStringExpr`, `NameExpr`, `ListExpr`, `TupleExpr`.
+- [x] **W2.1.1** Create `stage2/src/ast.fuse`.
+- [x] **W2.1.2** Define `data class Program(val declarations: List<Declaration>, val filename: String)`.
+- [x] **W2.1.3** Define `enum Declaration` with variants: `Import`, `Function`, `DataClass`, `Enum`, `ExternFn`, `Struct`, `Const`, `Interface`.
+- [x] **W2.1.4** Define `data class ImportDecl(val modulePath: String, val items: Option<List<String>>, val span: Span)`.
+- [x] **W2.1.5** Define `data class FunctionDecl(val name: String, val typeParams: List<String>, val params: List<Param>, val returnType: Option<String>, val body: Block, val isPub: Bool, val annotations: List<Annotation>, val receiverType: Option<String>, val span: Span)`.
+- [x] **W2.1.6** Define `data class Param(val convention: Option<String>, val name: String, val typeName: Option<String>, val variadic: Bool, val span: Span)`.
+- [x] **W2.1.7** Define `data class DataClassDecl(val name: String, val typeParams: List<String>, val fields: List<FieldDecl>, val methods: List<FunctionDecl>, val isPub: Bool, val annotations: List<Annotation>, val interfaces: List<String>, val span: Span)`.
+- [x] **W2.1.8** Define `data class EnumDecl`, `data class EnumVariant`, `data class StructDecl`, `data class InterfaceDecl`, `data class InterfaceMethod`.
+- [x] **W2.1.9** Define `data class ExternFnDecl`, `data class ConstDecl`.
+- [x] **W2.1.10** Define `data class Block(val statements: List<Statement>, val span: Span)`.
+- [x] **W2.1.11** Define `enum Statement` with variants: `VarDecl`, `Assign`, `Return`, `Break`, `Continue`, `Spawn`, `While`, `For`, `Loop`, `Defer`, `Expr`, `TupleDestruct`.
+- [x] **W2.1.12** Define `enum Expr` with variants: `Literal`, `FString`, `Name`, `List`, `Tuple`, `Unary`, `Binary`, `Call`, `Member`, `Move`, `Ref`, `MutRef`, `Question`, `If`, `Match`, `When`, `Lambda`.
+- [x] **W2.1.13** Define `enum Pattern` with variants: `Wildcard`, `Literal`, `Name`, `Variant`, `Tuple`.
+- [x] **W2.1.14** Define `data class Annotation(val name: String, val args: List<AnnotationArg>, val span: Span)`.
+- [x] **W2.1.15** Define all supporting data classes: `FieldDecl`, `VarDeclStmt`, `AssignStmt`, `ReturnStmt`, `WhileStmt`, `ForStmt`, `LoopStmt`, `DeferStmt`, `ExprStmt`, `BinaryOp`, `UnaryOp`, `CallExpr`, `MemberExpr`, `IfExpr`, `MatchExpr`, `MatchArm`, `WhenExpr`, `WhenArm`, `LambdaExpr`, `LiteralExpr`, `FStringExpr`, `NameExpr`, `ListExpr`, `TupleExpr`.
 
 ---
 

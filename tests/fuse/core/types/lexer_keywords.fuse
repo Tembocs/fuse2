@@ -1,0 +1,65 @@
+// EXPECTED OUTPUT:
+// keywords: 34
+// Fn Val Var Ref MutRef Owned Move
+// Struct Data Class Enum
+// Match When If Else
+// For In Loop Return Defer While Break Continue
+// Extern Pub Import
+// True False And Or Not
+// Spawn Interface Implements
+
+import stage2.src.lexer
+import stage2.src.token
+
+@entrypoint
+fn main() {
+  val source = "fn val var ref mutref owned move struct data class enum match when if else for in loop return defer while break continue extern pub import true false and or not spawn interface implements"
+  val result = lexer.lex(source, "test.fuse")
+  match result {
+    Ok(tokens) => {
+      // 34 keywords + 1 Eof = 35 total; print keyword count (exclude Eof)
+      println(f"keywords: {tokens.len() - 1}")
+      // Print kinds grouped by category
+      var line1 = ""
+      var line2 = ""
+      var line3 = ""
+      var line4 = ""
+      var line5 = ""
+      var line6 = ""
+      var line7 = ""
+      var i = 0
+      while i < tokens.len() - 1 {
+        match tokens.get(i) {
+          Some(t) => {
+            val k = f"{t.kind}"
+            if i < 7 {
+              if line1 == "" { line1 = k } else { line1 = f"{line1} {k}" }
+            } else if i < 11 {
+              if line2 == "" { line2 = k } else { line2 = f"{line2} {k}" }
+            } else if i < 15 {
+              if line3 == "" { line3 = k } else { line3 = f"{line3} {k}" }
+            } else if i < 23 {
+              if line4 == "" { line4 = k } else { line4 = f"{line4} {k}" }
+            } else if i < 26 {
+              if line5 == "" { line5 = k } else { line5 = f"{line5} {k}" }
+            } else if i < 31 {
+              if line6 == "" { line6 = k } else { line6 = f"{line6} {k}" }
+            } else {
+              if line7 == "" { line7 = k } else { line7 = f"{line7} {k}" }
+            }
+          },
+          None => {}
+        }
+        i = i + 1
+      }
+      println(line1)
+      println(line2)
+      println(line3)
+      println(line4)
+      println(line5)
+      println(line6)
+      println(line7)
+    },
+    Err(msg) => println(f"error: {msg}")
+  }
+}

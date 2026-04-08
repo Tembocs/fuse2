@@ -1,0 +1,34 @@
+// EXPECTED OUTPUT:
+// token count: 138
+// first: At @ 8:1
+// last: Eof  39:1
+
+import stdlib.full.io
+import stage2.src.lexer
+import stage2.src.token
+
+@entrypoint
+fn main() {
+  val content = readFile("tests/fuse/milestone/four_functions.fuse")
+  match content {
+    Ok(source) => {
+      val result = lexer.lex(source, "four_functions.fuse")
+      match result {
+        Ok(tokens) => {
+          println(f"token count: {tokens.len()}")
+          match tokens.get(0) {
+            Some(t) => println(f"first: {t.kind} {t.text} {t.line}:{t.column}"),
+            None => {}
+          }
+          val last_idx = tokens.len() - 1
+          match tokens.get(last_idx) {
+            Some(t) => println(f"last: {t.kind} {t.text} {t.line}:{t.column}"),
+            None => {}
+          }
+        },
+        Err(msg) => println(f"lex error: {msg}")
+      }
+    },
+    Err(msg) => println(f"io error: {msg}")
+  }
+}

@@ -1,0 +1,412 @@
+// ast.fuse — AST node definitions for the Stage 2 self-hosted compiler.
+//
+// Matches Stage 1 (stage1/fusec/src/ast/nodes.rs) exactly.
+// Every declaration, statement, expression, and pattern type is covered.
+
+import token
+
+// ---------------------------------------------------------------------------
+// Annotations
+// ---------------------------------------------------------------------------
+
+pub enum AnnotationArg {
+  Int(Int),
+  String(String),
+  Name(String)
+}
+
+pub data class Annotation(
+  val name: String,
+  val args: List<AnnotationArg>,
+  val span: Span
+)
+
+// ---------------------------------------------------------------------------
+// Program & top-level declarations
+// ---------------------------------------------------------------------------
+
+pub data class Program(
+  val declarations: List<Declaration>,
+  val filename: String
+)
+
+pub enum Declaration {
+  Import(ImportDecl),
+  Function(FunctionDecl),
+  DataClass(DataClassDecl),
+  Enum(EnumDecl),
+  ExternFn(ExternFnDecl),
+  Struct(StructDecl),
+  Const(ConstDecl),
+  Interface(InterfaceDecl)
+}
+
+// ---------------------------------------------------------------------------
+// Declaration data classes
+// ---------------------------------------------------------------------------
+
+pub data class ImportDecl(
+  val modulePath: String,
+  val items: Option<List<String>>,
+  val span: Span
+)
+
+pub data class FunctionDecl(
+  val name: String,
+  val typeParams: List<String>,
+  val params: List<Param>,
+  val returnType: Option<String>,
+  val body: Block,
+  val isPub: Bool,
+  val annotations: List<Annotation>,
+  val receiverType: Option<String>,
+  val span: Span
+)
+
+pub data class Param(
+  val convention: Option<String>,
+  val name: String,
+  val typeName: Option<String>,
+  val variadic: Bool,
+  val span: Span
+)
+
+pub data class FieldDecl(
+  val mutable: Bool,
+  val name: String,
+  val typeName: Option<String>,
+  val span: Span
+)
+
+pub data class DataClassDecl(
+  val name: String,
+  val typeParams: List<String>,
+  val fields: List<FieldDecl>,
+  val methods: List<FunctionDecl>,
+  val isPub: Bool,
+  val annotations: List<Annotation>,
+  val interfaces: List<String>,
+  val span: Span
+)
+
+pub data class EnumVariant(
+  val name: String,
+  val arity: Int,
+  val span: Span
+)
+
+pub data class EnumDecl(
+  val name: String,
+  val variants: List<EnumVariant>,
+  val isPub: Bool,
+  val interfaces: List<String>,
+  val span: Span
+)
+
+pub data class StructDecl(
+  val name: String,
+  val fields: List<FieldDecl>,
+  val methods: List<FunctionDecl>,
+  val isPub: Bool,
+  val annotations: List<Annotation>,
+  val interfaces: List<String>,
+  val span: Span
+)
+
+pub data class ConstDecl(
+  val owner: String,
+  val name: String,
+  val typeName: Option<String>,
+  val value: Expr,
+  val isPub: Bool,
+  val span: Span
+)
+
+pub data class ExternFnDecl(
+  val name: String,
+  val params: List<Param>,
+  val returnType: Option<String>,
+  val isPub: Bool,
+  val span: Span
+)
+
+pub data class InterfaceDecl(
+  val name: String,
+  val typeParams: List<String>,
+  val parents: List<String>,
+  val methods: List<InterfaceMethod>,
+  val isPub: Bool,
+  val span: Span
+)
+
+pub data class InterfaceMethod(
+  val name: String,
+  val params: List<Param>,
+  val returnType: Option<String>,
+  val span: Span
+)
+
+// ---------------------------------------------------------------------------
+// Blocks & statements
+// ---------------------------------------------------------------------------
+
+pub data class Block(
+  val statements: List<Statement>,
+  val span: Span
+)
+
+pub enum Statement {
+  VarDecl(VarDeclStmt),
+  TupleDestruct(TupleDestructStmt),
+  Assign(AssignStmt),
+  Return(ReturnStmt),
+  Break(Span),
+  Continue(Span),
+  Spawn(SpawnStmt),
+  While(WhileStmt),
+  For(ForStmt),
+  Loop(LoopStmt),
+  Defer(DeferStmt),
+  Expr(ExprStmt)
+}
+
+pub data class VarDeclStmt(
+  val annotations: List<Annotation>,
+  val mutable: Bool,
+  val name: String,
+  val typeName: Option<String>,
+  val value: Expr,
+  val span: Span
+)
+
+pub data class TupleDestructStmt(
+  val names: List<String>,
+  val value: Expr,
+  val span: Span
+)
+
+pub data class AssignStmt(
+  val target: Expr,
+  val value: Expr,
+  val span: Span
+)
+
+pub data class ReturnStmt(
+  val value: Option<Expr>,
+  val span: Span
+)
+
+pub data class SpawnStmt(
+  val body: Block,
+  val span: Span
+)
+
+pub data class WhileStmt(
+  val condition: Expr,
+  val body: Block,
+  val span: Span
+)
+
+pub data class ForStmt(
+  val name: String,
+  val iterable: Expr,
+  val body: Block,
+  val span: Span
+)
+
+pub data class LoopStmt(
+  val body: Block,
+  val span: Span
+)
+
+pub data class DeferStmt(
+  val expr: Expr,
+  val span: Span
+)
+
+pub data class ExprStmt(
+  val expr: Expr,
+  val span: Span
+)
+
+// ---------------------------------------------------------------------------
+// Expressions
+// ---------------------------------------------------------------------------
+
+pub enum Expr {
+  Literal(LiteralExpr),
+  FString(FStringExpr),
+  Name(NameExpr),
+  List(ListExpr),
+  Tuple(TupleExpr),
+  Unary(UnaryOp),
+  Binary(BinaryOp),
+  Call(CallExpr),
+  Member(MemberExpr),
+  Move(MoveExpr),
+  Ref(RefExpr),
+  MutRef(MutRefExpr),
+  Question(QuestionExpr),
+  If(IfExpr),
+  Match(MatchExpr),
+  When(WhenExpr),
+  Lambda(LambdaExpr)
+}
+
+pub enum LiteralValue {
+  Int(Int),
+  Float(Float),
+  String(String),
+  Bool(Bool)
+}
+
+pub data class LiteralExpr(
+  val value: LiteralValue,
+  val span: Span
+)
+
+pub data class FStringExpr(
+  val template: String,
+  val span: Span
+)
+
+pub data class NameExpr(
+  val value: String,
+  val span: Span
+)
+
+pub data class ListExpr(
+  val items: List<Expr>,
+  val span: Span
+)
+
+pub data class TupleExpr(
+  val items: List<Expr>,
+  val span: Span
+)
+
+pub data class UnaryOp(
+  val op: String,
+  val value: Expr,
+  val span: Span
+)
+
+pub data class BinaryOp(
+  val left: Expr,
+  val op: String,
+  val right: Expr,
+  val span: Span
+)
+
+pub data class CallExpr(
+  val callee: Expr,
+  val args: List<Expr>,
+  val span: Span
+)
+
+pub data class MemberExpr(
+  val object: Expr,
+  val name: String,
+  val optional: Bool,
+  val span: Span
+)
+
+pub data class MoveExpr(
+  val value: Expr,
+  val span: Span
+)
+
+pub data class RefExpr(
+  val value: Expr,
+  val span: Span
+)
+
+pub data class MutRefExpr(
+  val value: Expr,
+  val span: Span
+)
+
+pub data class QuestionExpr(
+  val value: Expr,
+  val span: Span
+)
+
+pub data class IfExpr(
+  val condition: Expr,
+  val thenBranch: Block,
+  val elseBranch: Option<ElseBranch>,
+  val span: Span
+)
+
+pub enum ElseBranch {
+  Block(Block),
+  IfExpr(IfExpr)
+}
+
+pub data class MatchExpr(
+  val subject: Expr,
+  val arms: List<MatchArm>,
+  val span: Span
+)
+
+pub data class MatchArm(
+  val pattern: Pattern,
+  val body: ArmBody,
+  val span: Span
+)
+
+pub data class WhenExpr(
+  val arms: List<WhenArm>,
+  val span: Span
+)
+
+pub data class WhenArm(
+  val condition: Option<Expr>,
+  val body: ArmBody,
+  val span: Span
+)
+
+pub enum ArmBody {
+  Block(Block),
+  Expr(Expr)
+}
+
+pub data class LambdaExpr(
+  val params: List<Param>,
+  val returnType: Option<String>,
+  val body: Block,
+  val span: Span
+)
+
+// ---------------------------------------------------------------------------
+// Patterns
+// ---------------------------------------------------------------------------
+
+pub enum Pattern {
+  Wildcard(Span),
+  Literal(LiteralPattern),
+  Name(NamePattern),
+  Variant(VariantPattern),
+  Tuple(TuplePattern)
+}
+
+pub data class LiteralPattern(
+  val value: LiteralValue,
+  val span: Span
+)
+
+pub data class NamePattern(
+  val name: String,
+  val span: Span
+)
+
+pub data class VariantPattern(
+  val name: String,
+  val args: List<Pattern>,
+  val span: Span
+)
+
+pub data class TuplePattern(
+  val elements: List<Pattern>,
+  val span: Span
+)
