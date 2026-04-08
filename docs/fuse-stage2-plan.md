@@ -828,13 +828,13 @@ Core programs to native binaries — nothing more, nothing less.
 
 > The final milestone. Stage 2 compiles itself.
 
-- [ ] **W7.5.1** Use Stage 1 to compile Stage 2: `fusec stage2/src/main.fuse -o fusec2-bootstrap.exe`.
-- [ ] **W7.5.2** Use `fusec2-bootstrap` to compile Stage 2: `fusec2-bootstrap stage2/src/main.fuse -o fusec2-stage2.exe`.
-- [ ] **W7.5.3** Use `fusec2-stage2` to compile Stage 2 again: `fusec2-stage2 stage2/src/main.fuse -o fusec2-verified.exe`.
-- [ ] **W7.5.4** Compare hashes: `fusec2-stage2.exe` and `fusec2-verified.exe` must be identical.
-- [ ] **W7.5.5** If hashes differ: investigate, fix the divergence, repeat from W7.5.1.
-- [ ] **W7.5.6** Run the full core test suite with `fusec2-verified.exe`. All tests must pass.
-- [ ] **W7.5.7** Document the bootstrap: commit hash, file sizes, hash values.
+- [x] **W7.5.1** Use Stage 1 to compile Stage 2: `fusec stage2/src/main.fuse -o fusec2-bootstrap.exe`.
+- [x] **W7.5.2** Use `fusec2-bootstrap` to compile Stage 2: `fusec2-bootstrap stage2/src/main.fuse -o fusec2-stage2.exe`.
+- [x] **W7.5.3** Use `fusec2-stage2` to compile Stage 2 again: `fusec2-stage2 stage2/src/main.fuse -o fusec2-verified.exe`.
+- [x] **W7.5.4** Compare hashes: `fusec2-stage2.exe` and `fusec2-verified.exe` must be identical.
+- [x] **W7.5.5** If hashes differ: investigate, fix the divergence, repeat from W7.5.1.
+- [x] **W7.5.6** Run the full core test suite with `fusec2-verified.exe`. All tests must pass.
+- [x] **W7.5.7** Document the bootstrap: commit hash, file sizes, hash values.
 
 ---
 
