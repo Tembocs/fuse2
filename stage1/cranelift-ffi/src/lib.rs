@@ -13,10 +13,11 @@ use std::fs;
 use std::path::Path;
 use std::slice;
 
-use cranelift_codegen::ir::{self, types, AbiParam, Block};
+use cranelift_codegen::ir::condcodes::IntCC;
+use cranelift_codegen::ir::{self, types, AbiParam, Block, BlockArg, FuncRef, InstBuilder, TrapCode, Value};
 use cranelift_codegen::settings;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
-use cranelift_module::{default_libcall_names, FuncId, Linkage, Module};
+use cranelift_module::{default_libcall_names, DataDescription, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 
 use fuse_runtime::{FuseHandle, fuse_int, fuse_unit};
@@ -97,6 +98,31 @@ fn linkage_from_id(id: i64) -> Linkage {
         1 => Linkage::Local,
         2 => Linkage::Export,
         _ => Linkage::Local,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// IntCC mapping
+//   0 = Equal            1 = NotEqual
+//   2 = SignedLessThan    3 = SignedGreaterThanOrEqual
+//   4 = SignedGreaterThan 5 = SignedLessThanOrEqual
+//   6 = UnsignedLessThan  7 = UnsignedGreaterThanOrEqual
+//   8 = UnsignedGreaterThan 9 = UnsignedLessThanOrEqual
+// ---------------------------------------------------------------------------
+
+fn intcc_from_id(id: i64) -> IntCC {
+    match id {
+        0 => IntCC::Equal,
+        1 => IntCC::NotEqual,
+        2 => IntCC::SignedLessThan,
+        3 => IntCC::SignedGreaterThanOrEqual,
+        4 => IntCC::SignedGreaterThan,
+        5 => IntCC::SignedLessThanOrEqual,
+        6 => IntCC::UnsignedLessThan,
+        7 => IntCC::UnsignedGreaterThanOrEqual,
+        8 => IntCC::UnsignedGreaterThan,
+        9 => IntCC::UnsignedLessThanOrEqual,
+        _ => IntCC::Equal,
     }
 }
 
@@ -596,4 +622,409 @@ pub unsafe extern "C" fn cranelift_ffi_builder_inst_results(
         unsafe { *out_ptr.add(i) = results[i].as_u32() as i64 };
     }
     from_i64(count as i64)
+}
+
+// =========================================================================
+// Phase W0.4 — Instructions
+// =========================================================================
+
+/// Read an array of Value ids from a raw pointer.
+unsafe fn read_values(ptr: FuseHandle, count: FuseHandle) -> Vec<Value> {
+    let n = to_i64(count) as usize;
+    let p = to_i64(ptr) as *const i64;
+    let mut vals = Vec::with_capacity(n);
+    for i in 0..n {
+        vals.push(Value::from_u32(unsafe { *p.add(i) } as u32));
+    }
+    vals
+}
+
+// -- Constants --------------------------------------------------------
+
+/// Integer constant.
+/// `type_id` — Cranelift type (0=I8, 1=I32, 2=I64, 3=F64, 4=Ptr).
+/// `value` — the constant value as i64.
+/// Returns Value id.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_iconst(
+    bld: FuseHandle,
+    type_id: FuseHandle,
+    value: FuseHandle,
+    module: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let m = unsafe { &*to_ptr::<FfiModule>(module) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let ty = type_from_id(to_i64(type_id), m.pointer_type);
+    let val = builder.ins().iconst(ty, to_i64(value));
+    from_i64(val.as_u32() as i64)
+}
+
+/// Float64 constant. Returns Value id.
+/// `value` — the f64 bits packed as i64 (use f64::to_bits()).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_f64const(
+    bld: FuseHandle,
+    value: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let f = f64::from_bits(to_i64(value) as u64);
+    let val = builder.ins().f64const(f);
+    from_i64(val.as_u32() as i64)
+}
+
+// -- Calls & Returns --------------------------------------------------
+
+/// Call a function. Returns Inst id (use inst_results to get return values).
+/// `func_ref` — FuncRef id from declare_func_in_func.
+/// `args` — pointer to array of Value ids (i64).
+/// `arg_count` — number of arguments.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_call(
+    bld: FuseHandle,
+    func_ref: FuseHandle,
+    args: FuseHandle,
+    arg_count: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let fr = FuncRef::from_u32(to_i64(func_ref) as u32);
+    let vals = unsafe { read_values(args, arg_count) };
+    let inst = builder.ins().call(fr, &vals);
+    from_i64(inst.as_u32() as i64)
+}
+
+/// Return from function.
+/// `values` — pointer to array of Value ids to return.
+/// `count` — number of return values (0 or 1 typically).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_return(
+    bld: FuseHandle,
+    values: FuseHandle,
+    count: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let vals = unsafe { read_values(values, count) };
+    builder.ins().return_(&vals);
+    unit()
+}
+
+// -- Control Flow -----------------------------------------------------
+
+/// Unconditional jump to a block.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_jump(
+    bld: FuseHandle,
+    block: FuseHandle,
+    args: FuseHandle,
+    arg_count: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let vals = unsafe { read_values(args, arg_count) };
+    let block_args: Vec<BlockArg> = vals.iter().map(|v| BlockArg::Value(*v)).collect();
+    builder.ins().jump(Block::from_u32(to_i64(block) as u32), &block_args);
+    unit()
+}
+
+/// Conditional branch.
+/// `cond` — Value id of the condition (integer, 0 = false).
+/// Branches to `then_block` if nonzero, `else_block` if zero.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_brif(
+    bld: FuseHandle,
+    cond: FuseHandle,
+    then_block: FuseHandle,
+    then_args: FuseHandle,
+    then_count: FuseHandle,
+    else_block: FuseHandle,
+    else_args: FuseHandle,
+    else_count: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let cond_val = Value::from_u32(to_i64(cond) as u32);
+    let then_vals = unsafe { read_values(then_args, then_count) };
+    let else_vals = unsafe { read_values(else_args, else_count) };
+    let then_ba: Vec<BlockArg> = then_vals.iter().map(|v| BlockArg::Value(*v)).collect();
+    let else_ba: Vec<BlockArg> = else_vals.iter().map(|v| BlockArg::Value(*v)).collect();
+    builder.ins().brif(
+        cond_val,
+        Block::from_u32(to_i64(then_block) as u32),
+        &then_ba,
+        Block::from_u32(to_i64(else_block) as u32),
+        &else_ba,
+    );
+    unit()
+}
+
+// -- Integer Comparison -----------------------------------------------
+
+/// Integer compare. Returns Value id (boolean result).
+/// `cc` — IntCC id (0=Eq, 1=Ne, 2=Slt, 3=Sge, 4=Sgt, 5=Sle, 6=Ult, 7=Uge, 8=Ugt, 9=Ule).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_icmp(
+    bld: FuseHandle,
+    cc: FuseHandle,
+    a: FuseHandle,
+    b: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let val = builder.ins().icmp(
+        intcc_from_id(to_i64(cc)),
+        Value::from_u32(to_i64(a) as u32),
+        Value::from_u32(to_i64(b) as u32),
+    );
+    from_i64(val.as_u32() as i64)
+}
+
+/// Integer compare with immediate.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_icmp_imm(
+    bld: FuseHandle,
+    cc: FuseHandle,
+    a: FuseHandle,
+    imm: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let val = builder.ins().icmp_imm(
+        intcc_from_id(to_i64(cc)),
+        Value::from_u32(to_i64(a) as u32),
+        to_i64(imm),
+    );
+    from_i64(val.as_u32() as i64)
+}
+
+// -- Integer Arithmetic -----------------------------------------------
+
+/// Integer add. Returns Value id.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_iadd(
+    bld: FuseHandle,
+    a: FuseHandle,
+    b: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let val = builder.ins().iadd(
+        Value::from_u32(to_i64(a) as u32),
+        Value::from_u32(to_i64(b) as u32),
+    );
+    from_i64(val.as_u32() as i64)
+}
+
+/// Integer add with immediate.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_iadd_imm(
+    bld: FuseHandle,
+    a: FuseHandle,
+    imm: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let val = builder.ins().iadd_imm(
+        Value::from_u32(to_i64(a) as u32),
+        to_i64(imm),
+    );
+    from_i64(val.as_u32() as i64)
+}
+
+/// Integer subtract.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_isub(
+    bld: FuseHandle,
+    a: FuseHandle,
+    b: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let val = builder.ins().isub(
+        Value::from_u32(to_i64(a) as u32),
+        Value::from_u32(to_i64(b) as u32),
+    );
+    from_i64(val.as_u32() as i64)
+}
+
+/// Integer multiply.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_imul(
+    bld: FuseHandle,
+    a: FuseHandle,
+    b: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let val = builder.ins().imul(
+        Value::from_u32(to_i64(a) as u32),
+        Value::from_u32(to_i64(b) as u32),
+    );
+    from_i64(val.as_u32() as i64)
+}
+
+// -- Bitwise ----------------------------------------------------------
+
+/// Bitwise XOR with immediate.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_bxor_imm(
+    bld: FuseHandle,
+    a: FuseHandle,
+    imm: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let val = builder.ins().bxor_imm(
+        Value::from_u32(to_i64(a) as u32),
+        to_i64(imm),
+    );
+    from_i64(val.as_u32() as i64)
+}
+
+// -- Type Conversion --------------------------------------------------
+
+/// Sign-extend an integer to a wider type.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_sextend(
+    bld: FuseHandle,
+    type_id: FuseHandle,
+    a: FuseHandle,
+    module: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let m = unsafe { &*to_ptr::<FfiModule>(module) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let ty = type_from_id(to_i64(type_id), m.pointer_type);
+    let val = builder.ins().sextend(ty, Value::from_u32(to_i64(a) as u32));
+    from_i64(val.as_u32() as i64)
+}
+
+/// Zero-extend (unsigned extend) an integer to a wider type.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_uextend(
+    bld: FuseHandle,
+    type_id: FuseHandle,
+    a: FuseHandle,
+    module: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let m = unsafe { &*to_ptr::<FfiModule>(module) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let ty = type_from_id(to_i64(type_id), m.pointer_type);
+    let val = builder.ins().uextend(ty, Value::from_u32(to_i64(a) as u32));
+    from_i64(val.as_u32() as i64)
+}
+
+// -- Trap -------------------------------------------------------------
+
+/// Emit a trap (unreachable / panic).
+/// `code` — user trap code (positive integer).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_trap(
+    bld: FuseHandle,
+    code: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let tc = TrapCode::user(to_i64(code) as u8).unwrap();
+    builder.ins().trap(tc);
+    unit()
+}
+
+// -- Data / Symbol ----------------------------------------------------
+
+/// Load a data symbol's address into a Value.
+/// `data_id` — integer index from `module_declare_data`.
+/// `type_id` — the pointer type to load as.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_symbol_value(
+    bld: FuseHandle,
+    module: FuseHandle,
+    data_id: FuseHandle,
+    type_id: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let m = unsafe { &mut *to_ptr::<FfiModule>(module) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let idx = to_i64(data_id) as usize;
+    let did = match m.data_ids.get(idx) {
+        Some(id) => *id,
+        None => return from_i64(-1),
+    };
+    let ty = type_from_id(to_i64(type_id), m.pointer_type);
+    let gv = m.module.declare_data_in_func(did, builder.func);
+    let val = builder.ins().symbol_value(ty, gv);
+    from_i64(val.as_u32() as i64)
+}
+
+// -- Data Objects -----------------------------------------------------
+
+/// Declare a data object in the module. Returns data id as integer.
+/// `writable` — 0 = read-only, nonzero = writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_module_declare_data(
+    module: FuseHandle,
+    name_ptr: FuseHandle,
+    name_len: FuseHandle,
+    writable: FuseHandle,
+) -> FuseHandle {
+    let m = unsafe { &mut *to_ptr::<FfiModule>(module) };
+    let name = unsafe { str_from_raw(name_ptr, name_len) };
+    let w = to_i64(writable) != 0;
+    match m.module.declare_data(name, Linkage::Local, w, false) {
+        Ok(data_id) => {
+            if let Some(idx) = m.data_ids.iter().position(|id| *id == data_id) {
+                return from_i64(idx as i64);
+            }
+            let idx = m.data_ids.len();
+            m.data_ids.push(data_id);
+            from_i64(idx as i64)
+        }
+        Err(_) => from_i64(-1),
+    }
+}
+
+/// Define a data object's content. Returns 0 on success, -1 on error.
+/// `bytes` — pointer to raw byte content.
+/// `byte_len` — length in bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_module_define_data(
+    module: FuseHandle,
+    data_id: FuseHandle,
+    bytes: FuseHandle,
+    byte_len: FuseHandle,
+) -> FuseHandle {
+    let m = unsafe { &mut *to_ptr::<FfiModule>(module) };
+    let idx = to_i64(data_id) as usize;
+    let did = match m.data_ids.get(idx) {
+        Some(id) => *id,
+        None => return from_i64(-1),
+    };
+    let ptr = to_i64(bytes) as *const u8;
+    let len = to_i64(byte_len) as usize;
+    let content = unsafe { slice::from_raw_parts(ptr, len) };
+    let mut desc = DataDescription::new();
+    desc.define(content.to_vec().into_boxed_slice());
+    match m.module.define_data(did, &desc) {
+        Ok(_) => from_i64(0),
+        Err(_) => from_i64(-1),
+    }
+}
+
+// -- Verification -----------------------------------------------------
+
+/// Verify function IR in the context. Returns 0 on success, -1 on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_context_verify(
+    ctx: FuseHandle,
+    _module: FuseHandle,
+) -> FuseHandle {
+    let c = unsafe { &*to_ptr::<FfiContext>(ctx) };
+    let flags = settings::Flags::new(settings::builder());
+    match cranelift_codegen::verify_function(&c.ctx.func, &flags) {
+        Ok(_) => from_i64(0),
+        Err(_) => from_i64(-1),
+    }
 }

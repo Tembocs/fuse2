@@ -314,33 +314,33 @@ Core programs to native binaries — nothing more, nothing less.
 > Each instruction function takes a builder handle and value operands,
 > returns a Value id (or Inst id for calls).
 
-- [ ] **W0.4.1** `cranelift_ffi_ins_iconst(builder: Ptr, type_id: Int, value: Int) -> Int` — integer constant.
-- [ ] **W0.4.2** `cranelift_ffi_ins_f64const(builder: Ptr, value: Float) -> Int` — float constant.
-- [ ] **W0.4.3** `cranelift_ffi_ins_call(builder: Ptr, func_ref: Int, args: Ptr, arg_count: Int) -> Int` — call function, return Inst id.
-- [ ] **W0.4.4** `cranelift_ffi_ins_return(builder: Ptr, values: Ptr, count: Int)` — return from function.
-- [ ] **W0.4.5** `cranelift_ffi_ins_jump(builder: Ptr, block: Int, args: Ptr, arg_count: Int)` — unconditional jump.
-- [ ] **W0.4.6** `cranelift_ffi_ins_brif(builder: Ptr, cond: Int, then_block: Int, then_args: Ptr, then_count: Int, else_block: Int, else_args: Ptr, else_count: Int)` — conditional branch.
-- [ ] **W0.4.7** `cranelift_ffi_ins_icmp(builder: Ptr, cc: Int, a: Int, b: Int) -> Int` — integer compare.
-- [ ] **W0.4.8** `cranelift_ffi_ins_icmp_imm(builder: Ptr, cc: Int, a: Int, imm: Int) -> Int` — compare with immediate.
-- [ ] **W0.4.9** `cranelift_ffi_ins_iadd(builder: Ptr, a: Int, b: Int) -> Int`.
-- [ ] **W0.4.10** `cranelift_ffi_ins_iadd_imm(builder: Ptr, a: Int, imm: Int) -> Int`.
-- [ ] **W0.4.11** `cranelift_ffi_ins_isub(builder: Ptr, a: Int, b: Int) -> Int`.
-- [ ] **W0.4.12** `cranelift_ffi_ins_imul(builder: Ptr, a: Int, b: Int) -> Int`.
-- [ ] **W0.4.13** `cranelift_ffi_ins_bxor_imm(builder: Ptr, a: Int, imm: Int) -> Int`.
-- [ ] **W0.4.14** `cranelift_ffi_ins_sextend(builder: Ptr, type_id: Int, a: Int) -> Int`.
-- [ ] **W0.4.15** `cranelift_ffi_ins_uextend(builder: Ptr, type_id: Int, a: Int) -> Int`.
-- [ ] **W0.4.16** `cranelift_ffi_ins_trap(builder: Ptr, code: Int)` — trap/unreachable.
-- [ ] **W0.4.17** `cranelift_ffi_ins_symbol_value(builder: Ptr, module: Ptr, data_id: Int, type_id: Int) -> Int` — load data symbol address.
+- [x] **W0.4.1** `cranelift_ffi_ins_iconst(builder: Ptr, type_id: Int, value: Int, module: Ptr) -> Int` — integer constant. Module needed for pointer type.
+- [x] **W0.4.2** `cranelift_ffi_ins_f64const(builder: Ptr, value: Int) -> Int` — float constant (f64 bits as i64).
+- [x] **W0.4.3** `cranelift_ffi_ins_call(builder: Ptr, func_ref: Int, args: Ptr, arg_count: Int) -> Int` — call function, return Inst id.
+- [x] **W0.4.4** `cranelift_ffi_ins_return(builder: Ptr, values: Ptr, count: Int)` — return from function.
+- [x] **W0.4.5** `cranelift_ffi_ins_jump(builder: Ptr, block: Int, args: Ptr, arg_count: Int)` — unconditional jump. Uses BlockArg::Value wrapper.
+- [x] **W0.4.6** `cranelift_ffi_ins_brif(builder: Ptr, cond: Int, then_block: Int, then_args: Ptr, then_count: Int, else_block: Int, else_args: Ptr, else_count: Int)` — conditional branch.
+- [x] **W0.4.7** `cranelift_ffi_ins_icmp(builder: Ptr, cc: Int, a: Int, b: Int) -> Int` — integer compare. IntCC mapping: 0=Eq,1=Ne,2=Slt,3=Sge,4=Sgt,5=Sle,6=Ult,7=Uge,8=Ugt,9=Ule.
+- [x] **W0.4.8** `cranelift_ffi_ins_icmp_imm(builder: Ptr, cc: Int, a: Int, imm: Int) -> Int` — compare with immediate.
+- [x] **W0.4.9** `cranelift_ffi_ins_iadd(builder: Ptr, a: Int, b: Int) -> Int`.
+- [x] **W0.4.10** `cranelift_ffi_ins_iadd_imm(builder: Ptr, a: Int, imm: Int) -> Int`.
+- [x] **W0.4.11** `cranelift_ffi_ins_isub(builder: Ptr, a: Int, b: Int) -> Int`.
+- [x] **W0.4.12** `cranelift_ffi_ins_imul(builder: Ptr, a: Int, b: Int) -> Int`.
+- [x] **W0.4.13** `cranelift_ffi_ins_bxor_imm(builder: Ptr, a: Int, imm: Int) -> Int`.
+- [x] **W0.4.14** `cranelift_ffi_ins_sextend(builder: Ptr, type_id: Int, a: Int, module: Ptr) -> Int`. Module needed for pointer type.
+- [x] **W0.4.15** `cranelift_ffi_ins_uextend(builder: Ptr, type_id: Int, a: Int, module: Ptr) -> Int`. Module needed for pointer type.
+- [x] **W0.4.16** `cranelift_ffi_ins_trap(builder: Ptr, code: Int)` — trap/unreachable.
+- [x] **W0.4.17** `cranelift_ffi_ins_symbol_value(builder: Ptr, module: Ptr, data_id: Int, type_id: Int) -> Int` — load data symbol address via declare_data_in_func.
 
 **Data objects:**
-- [ ] **W0.4.18** `cranelift_ffi_module_declare_data(module: Ptr, name: Ptr, name_len: Int, writable: Int) -> Int` — declare data object.
-- [ ] **W0.4.19** `cranelift_ffi_module_define_data(module: Ptr, data_id: Int, bytes: Ptr, byte_len: Int) -> Int` — define data content.
+- [x] **W0.4.18** `cranelift_ffi_module_declare_data(module: Ptr, name: Ptr, name_len: Int, writable: Int) -> Int` — declare data object.
+- [x] **W0.4.19** `cranelift_ffi_module_define_data(module: Ptr, data_id: Int, bytes: Ptr, byte_len: Int) -> Int` — define data content.
 
 **Verification:**
-- [ ] **W0.4.20** `cranelift_ffi_context_verify(ctx: Ptr, module: Ptr) -> Int` — verify function IR. Returns 0 on success.
+- [x] **W0.4.20** `cranelift_ffi_context_verify(ctx: Ptr, module: Ptr) -> Int` — verify function IR. Returns 0 on success.
 
 **Integration test:**
-- [ ] **W0.4.21** Write `tests/fuse/core/types/cranelift_ffi_smoke.fuse` — create module, declare runtime `fuse_int`, build a function that calls `fuse_int(42)` and returns it, emit object file. Verify with Stage 1.
+- [x] **W0.4.21** Rust integration test: create module, declare `fuse_int`, build function calling `fuse_int(42)`, verify IR, define function — all passing. Fuse smoke test updated in cranelift_ffi_smoke.fuse.
 
 ---
 
