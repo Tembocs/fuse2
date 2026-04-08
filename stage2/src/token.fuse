@@ -1,0 +1,140 @@
+// token.fuse — Token type definitions for the Stage 2 self-hosted compiler.
+//
+// Matches Stage 1 (stage1/fusec/src/lexer/token.rs) exactly.
+
+pub enum TokenKind {
+  // Literals
+  Int,
+  Float,
+  String,
+  FString,
+  Identifier,
+
+  // Keywords
+  Fn,
+  Val,
+  Var,
+  Ref,
+  MutRef,
+  Owned,
+  Move,
+  Struct,
+  Data,
+  Class,
+  Enum,
+  Match,
+  When,
+  If,
+  Else,
+  For,
+  In,
+  Loop,
+  Return,
+  Defer,
+  While,
+  Break,
+  Continue,
+  Extern,
+  Pub,
+  Import,
+  True,
+  False,
+  And,
+  Or,
+  Not,
+  Spawn,
+  Interface,
+  Implements,
+
+  // Multi-character operators
+  FatArrow,
+  Arrow,
+  QDot,
+  Elvis,
+  ColonColon,
+  EqEq,
+  Ne,
+  Le,
+  Ge,
+
+  // Delimiters
+  LParen,
+  RParen,
+  LBrace,
+  RBrace,
+  LBracket,
+  RBracket,
+
+  // Punctuation
+  Comma,
+  Semi,
+  Colon,
+  Dot,
+  Question,
+  At,
+
+  // Single-character operators
+  Eq,
+  Plus,
+  Minus,
+  Star,
+  Slash,
+  Percent,
+  Lt,
+  Gt,
+  Bang,
+
+  // End of file
+  Eof
+}
+
+pub data class Token(
+  val kind: TokenKind,
+  val text: String,
+  val line: Int,
+  val column: Int
+)
+
+pub data class Span(
+  val line: Int,
+  val column: Int
+)
+
+pub fn keyword_kind(text: String) -> Option<TokenKind> {
+  // Keywords — must match Stage 1 keyword_kind() exactly.
+  if text == "fn" { return Some(TokenKind.Fn) }
+  if text == "val" { return Some(TokenKind.Val) }
+  if text == "var" { return Some(TokenKind.Var) }
+  if text == "ref" { return Some(TokenKind.Ref) }
+  if text == "mutref" { return Some(TokenKind.MutRef) }
+  if text == "owned" { return Some(TokenKind.Owned) }
+  if text == "move" { return Some(TokenKind.Move) }
+  if text == "struct" { return Some(TokenKind.Struct) }
+  if text == "data" { return Some(TokenKind.Data) }
+  if text == "class" { return Some(TokenKind.Class) }
+  if text == "enum" { return Some(TokenKind.Enum) }
+  if text == "match" { return Some(TokenKind.Match) }
+  if text == "when" { return Some(TokenKind.When) }
+  if text == "if" { return Some(TokenKind.If) }
+  if text == "else" { return Some(TokenKind.Else) }
+  if text == "for" { return Some(TokenKind.For) }
+  if text == "in" { return Some(TokenKind.In) }
+  if text == "loop" { return Some(TokenKind.Loop) }
+  if text == "return" { return Some(TokenKind.Return) }
+  if text == "defer" { return Some(TokenKind.Defer) }
+  if text == "while" { return Some(TokenKind.While) }
+  if text == "break" { return Some(TokenKind.Break) }
+  if text == "continue" { return Some(TokenKind.Continue) }
+  if text == "extern" { return Some(TokenKind.Extern) }
+  if text == "pub" { return Some(TokenKind.Pub) }
+  if text == "import" { return Some(TokenKind.Import) }
+  if text == "true" { return Some(TokenKind.True) }
+  if text == "false" { return Some(TokenKind.False) }
+  if text == "and" { return Some(TokenKind.And) }
+  if text == "or" { return Some(TokenKind.Or) }
+  if text == "not" { return Some(TokenKind.Not) }
+  if text == "spawn" { return Some(TokenKind.Spawn) }
+  if text == "interface" { return Some(TokenKind.Interface) }
+  if text == "implements" { return Some(TokenKind.Implements) }
+  None
+}

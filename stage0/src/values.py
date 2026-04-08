@@ -64,3 +64,29 @@ class BoundMethod:
 class ModuleValue:
     name: str
     exports: dict[str, Any]
+
+
+@dataclass
+class EnumType:
+    """Runtime representation of an enum type. Allows EnumType.Variant access."""
+    name: str
+    variants: dict[str, str]  # variant_name -> "EnumName.VariantName"
+
+    def __repr__(self) -> str:
+        return self.name
+
+
+@dataclass
+class EnumVariantValue:
+    """Runtime value of a simple enum variant (no payload)."""
+    enum_name: str
+    variant_name: str
+
+    def __repr__(self) -> str:
+        return self.variant_name
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, EnumVariantValue) and self.enum_name == other.enum_name and self.variant_name == other.variant_name
+
+    def __hash__(self) -> int:
+        return hash((self.enum_name, self.variant_name))

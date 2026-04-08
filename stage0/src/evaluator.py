@@ -14,7 +14,7 @@ from common import resolve_import_path
 from environment import Environment
 from errors import FuseRuntimeError
 from parser import parse_source
-from values import BoundMethod, DataInstance, FuseOption, FuseResult, ModuleValue, NativeFunction, UserFunction
+from values import BoundMethod, DataInstance, EnumType, EnumVariantValue, FuseOption, FuseResult, ModuleValue, NativeFunction, UserFunction
 
 
 class ReturnSignal(Exception):
@@ -43,6 +43,7 @@ class ModuleRuntime:
         self.functions: dict[str, fa.FunctionDecl] = {}
         self.extensions: dict[tuple[str, str], fa.FunctionDecl] = {}
         self.data_defs: dict[str, DataDef] = {}
+        self.enum_types: dict[str, EnumType] = {}
         self.exports: dict[str, object] = {}
         self.imports: list[fa.ImportDecl] = []
 
@@ -73,6 +74,11 @@ class Evaluator:
                 module.data_defs[decl.name] = DataDef(decl, {m.name: m for m in decl.methods})
                 if decl.is_pub:
                     module.exports[decl.name] = decl
+            elif isinstance(decl, fa.EnumDecl):
+                enum_type = EnumType(decl.name, {v.name: v.name for v in decl.variants})
+                module.enum_types[decl.name] = enum_type
+                if decl.is_pub:
+                    module.exports[decl.name] = enum_type
         return module
 
     def base_env(self) -> Environment:
@@ -90,6 +96,8 @@ class Evaluator:
             env.define(name, UserFunction(str(module.path), decl), mutable=False, destroy=False)
         for name, data_def in module.data_defs.items():
             env.define(name, NativeFunction(name, lambda *args, _name=name: self.construct(module, _name, list(args))), mutable=False, destroy=False)
+        for name, enum_type in module.enum_types.items():
+            env.define(name, enum_type, mutable=False, destroy=False)
         for imp in module.imports:
             imported = self.load_module(resolve_import_path(module.path, imp.module_path))
             if imp.items:
@@ -102,7 +110,7 @@ class Evaluator:
                             value = NativeFunction(item, lambda *args, _name=item, _module=imported: self.construct(_module, _name, list(args)))
                         env.define(item, value, mutable=False, destroy=False)
             else:
-                env.define(imp.module_path.split('.')[-1], ModuleValue(imp.module_path, imported.exports), mutable=False, destroy=False)
+                env.define(imp.module_path.split('.')[-1], ModuleValue(str(imported.path), imported.exports), mutable=False, destroy=False)
         return env
 
     def construct(self, module: ModuleRuntime, name: str, args: list[object]):
@@ -494,10 +502,19 @@ class Evaluator:
                 return obj.fields[name]
             if name in obj.methods:
                 return BoundMethod(obj, obj.methods[name])
+        if isinstance(obj, EnumType):
+            if name in obj.variants:
+                return EnumVariantValue(obj.name, name)
+            raise FuseRuntimeError(f'enum `{obj.name}` has no variant `{name}`', module.path.name, expr.line, expr.column)
         if isinstance(obj, ModuleValue):
             value = obj.exports.get(name)
             if isinstance(value, fa.FunctionDecl):
                 return UserFunction(obj.name, value)
+            if isinstance(value, EnumType):
+                return value
+            if isinstance(value, fa.DataClassDecl):
+                target_module = self.load_module(obj.name)
+                return NativeFunction(name, lambda *args, _name=name, _module=target_module: self.construct(_module, _name, list(args)))
             return value
         if isinstance(obj, str):
             if name == 'toUpper':

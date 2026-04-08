@@ -1,0 +1,38 @@
+// EXPECTED OUTPUT:
+// keyword fn: Some(Fn)
+// keyword val: Some(Val)
+// keyword match: Some(Match)
+// keyword implements: Some(Implements)
+// not a keyword: None
+// token kind: Fn
+// token text: fn
+// token line: 1
+// token col: 5
+
+import stage2.src.token
+
+@entrypoint
+fn main() {
+  // W1.1.6: keyword_kind returns Some for keywords, None for non-keywords.
+  val fn_kind = token.keyword_kind("fn")
+  println(f"keyword fn: {fn_kind}")
+
+  val val_kind = token.keyword_kind("val")
+  println(f"keyword val: {val_kind}")
+
+  val match_kind = token.keyword_kind("match")
+  println(f"keyword match: {match_kind}")
+
+  val impl_kind = token.keyword_kind("implements")
+  println(f"keyword implements: {impl_kind}")
+
+  val hello_kind = token.keyword_kind("hello")
+  println(f"not a keyword: {hello_kind}")
+
+  // Token data class.
+  val tok = token.Token(token.TokenKind.Fn, "fn", 1, 5)
+  println(f"token kind: {tok.kind}")
+  println(f"token text: {tok.text}")
+  println(f"token line: {tok.line}")
+  println(f"token col: {tok.column}")
+}

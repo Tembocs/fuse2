@@ -356,12 +356,12 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W1.1 — Token Definitions
 
-- [ ] **W1.1.1** Create `stage2/src/token.fuse`.
-- [ ] **W1.1.2** Define `enum TokenKind` with all variants matching Stage 1 (75 kinds): `Int`, `Float`, `String`, `FString`, `Identifier`, `Fn`, `Val`, `Var`, `Ref`, `MutRef`, `Owned`, `Move`, `If`, `Else`, `While`, `For`, `In`, `Loop`, `Break`, `Continue`, `Return`, `Match`, `When`, `Data`, `Class`, `Enum`, `Struct`, `Interface`, `Implements`, `Import`, `Pub`, `Extern`, `Spawn`, `Defer`, `And`, `Or`, `Not`, `True`, `False`, `At`, `Plus`, `Minus`, `Star`, `Slash`, `Percent`, `Eq`, `NEq`, `Lt`, `Gt`, `LEq`, `GEq`, `Assign`, `Arrow`, `FatArrow`, `Dot`, `QDot`, `Question`, `Elvis`, `Bang`, `ColonColon`, `LParen`, `RParen`, `LBrace`, `RBrace`, `LBracket`, `RBracket`, `Comma`, `Colon`, `Semicolon`, `Eof`.
-- [ ] **W1.1.3** Define `data class Token(val kind: TokenKind, val text: String, val line: Int, val column: Int)`.
-- [ ] **W1.1.4** Define `data class Span(val line: Int, val column: Int)`.
-- [ ] **W1.1.5** Define `pub fn keyword_kind(text: String) -> Option<TokenKind>` — map keyword strings to token kinds.
-- [ ] **W1.1.6** Test: `keyword_kind("fn")` returns `Some(TokenKind.Fn)`, `keyword_kind("hello")` returns `None`.
+- [x] **W1.1.1** Create `stage2/src/token.fuse`.
+- [x] **W1.1.2** Define `enum TokenKind` with all 69 variants matching Stage 1 token.rs exactly.
+- [x] **W1.1.3** Define `data class Token(val kind: TokenKind, val text: String, val line: Int, val column: Int)`.
+- [x] **W1.1.4** Define `data class Span(val line: Int, val column: Int)`.
+- [x] **W1.1.5** Define `pub fn keyword_kind(text: String) -> Option<TokenKind>` — map keyword strings to token kinds.
+- [x] **W1.1.6** Test: `keyword_kind("fn")` returns `Some(TokenKind.Fn)`, `keyword_kind("hello")` returns `None`. Added Stage 0 enum runtime support to enable testing.
 
 ---
 
