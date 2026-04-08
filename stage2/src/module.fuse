@@ -1,0 +1,307 @@
+// module.fuse — Module loading and caching for the Stage 2 self-hosted compiler.
+//
+// Matches Stage 1 checker module loading logic.
+// Uses List-based symbol tables (evaluator cannot mutate maps).
+
+import stdlib.core.string
+import stdlib.full.io
+import token
+import ast
+import lexer
+import parser
+import error
+import common
+
+// ---------------------------------------------------------------------------
+// Symbol — what a module exports
+// ---------------------------------------------------------------------------
+
+pub enum Symbol {
+  Function(FunctionDecl, Bool),
+  Data(DataClassDecl, Bool),
+  Enum(EnumDecl, Bool),
+  Struct(StructDecl, Bool)
+}
+
+pub fn Symbol.isPub(ref self) -> Bool {
+  match self {
+    Symbol.Function(_, p) => p,
+    Symbol.Data(_, p) => p,
+    Symbol.Enum(_, p) => p,
+    Symbol.Struct(_, p) => p
+  }
+}
+
+pub fn Symbol.name(ref self) -> String {
+  match self {
+    Symbol.Function(fd, _) => fd.name,
+    Symbol.Data(dc, _) => dc.name,
+    Symbol.Enum(ed, _) => ed.name,
+    Symbol.Struct(sd, _) => sd.name
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Named entries for list-based lookup
+// ---------------------------------------------------------------------------
+
+pub data class NamedSymbol(val name: String, val symbol: Symbol)
+pub data class NamedFunc(val key: String, val func: FunctionDecl)
+pub data class NamedIface(val name: String, val info: InterfaceInfo)
+pub data class NamedImpls(val typeName: String, val interfaces: List<String>)
+pub data class CachedModule(val path: String, val info: ModuleInfo)
+
+// ---------------------------------------------------------------------------
+// InterfaceInfo
+// ---------------------------------------------------------------------------
+
+pub data class InterfaceInfo(
+  val name: String,
+  val typeParams: List<String>,
+  val parents: List<String>,
+  val methods: List<InterfaceMethod>,
+  val defaultMethods: List<FunctionDecl>,
+  val span: Span
+)
+
+// ---------------------------------------------------------------------------
+// ModuleInfo
+// ---------------------------------------------------------------------------
+
+pub data class ModuleInfo(
+  val path: String,
+  val program: Program,
+  val symbols: List<NamedSymbol>,
+  val extensions: List<NamedFunc>,
+  val statics: List<NamedFunc>,
+  val interfaces: List<NamedIface>,
+  val impls: List<NamedImpls>
+)
+
+// ---------------------------------------------------------------------------
+// List-based lookup helpers
+// ---------------------------------------------------------------------------
+
+pub fn findSymbol(symbols: List<NamedSymbol>, name: String) -> Option<Symbol> {
+  var i = 0
+  while i < symbols.len() {
+    match symbols.get(i) {
+      Some(ns) => {
+        if ns.name == name { return Some(ns.symbol) }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  None
+}
+
+pub fn hasSymbol(symbols: List<NamedSymbol>, name: String) -> Bool {
+  match findSymbol(symbols, name) {
+    Some(_) => true,
+    _ => false
+  }
+}
+
+pub fn findFunc(funcs: List<NamedFunc>, key: String) -> Option<FunctionDecl> {
+  var i = 0
+  while i < funcs.len() {
+    match funcs.get(i) {
+      Some(nf) => {
+        if nf.key == key { return Some(nf.func) }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  None
+}
+
+pub fn hasFunc(funcs: List<NamedFunc>, key: String) -> Bool {
+  match findFunc(funcs, key) {
+    Some(_) => true,
+    _ => false
+  }
+}
+
+pub fn findIface(ifaces: List<NamedIface>, name: String) -> Option<InterfaceInfo> {
+  var i = 0
+  while i < ifaces.len() {
+    match ifaces.get(i) {
+      Some(ni) => {
+        if ni.name == name { return Some(ni.info) }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  None
+}
+
+// ---------------------------------------------------------------------------
+// Module cache helpers
+// ---------------------------------------------------------------------------
+
+pub fn findCached(cache: List<CachedModule>, path: String) -> Option<ModuleInfo> {
+  var i = 0
+  while i < cache.len() {
+    match cache.get(i) {
+      Some(cm) => {
+        if cm.path == path { return Some(cm.info) }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  None
+}
+
+pub fn hasCached(cache: List<CachedModule>, path: String) -> Bool {
+  match findCached(cache, path) {
+    Some(_) => true,
+    _ => false
+  }
+}
+
+// Extension/static key: "ReceiverType::methodName"
+pub fn extKey(receiverType: String, methodName: String) -> String {
+  f"{receiverType}::{methodName}"
+}
+
+// ---------------------------------------------------------------------------
+// Module loading
+// ---------------------------------------------------------------------------
+
+// Load a module from a file path, registering all symbols.
+// Returns (ModuleInfo, updatedCache). Caller must keep the returned cache.
+pub fn loadModule(filePath: String, cache: List<CachedModule>) -> Result<(ModuleInfo, List<CachedModule>), String> {
+  // Check cache first (handles recursive imports).
+  match findCached(cache, filePath) {
+    Some(cached) => { return Ok((cached, cache)) },
+    _ => {}
+  }
+
+  // Read file.
+  val source = readFile(filePath)?
+
+  // Lex.
+  val tokens = lexer.lex(source, filePath)?
+
+  // Parse.
+  val prog = parser.parse(tokens, filePath)?
+
+  // Build symbol tables by walking declarations.
+  var symbols: List<NamedSymbol> = []
+  var extensions: List<NamedFunc> = []
+  var staticFns: List<NamedFunc> = []
+  var ifaces: List<NamedIface> = []
+  var implList: List<NamedImpls> = []
+
+  var i = 0
+  while i < prog.declarations.len() {
+    match prog.declarations.get(i) {
+      Some(decl) => {
+        match decl {
+          Declaration.Function(fd) => {
+            match fd.receiverType {
+              Some(rt) => {
+                val isStatic = isStaticMethod(fd)
+                val key = extKey(rt, fd.name)
+                if isStatic {
+                  staticFns = staticFns.concat([NamedFunc(key, fd)])
+                } else {
+                  extensions = extensions.concat([NamedFunc(key, fd)])
+                }
+              },
+              None => {
+                symbols = symbols.concat([NamedSymbol(fd.name, Symbol.Function(fd, fd.isPub))])
+              }
+            }
+          },
+          Declaration.DataClass(dc) => {
+            symbols = symbols.concat([NamedSymbol(dc.name, Symbol.Data(dc, dc.isPub))])
+            if dc.interfaces.len() > 0 {
+              implList = implList.concat([NamedImpls(dc.name, dc.interfaces)])
+            }
+            // Register inline methods.
+            var mi = 0
+            while mi < dc.methods.len() {
+              match dc.methods.get(mi) {
+                Some(method) => {
+                  val isStatic = isStaticMethod(method)
+                  val key = extKey(dc.name, method.name)
+                  if isStatic {
+                    staticFns = staticFns.concat([NamedFunc(key, method)])
+                  } else {
+                    extensions = extensions.concat([NamedFunc(key, method)])
+                  }
+                },
+                None => {}
+              }
+              mi = mi + 1
+            }
+          },
+          Declaration.Enum(ed) => {
+            symbols = symbols.concat([NamedSymbol(ed.name, Symbol.Enum(ed, ed.isPub))])
+            if ed.interfaces.len() > 0 {
+              implList = implList.concat([NamedImpls(ed.name, ed.interfaces)])
+            }
+          },
+          Declaration.Struct(sd) => {
+            symbols = symbols.concat([NamedSymbol(sd.name, Symbol.Struct(sd, sd.isPub))])
+            if sd.interfaces.len() > 0 {
+              implList = implList.concat([NamedImpls(sd.name, sd.interfaces)])
+            }
+            var mi = 0
+            while mi < sd.methods.len() {
+              match sd.methods.get(mi) {
+                Some(method) => {
+                  val isStatic = isStaticMethod(method)
+                  val key = extKey(sd.name, method.name)
+                  if isStatic {
+                    staticFns = staticFns.concat([NamedFunc(key, method)])
+                  } else {
+                    extensions = extensions.concat([NamedFunc(key, method)])
+                  }
+                },
+                None => {}
+              }
+              mi = mi + 1
+            }
+          },
+          Declaration.ExternFn(ef) => {
+            val synthetic = FunctionDecl(
+              ef.name, [], ef.params, ef.returnType,
+              Block([], Span(ef.span.line, ef.span.column)),
+              ef.isPub, [], None, ef.span
+            )
+            symbols = symbols.concat([NamedSymbol(ef.name, Symbol.Function(synthetic, ef.isPub))])
+          },
+          Declaration.Interface(id) => {
+            val info = InterfaceInfo(
+              id.name, id.typeParams, id.parents, id.methods, [], id.span
+            )
+            ifaces = ifaces.concat([NamedIface(id.name, info)])
+          },
+          Declaration.Import(_) => {},
+          Declaration.Const(_) => {}
+        }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+
+  val info = ModuleInfo(filePath, prog, symbols, extensions, staticFns, ifaces, implList)
+  val newCache = cache.concat([CachedModule(filePath, info)])
+  Ok((info, newCache))
+}
+
+// A method is static if it has no parameters or its first parameter is not named "self".
+fn isStaticMethod(fd: FunctionDecl) -> Bool {
+  if fd.params.len() == 0 { return true }
+  match fd.params.get(0) {
+    Some(p) => p.name != "self",
+    _ => true
+  }
+}

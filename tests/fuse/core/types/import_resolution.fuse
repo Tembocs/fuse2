@@ -1,0 +1,89 @@
+// EXPECTED OUTPUT:
+// --- repoRoot ---
+// has stage1: true
+// has stdlib: true
+// --- resolve core.string ---
+// resolved: true
+// ends with string.fuse: true
+// --- resolve core.equatable ---
+// resolved: true
+// ends with equatable.fuse: true
+// --- resolve full.io ---
+// resolved: true
+// ends with io.fuse: true
+// --- resolve ext.test ---
+// resolved: true
+// ends with test.fuse: true
+// --- resolve nonexistent ---
+// resolved: false
+// --- displayName ---
+// name: string
+
+import stage2.src.common
+import stdlib.full.path
+import stdlib.full.os
+
+@entrypoint
+fn main() {
+  // --- repoRoot ---
+  println("--- repoRoot ---")
+  val root = common.repoRoot()
+  println(f"has stage1: {os.isDir(path.join(root, \"stage1\"))}")
+  println(f"has stdlib: {os.isDir(path.join(root, \"stdlib\"))}")
+
+  // --- resolve core.string ---
+  println("--- resolve core.string ---")
+  val r1 = common.resolveImportPath("test.fuse", "stdlib.core.string")
+  match r1 {
+    Some(p) => {
+      println("resolved: true")
+      println(f"ends with string.fuse: {p.endsWith(\"string.fuse\")}")
+    },
+    None => println("resolved: false")
+  }
+
+  // --- resolve core.equatable ---
+  println("--- resolve core.equatable ---")
+  val r2 = common.resolveImportPath("test.fuse", "stdlib.core.equatable")
+  match r2 {
+    Some(p) => {
+      println("resolved: true")
+      println(f"ends with equatable.fuse: {p.endsWith(\"equatable.fuse\")}")
+    },
+    None => println("resolved: false")
+  }
+
+  // --- resolve full.io ---
+  println("--- resolve full.io ---")
+  val r3 = common.resolveImportPath("test.fuse", "stdlib.full.io")
+  match r3 {
+    Some(p) => {
+      println("resolved: true")
+      println(f"ends with io.fuse: {p.endsWith(\"io.fuse\")}")
+    },
+    None => println("resolved: false")
+  }
+
+  // --- resolve ext.test ---
+  println("--- resolve ext.test ---")
+  val r4 = common.resolveImportPath("test.fuse", "stdlib.ext.test")
+  match r4 {
+    Some(p) => {
+      println("resolved: true")
+      println(f"ends with test.fuse: {p.endsWith(\"test.fuse\")}")
+    },
+    None => println("resolved: false")
+  }
+
+  // --- resolve nonexistent ---
+  println("--- resolve nonexistent ---")
+  val r5 = common.resolveImportPath("test.fuse", "nonexistent.module.foo")
+  match r5 {
+    Some(_) => println("resolved: true"),
+    None => println("resolved: false")
+  }
+
+  // --- displayName ---
+  println("--- displayName ---")
+  println(f"name: {common.displayName(\"stdlib/core/string.fuse\")}")
+}

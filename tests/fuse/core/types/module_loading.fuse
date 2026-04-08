@@ -1,0 +1,66 @@
+// EXPECTED OUTPUT:
+// --- load ---
+// loaded: true
+// symbols: 3
+// has greet: true
+// has Point: true
+// has Color: true
+// --- extensions ---
+// has Point::describe: true
+// --- static ---
+// has Point::origin: true
+// --- isPub ---
+// greet pub: true
+// --- cache ---
+// cached: true
+
+import stage2.src.module
+import stage2.src.ast
+import stage2.src.token
+
+extern fn fuse_rt_io_write_file(path: String, content: String) -> Result<Int, String>
+extern fn fuse_rt_os_remove_file(path: String) -> Result<Int, String>
+
+@entrypoint
+fn main() {
+  // Write a small Fuse module to a temp file.
+  val tmpPath = "__module_load_test__.fuse"
+  val src = "pub fn greet(name: String) -> String {\n  f\"hello {name}\"\n}\n\npub data class Point(val x: Int, val y: Int)\n\nfn Point.describe(ref self) -> String {\n  f\"({self.x}, {self.y})\"\n}\n\nfn Point.origin() -> Point {\n  Point(0, 0)\n}\n\npub enum Color { Red, Green, Blue }\n"
+  fuse_rt_io_write_file(tmpPath, src)
+
+  println("--- load ---")
+  var cache: List<CachedModule> = []
+  val result = module.loadModule(tmpPath, cache)
+  match result {
+    Ok(pair) => {
+      val info = pair.0
+      cache = pair.1
+
+      println("loaded: true")
+      println(f"symbols: {info.symbols.len()}")
+      println(f"has greet: {module.hasSymbol(info.symbols, \"greet\")}")
+      println(f"has Point: {module.hasSymbol(info.symbols, \"Point\")}")
+      println(f"has Color: {module.hasSymbol(info.symbols, \"Color\")}")
+
+      println("--- extensions ---")
+      println(f"has Point::describe: {module.hasFunc(info.extensions, \"Point::describe\")}")
+
+      println("--- static ---")
+      println(f"has Point::origin: {module.hasFunc(info.statics, \"Point::origin\")}")
+
+      println("--- isPub ---")
+      val greetSym = module.findSymbol(info.symbols, "greet")
+      match greetSym {
+        Some(sym) => println(f"greet pub: {sym.isPub()}"),
+        _ => println("greet not found")
+      }
+
+      println("--- cache ---")
+      println(f"cached: {module.hasCached(cache, tmpPath)}")
+    },
+    Err(msg) => println(f"error: {msg}")
+  }
+
+  // Clean up.
+  fuse_rt_os_remove_file(tmpPath)
+}

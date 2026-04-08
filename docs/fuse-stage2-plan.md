@@ -554,27 +554,27 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W4.1 — Import Resolution
 
-- [ ] **W4.1.1** Create `stage2/src/common.fuse`.
-- [ ] **W4.1.2** Implement `pub fn repoRoot() -> String` — detect repository root (look for `stage1/` + `stdlib/` directories).
-- [ ] **W4.1.3** Implement `pub fn resolveImportPath(currentFile: String, modulePath: String) -> Option<String>` — search: relative, src/, repo root, stdlib/core/, stdlib/full/, stdlib/ext/.
-- [ ] **W4.1.4** Implement `fn displayName(path: String) -> String` — short filename for diagnostics.
-- [ ] **W4.1.5** Test: resolve `import core.string` from test file → `stdlib/core/string.fuse`.
-- [ ] **W4.1.6** Test: resolve `import core.equatable` → `stdlib/core/equatable.fuse`.
+- [x] **W4.1.1** Create `stage2/src/common.fuse`.
+- [x] **W4.1.2** Implement `pub fn repoRoot() -> String` — detect repository root (look for `stage1/` + `stdlib/` directories).
+- [x] **W4.1.3** Implement `pub fn resolveImportPath(currentFile: String, modulePath: String) -> Option<String>` — search: relative, src/, repo root, stdlib/core/, stdlib/full/, stdlib/ext/.
+- [x] **W4.1.4** Implement `fn displayName(path: String) -> String` — short filename for diagnostics.
+- [x] **W4.1.5** Test: resolve `import core.string` from test file → `stdlib/core/string.fuse`.
+- [x] **W4.1.6** Test: resolve `import core.equatable` → `stdlib/core/equatable.fuse`.
 
 ---
 
 ### Phase W4.2 — Module Loading & Caching
 
-- [ ] **W4.2.1** Define `data class ModuleInfo(val path: String, val program: Program, val symbols: Map<String, Symbol>, val extensions: Map<String, FunctionDecl>, val statics: Map<String, FunctionDecl>, val interfaces: Map<String, InterfaceInfo>, val implements: Map<String, List<String>>)`.
-- [ ] **W4.2.2** Define `enum Symbol` with variants: `Function`, `Data`, `Enum`, `Struct`.
-- [ ] **W4.2.3** Implement module cache: `var moduleCache: Map<String, ModuleInfo>`.
-- [ ] **W4.2.4** Implement `fn loadModule(path: String) -> Result<ModuleInfo, Diagnostic>` — read file, lex, parse, register symbols, cache.
-- [ ] **W4.2.5** Handle recursive imports: check cache before loading.
-- [ ] **W4.2.6** Register extension functions: split by receiver type + method name.
-- [ ] **W4.2.7** Register static functions: no `self` parameter.
-- [ ] **W4.2.8** Register interfaces and `implements` mappings.
-- [ ] **W4.2.9** Handle `pub` visibility: only pub items visible to importers.
-- [ ] **W4.2.10** Test: load module with `import`, verify symbols accessible.
+- [x] **W4.2.1** Define `data class ModuleInfo(val path: String, val program: Program, val symbols: List<NamedSymbol>, val extensions: List<NamedFunc>, val statics: List<NamedFunc>, val interfaces: List<NamedIface>, val impls: List<NamedImpls>)`.
+- [x] **W4.2.2** Define `enum Symbol` with variants: `Function`, `Data`, `Enum`, `Struct`.
+- [x] **W4.2.3** Implement module cache: `List<CachedModule>` with findCached/hasCached helpers.
+- [x] **W4.2.4** Implement `fn loadModule(path: String, cache) -> Result<(ModuleInfo, cache), String>` — read file, lex, parse, register symbols, cache.
+- [x] **W4.2.5** Handle recursive imports: check cache before loading.
+- [x] **W4.2.6** Register extension functions: split by receiver type + method name via `extKey("Type::method")`.
+- [x] **W4.2.7** Register static functions: no `self` parameter.
+- [x] **W4.2.8** Register interfaces and `implements` mappings.
+- [x] **W4.2.9** Handle `pub` visibility: only pub items visible to importers (Symbol.isPub()).
+- [x] **W4.2.10** Test: load module with `import`, verify symbols accessible.
 
 ---
 

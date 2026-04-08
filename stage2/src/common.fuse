@@ -1,0 +1,145 @@
+// common.fuse — Import resolution for the Stage 2 self-hosted compiler.
+//
+// Matches Stage 1 (stage1/fusec/src/common.rs) logic.
+
+import stdlib.core.string
+import stdlib.full.path
+import stdlib.full.os
+
+// FFI for string operations needed by path building.
+extern fn fuse_rt_string_replace(s: String, from: String, to: String) -> String
+extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
+extern fn fuse_rt_string_split(s: String, sep: String) -> List<String>
+
+// ---------------------------------------------------------------------------
+// Repository root detection
+// ---------------------------------------------------------------------------
+
+// Walk up from cwd looking for a directory containing both stage1/ and stdlib/.
+pub fn repoRoot() -> String {
+  // Try FUSE_STAGE1_ROOT env var first.
+  val envRoot = fuse_rt_env_get("FUSE_STAGE1_ROOT")
+  match envRoot {
+    Some(r) => {
+      if looksLikeRepoRoot(r) { return r }
+    },
+    None => {}
+  }
+  // Walk up from cwd.
+  val cwdResult = path.toAbsolute(".")
+  match cwdResult {
+    Ok(cwd) => {
+      var candidate = cwd
+      while true {
+        if looksLikeRepoRoot(candidate) { return candidate }
+        val p = path.parent(candidate)
+        match p {
+          Some(up) => {
+            if up == candidate { break }
+            candidate = up
+          },
+          None => { break }
+        }
+      }
+    },
+    Err(_) => {}
+  }
+  // Fallback: assume cwd is the repo root.
+  "."
+}
+
+extern fn fuse_rt_env_get(name: String) -> Option<String>
+
+fn looksLikeRepoRoot(dir: String) -> Bool {
+  val hasStage1 = os.isDir(path.join(dir, "stage1"))
+  val hasStdlib = os.isDir(path.join(dir, "stdlib"))
+  hasStage1 and hasStdlib
+}
+
+// ---------------------------------------------------------------------------
+// Import path resolution
+// ---------------------------------------------------------------------------
+
+// Convert a dotted module path (e.g. "stdlib.core.string") to a file path
+// relative to a base directory (e.g. "stdlib/core/string.fuse").
+fn moduleToRelPath(modulePath: String) -> String {
+  val parts = fuse_rt_string_split(modulePath, ".")
+  var rel = ""
+  var i = 0
+  while i < parts.len() {
+    match parts.get(i) {
+      Some(part) => {
+        if i > 0 { rel = f"{rel}/{part}" }
+        else { rel = part }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  f"{rel}.fuse"
+}
+
+// Resolve a dotted import path to an absolute file path.
+// Searches: relative to current file, src/ subdir, repo root, stdlib tiers,
+// and handles the "src." prefix convention.
+pub fn resolveImportPath(currentFile: String, modulePath: String) -> Option<String> {
+  val rel = moduleToRelPath(modulePath)
+  val root = repoRoot()
+
+  // Parent directory of the current file.
+  val curParent = match path.parent(currentFile) {
+    Some(p) => p,
+    None => "."
+  }
+
+  // Candidate 1: relative to current file.
+  val c1 = path.join(curParent, rel)
+  if os.exists(c1) { return Some(c1) }
+
+  // Candidate 2: src/ subdirectory of current file's parent.
+  val c2 = path.join(curParent, "src", rel)
+  if os.exists(c2) { return Some(c2) }
+
+  // Candidate 3: repo root.
+  val c3 = path.join(root, rel)
+  if os.exists(c3) { return Some(c3) }
+
+  // Candidate 4: stdlib/.
+  val c4 = path.join(root, "stdlib", rel)
+  if os.exists(c4) { return Some(c4) }
+
+  // Candidate 5: stdlib/full/.
+  val c5 = path.join(root, "stdlib", "full", rel)
+  if os.exists(c5) { return Some(c5) }
+
+  // Candidate 6: stdlib/core/.
+  val c6 = path.join(root, "stdlib", "core", rel)
+  if os.exists(c6) { return Some(c6) }
+
+  // Candidate 7: stdlib/ext/.
+  val c7 = path.join(root, "stdlib", "ext", rel)
+  if os.exists(c7) { return Some(c7) }
+
+  // Candidate 8: tests/fuse/core/modules/.
+  val c8 = path.join(root, "tests", "fuse", "core", "modules", rel)
+  if os.exists(c8) { return Some(c8) }
+
+  // Handle "src." prefix: strip "src." and search under current file's src/.
+  if modulePath.startsWith("src.") {
+    val stripped = fuse_rt_string_slice(modulePath, 4, modulePath.len())
+    val srcRel = moduleToRelPath(stripped)
+    val c9 = path.join(curParent, "src", srcRel)
+    if os.exists(c9) { return Some(c9) }
+  }
+
+  None
+}
+
+// ---------------------------------------------------------------------------
+// Display name for diagnostics
+// ---------------------------------------------------------------------------
+
+// Short filename for diagnostic output (basename without extension).
+pub fn displayName(filePath: String) -> String {
+  path.stem(filePath)
+}
