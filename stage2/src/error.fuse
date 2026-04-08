@@ -74,3 +74,77 @@ pub fn error(message: String, filename: String, span: Span, hint: Option<String>
 pub fn warning(message: String, filename: String, span: Span, hint: Option<String>) -> Diagnostic {
   Diagnostic(message, filename, span, Severity.Warning, hint)
 }
+
+// ---------------------------------------------------------------------------
+// Error accumulation utilities
+// ---------------------------------------------------------------------------
+
+// True if any diagnostic in the list is an error.
+pub fn hasErrors(diagnostics: List<Diagnostic>) -> Bool {
+  var i = 0
+  while i < diagnostics.len() {
+    match diagnostics.get(i) {
+      Some(d) => {
+        if d.isError() { return true }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  false
+}
+
+// Render all diagnostics separated by newlines.
+pub fn renderAll(diagnostics: List<Diagnostic>) -> String {
+  var out = ""
+  var i = 0
+  while i < diagnostics.len() {
+    match diagnostics.get(i) {
+      Some(d) => {
+        if i > 0 {
+          out = f"{out}\n\n"
+        }
+        out = f"{out}{d.render()}"
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  out
+}
+
+// Render a summary line: "error: N error(s) found — compilation stopped"
+pub fn renderSummary(diagnostics: List<Diagnostic>) -> String {
+  var errors = 0
+  var warnings = 0
+  var i = 0
+  while i < diagnostics.len() {
+    match diagnostics.get(i) {
+      Some(d) => {
+        if d.isError() {
+          errors = errors + 1
+        } else {
+          warnings = warnings + 1
+        }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  if errors == 0 and warnings == 0 { return "" }
+  var parts = ""
+  if errors > 0 {
+    if errors == 1 { parts = "1 error" }
+    else { parts = f"{errors} errors" }
+  }
+  if warnings > 0 {
+    val wStr = if warnings == 1 { "1 warning" } else { f"{warnings} warnings" }
+    if parts == "" { parts = wStr }
+    else { parts = f"{parts}, {wStr}" }
+  }
+  if errors > 0 {
+    f"error: {parts} found — compilation stopped"
+  } else {
+    f"warning: {parts} found"
+  }
+}

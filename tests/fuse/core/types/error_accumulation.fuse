@@ -1,0 +1,48 @@
+// EXPECTED OUTPUT:
+// --- hasErrors ---
+// empty: false
+// errors only: true
+// warnings only: false
+// mixed: true
+// --- renderAll ---
+// error: unknown name `x`
+//   --> test.fuse:5:3
+//
+// error: type mismatch
+//        expected Int, got String
+//   --> test.fuse:10:7
+// --- summary ---
+// 2 errors: error: 2 errors found — compilation stopped
+// 1 error: error: 1 error found — compilation stopped
+// 1 warning: warning: 1 warning found
+// mixed: error: 1 error, 2 warnings found — compilation stopped
+
+import stage2.src.error
+import stage2.src.token
+
+@entrypoint
+fn main() {
+  val e1 = error.error("unknown name `x`", "test.fuse", Span(5, 3), None)
+  val e2 = error.error("type mismatch", "test.fuse", Span(10, 7), Some("expected Int, got String"))
+  val w1 = error.warning("unused variable `y`", "test.fuse", Span(3, 1), None)
+  val w2 = error.warning("deprecated function", "test.fuse", Span(8, 5), None)
+
+  // --- hasErrors ---
+  println("--- hasErrors ---")
+  val empty: List<Diagnostic> = []
+  println(f"empty: {error.hasErrors(empty)}")
+  println(f"errors only: {error.hasErrors([e1, e2])}")
+  println(f"warnings only: {error.hasErrors([w1, w2])}")
+  println(f"mixed: {error.hasErrors([w1, e1])}")
+
+  // --- renderAll ---
+  println("--- renderAll ---")
+  println(error.renderAll([e1, e2]))
+
+  // --- summary ---
+  println("--- summary ---")
+  println(f"2 errors: {error.renderSummary([e1, e2])}")
+  println(f"1 error: {error.renderSummary([e1])}")
+  println(f"1 warning: {error.renderSummary([w1])}")
+  println(f"mixed: {error.renderSummary([e1, w1, w2])}")
+}

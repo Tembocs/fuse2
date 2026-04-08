@@ -533,13 +533,13 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W3.2 — Error Accumulation
 
-- [ ] **W3.2.1** Define pattern for accumulating multiple diagnostics (use `var diagnostics: List<Diagnostic>` in checker).
-- [ ] **W3.2.2** Implement `fn hasErrors(diagnostics: List<Diagnostic>) -> Bool`.
-- [ ] **W3.2.3** Implement `fn renderAll(diagnostics: List<Diagnostic>) -> String`.
-- [ ] **W3.2.4** Implement fatal error path: print all diagnostics, exit with code 1.
-- [ ] **W3.2.5** Update parser to return `Result<Program, Diagnostic>` (single error, fail-fast).
-- [ ] **W3.2.6** Update checker to accumulate `List<Diagnostic>` (multiple errors, report all).
-- [ ] **W3.2.7** Test: checker reports 2 errors in file with 2 problems.
+- [x] **W3.2.1** Define pattern for accumulating multiple diagnostics (use `var diagnostics: List<Diagnostic>` in checker).
+- [x] **W3.2.2** Implement `fn hasErrors(diagnostics: List<Diagnostic>) -> Bool`.
+- [x] **W3.2.3** Implement `fn renderAll(diagnostics: List<Diagnostic>) -> String`.
+- [x] **W3.2.4** Implement fatal error path: print all diagnostics, exit with code 1.
+- [x] **W3.2.5** Update parser to return `Result<Program, Diagnostic>` (single error, fail-fast).
+- [x] **W3.2.6** Update checker to accumulate `List<Diagnostic>` (multiple errors, report all).
+- [x] **W3.2.7** Test: checker reports 2 errors in file with 2 problems.
 
 ---
 
