@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// both true
+
+@entrypoint
+fn main() {
+  val x = 10
+  val y = 20
+  if x > 0 {
+    if y > 10 {
+      println("both true")
+    } else {
+      println("x only")
+    }
+  } else {
+    println("neither")
+  }
+}

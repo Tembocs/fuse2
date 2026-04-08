@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// 2
+// 4
+
+@entrypoint
+fn main() {
+  for item in [1, 2, 3, 4, 5] {
+    if item % 2 != 0 { continue }
+    println(item)
+  }
+}

@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// 1
+// 2
+
+@entrypoint
+fn main() {
+  for item in [1, 2, 3, 4, 5] {
+    if item == 3 { break }
+    println(item)
+  }
+}

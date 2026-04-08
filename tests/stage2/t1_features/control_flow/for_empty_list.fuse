@@ -1,0 +1,10 @@
+// EXPECTED OUTPUT:
+// done
+
+@entrypoint
+fn main() {
+  for item in [] {
+    println(item)
+  }
+  println("done")
+}

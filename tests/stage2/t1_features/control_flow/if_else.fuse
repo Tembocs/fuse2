@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// else branch
+
+@entrypoint
+fn main() {
+  if false {
+    println("if branch")
+  } else {
+    println("else branch")
+  }
+}

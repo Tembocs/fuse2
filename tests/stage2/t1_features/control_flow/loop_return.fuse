@@ -1,0 +1,15 @@
+// EXPECTED OUTPUT:
+// found 3
+
+fn findThree() -> Int {
+  var i = 0
+  loop {
+    if i == 3 { return i }
+    i = i + 1
+  }
+}
+
+@entrypoint
+fn main() {
+  println(f"found {findThree()}")
+}

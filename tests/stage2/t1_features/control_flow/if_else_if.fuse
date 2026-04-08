@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// second
+
+@entrypoint
+fn main() {
+  val x = 2
+  if x == 1 {
+    println("first")
+  } else if x == 2 {
+    println("second")
+  } else if x == 3 {
+    println("third")
+  } else {
+    println("other")
+  }
+}

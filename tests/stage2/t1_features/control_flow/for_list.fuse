@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// apple
+// banana
+// cherry
+
+@entrypoint
+fn main() {
+  for item in ["apple", "banana", "cherry"] {
+    println(item)
+  }
+}

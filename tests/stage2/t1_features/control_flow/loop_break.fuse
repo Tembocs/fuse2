@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// 0
+// 1
+// 2
+
+@entrypoint
+fn main() {
+  var i = 0
+  loop {
+    if i == 3 { break }
+    println(i)
+    i = i + 1
+  }
+}

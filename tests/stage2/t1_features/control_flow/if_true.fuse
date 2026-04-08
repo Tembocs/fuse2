@@ -1,0 +1,9 @@
+// EXPECTED OUTPUT:
+// inside if
+
+@entrypoint
+fn main() {
+  if true {
+    println("inside if")
+  }
+}

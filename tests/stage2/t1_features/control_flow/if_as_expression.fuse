@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// big
+// small
+
+@entrypoint
+fn main() {
+  val a = if 10 > 5 { "big" } else { "small" }
+  println(a)
+  val b = if 1 > 5 { "big" } else { "small" }
+  println(b)
+}

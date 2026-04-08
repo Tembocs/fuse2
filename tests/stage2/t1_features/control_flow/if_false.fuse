@@ -1,0 +1,10 @@
+// EXPECTED OUTPUT:
+// after if
+
+@entrypoint
+fn main() {
+  if false {
+    println("should not print")
+  }
+  println("after if")
+}
