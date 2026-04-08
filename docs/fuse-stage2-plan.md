@@ -658,14 +658,14 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W6.1 — Symbol Mangling & Layout
 
-- [ ] **W6.1.1** Create `stage2/src/layout.fuse`.
-- [ ] **W6.1.2** Implement `pub fn functionSymbol(modulePath: String, name: String) -> String` — `"fuse_fn_{path}_{name}"`.
-- [ ] **W6.1.3** Implement `pub fn extensionSymbol(modulePath: String, receiverType: String, name: String) -> String` — `"fuse_ext_{path}_{Type}__{method}"`.
-- [ ] **W6.1.4** Implement `pub fn destructorSymbol(modulePath: String, typeName: String) -> String` — `"fuse_del_{path}_{type}"`.
-- [ ] **W6.1.5** Implement `pub fn stringDataSymbol(modulePath: String, index: Int) -> String` — `"fuse_str_{path}_{index}"`.
-- [ ] **W6.1.6** Implement `fn sanitizePath(path: String) -> String` — replace non-alphanumeric with `_`.
-- [ ] **W6.1.7** Define `val ENTRY_SYMBOL = "fuse_user_entry"`.
-- [ ] **W6.1.8** Test: `functionSymbol("src/main.fuse", "add")` → `"fuse_fn_src_main_add"`.
+- [x] **W6.1.1** Create `stage2/src/layout.fuse`.
+- [x] **W6.1.2** Implement `pub fn functionSymbol(modulePath: String, name: String) -> String` — `"fuse_fn_{path}_{name}"`.
+- [x] **W6.1.3** Implement `pub fn extensionSymbol(modulePath: String, receiverType: String, name: String) -> String` — `"fuse_ext_{path}_{Type}__{method}"`.
+- [x] **W6.1.4** Implement `pub fn destructorSymbol(modulePath: String, typeName: String) -> String` — `"fuse_del_{path}_{type}"`.
+- [x] **W6.1.5** Implement `pub fn stringDataSymbol(modulePath: String, index: Int) -> String` — `"fuse_str_{path}_{index}"`.
+- [x] **W6.1.6** Implement `fn sanitizePath(path: String) -> String` — replace non-alphanumeric with `_`.
+- [x] **W6.1.7** Define `pub fn entrySymbol() -> String` returning `"fuse_user_entry"`.
+- [x] **W6.1.8** Test: `functionSymbol("src/main.fuse", "add")` → `"fuse_fn_src_main_add"`.
 
 ---
 

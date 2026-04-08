@@ -1,0 +1,69 @@
+// EXPECTED OUTPUT:
+// --- functionSymbol ---
+// fuse_fn_src_main_add
+// --- extensionSymbol ---
+// fuse_ext_src_main_Point__describe
+// --- destructorSymbol ---
+// fuse_del_src_main_Resource
+// --- stringDataSymbol ---
+// fuse_str_src_main_0
+// --- entrySymbol ---
+// fuse_user_entry
+// --- canonicalTypeName ---
+// Point
+// List
+// String
+// --- sanitize path ---
+// fuse_fn_tests_fuse_milestone_four_functions_greet
+// --- field layout ---
+// field x: 0
+// field y: 1
+// count: 2
+
+import stage2.src.layout
+import stage2.src.ast
+import stage2.src.token
+
+@entrypoint
+fn main() {
+  // --- functionSymbol ---
+  println("--- functionSymbol ---")
+  println(layout.functionSymbol("src/main.fuse", "add"))
+
+  // --- extensionSymbol ---
+  println("--- extensionSymbol ---")
+  println(layout.extensionSymbol("src/main.fuse", "Point", "describe"))
+
+  // --- destructorSymbol ---
+  println("--- destructorSymbol ---")
+  println(layout.destructorSymbol("src/main.fuse", "Resource"))
+
+  // --- stringDataSymbol ---
+  println("--- stringDataSymbol ---")
+  println(layout.stringDataSymbol("src/main.fuse", 0))
+
+  // --- entrySymbol ---
+  println("--- entrySymbol ---")
+  println(layout.entrySymbol())
+
+  // --- canonicalTypeName ---
+  println("--- canonicalTypeName ---")
+  println(layout.canonicalTypeName("ref Point"))
+  println(layout.canonicalTypeName("List<Int>"))
+  println(layout.canonicalTypeName("mutref String"))
+
+  // --- sanitize path ---
+  println("--- sanitize path ---")
+  println(layout.functionSymbol("tests/fuse/milestone/four_functions.fuse", "greet"))
+
+  // --- field layout ---
+  println("--- field layout ---")
+  val span = Span(1, 1)
+  val fields = [FieldDecl(false, "x", Some("Int"), span), FieldDecl(false, "y", Some("Int"), span)]
+  val dl = layout.dataLayoutFromFields(fields)
+  val xi = layout.fieldIndex(dl, "x")
+  val yi = layout.fieldIndex(dl, "y")
+  match xi { Some(idx) => println(f"field x: {idx}"), _ => println("x not found") }
+  match yi { Some(idx) => println(f"field y: {idx}"), _ => println("y not found") }
+  println(f"count: {dl.fieldCount}")
+}

@@ -1,0 +1,185 @@
+// layout.fuse — Symbol mangling and data layout for the Stage 2 compiler.
+//
+// Matches Stage 1 (stage1/fusec/src/codegen/layout.rs).
+
+import stdlib.core.string
+import token
+import ast
+
+// ---------------------------------------------------------------------------
+// Entry point symbol
+// ---------------------------------------------------------------------------
+
+pub fn entrySymbol() -> String {
+  "fuse_user_entry"
+}
+
+// ---------------------------------------------------------------------------
+// Symbol mangling
+// ---------------------------------------------------------------------------
+
+// Free function: fuse_fn_{path}_{name}
+pub fn functionSymbol(modulePath: String, name: String) -> String {
+  f"fuse_fn_{sanitizePath(modulePath)}_{sanitizeName(name)}"
+}
+
+// Extension method: fuse_ext_{path}_{Type}__{method}
+pub fn extensionSymbol(modulePath: String, receiverType: String, name: String) -> String {
+  f"fuse_ext_{sanitizePath(modulePath)}_{sanitizeName(canonicalTypeName(receiverType))}__{sanitizeName(name)}"
+}
+
+// Destructor: fuse_del_{path}_{type}
+pub fn destructorSymbol(modulePath: String, typeName: String) -> String {
+  f"fuse_del_{sanitizePath(modulePath)}_{sanitizeName(typeName)}"
+}
+
+// String data: fuse_str_{path}_{index}
+pub fn stringDataSymbol(modulePath: String, index: Int) -> String {
+  f"fuse_str_{sanitizePath(modulePath)}_{index}"
+}
+
+// ---------------------------------------------------------------------------
+// Canonical type name — strip ownership qualifiers and generics
+// ---------------------------------------------------------------------------
+
+pub fn canonicalTypeName(typeName: String) -> String {
+  var s = typeName
+  if s.startsWith("mutref ") { s = fuse_rt_string_slice(s, 7, s.len()) }
+  else if s.startsWith("mutref") { s = fuse_rt_string_slice(s, 6, s.len()) }
+  else if s.startsWith("ref ") { s = fuse_rt_string_slice(s, 4, s.len()) }
+  else if s.startsWith("ref") { s = fuse_rt_string_slice(s, 3, s.len()) }
+  else if s.startsWith("owned ") { s = fuse_rt_string_slice(s, 6, s.len()) }
+  else if s.startsWith("owned") { s = fuse_rt_string_slice(s, 5, s.len()) }
+  // Strip generic parameters: take everything before '<'
+  val ltIdx = s.indexOf("<")
+  match ltIdx {
+    Some(idx) => { s = fuse_rt_string_slice(s, 0, idx) },
+    None => {}
+  }
+  // Strip trailing ::
+  if s.endsWith("::") { s = fuse_rt_string_slice(s, 0, s.len() - 2) }
+  s
+}
+
+extern fn fuse_rt_string_slice(s: String, start: Int, end: Int) -> String
+
+// ---------------------------------------------------------------------------
+// Path and name sanitization
+// ---------------------------------------------------------------------------
+
+// Replace non-alphanumeric characters with '_'.
+fn sanitizeName(value: String) -> String {
+  var result = ""
+  var i = 0
+  while i < value.len() {
+    val ch = value.byteAt(i)
+    if isAlphanumByte(ch) {
+      result = f"{result}{String.fromChar(ch)}"
+    } else {
+      result = f"{result}_"
+    }
+    i = i + 1
+  }
+  result
+}
+
+// Sanitize a file path: replace separators and non-alnum with '_', strip .fuse extension.
+fn sanitizePath(path: String) -> String {
+  // Strip .fuse extension if present.
+  var p = path
+  if p.endsWith(".fuse") {
+    p = fuse_rt_string_slice(p, 0, p.len() - 5)
+  }
+  sanitizeName(p)
+}
+
+fn isAlphanumByte(ch: Int) -> Bool {
+  (ch >= 48 and ch <= 57) or (ch >= 65 and ch <= 90) or (ch >= 97 and ch <= 122)
+}
+
+// ---------------------------------------------------------------------------
+// Data layout — field index mapping
+// ---------------------------------------------------------------------------
+
+pub data class FieldLayout(val name: String, val index: Int)
+
+pub data class DataLayout(
+  val fields: List<FieldLayout>,
+  val fieldCount: Int
+)
+
+pub fn dataLayoutFromFields(fieldDecls: List<FieldDecl>) -> DataLayout {
+  var fields: List<FieldLayout> = []
+  var i = 0
+  while i < fieldDecls.len() {
+    match fieldDecls.get(i) {
+      Some(fd) => {
+        fields = fields.concat([FieldLayout(fd.name, i)])
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  DataLayout(fields, fieldDecls.len())
+}
+
+pub fn fieldIndex(layout: DataLayout, name: String) -> Option<Int> {
+  var i = 0
+  while i < layout.fields.len() {
+    match layout.fields.get(i) {
+      Some(fl) => {
+        if fl.name == name { return Some(fl.index) }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  None
+}
+
+// Build a ProgramLayout from all data classes and structs in a module.
+pub data class ProgramLayout(val layouts: List<NamedLayout>)
+pub data class NamedLayout(val typeName: String, val layout: DataLayout)
+
+pub fn buildProgramLayout(info: ModuleInfo) -> ProgramLayout {
+  var layouts: List<NamedLayout> = []
+  var i = 0
+  while i < info.symbols.len() {
+    match info.symbols.get(i) {
+      Some(ns) => {
+        match ns.symbol {
+          Symbol.Data(dc, _) => {
+            val dl = dataLayoutFromFields(dc.fields)
+            layouts = layouts.concat([NamedLayout(dc.name, dl)])
+          },
+          Symbol.Struct(sd, _) => {
+            val dl = dataLayoutFromFields(sd.fields)
+            layouts = layouts.concat([NamedLayout(sd.name, dl)])
+          },
+          _ => {}
+        }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  ProgramLayout(layouts)
+}
+
+pub fn lookupLayout(pl: ProgramLayout, typeName: String) -> Option<DataLayout> {
+  val canonical = canonicalTypeName(typeName)
+  var i = 0
+  while i < pl.layouts.len() {
+    match pl.layouts.get(i) {
+      Some(nl) => {
+        if nl.typeName == canonical { return Some(nl.layout) }
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+  None
+}
+
+// Need ModuleInfo and Symbol from module.fuse.
+import module
