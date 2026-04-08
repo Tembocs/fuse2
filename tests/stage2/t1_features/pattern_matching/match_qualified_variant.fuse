@@ -1,0 +1,18 @@
+// EXPECTED OUTPUT:
+// running
+
+enum Status {
+  Pending,
+  Running,
+  Done
+}
+
+@entrypoint
+fn main() {
+  val s = Status.Running
+  match s {
+    Status.Pending => println("pending"),
+    Status.Running => println("running"),
+    Status.Done => println("done")
+  }
+}

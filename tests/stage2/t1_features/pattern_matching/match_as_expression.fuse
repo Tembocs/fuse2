@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// medium
+
+@entrypoint
+fn main() {
+  val x = 5
+  val label = match x {
+    1 => "low",
+    5 => "medium",
+    10 => "high",
+    _ => "unknown"
+  }
+  println(label)
+}

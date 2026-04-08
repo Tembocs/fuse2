@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// yes
+
+@entrypoint
+fn main() {
+  val b = true
+  match b {
+    true => println("yes"),
+    false => println("no")
+  }
+}

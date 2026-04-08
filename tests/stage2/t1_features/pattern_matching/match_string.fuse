@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// greeting
+
+@entrypoint
+fn main() {
+  val s = "hello"
+  match s {
+    "hello" => println("greeting"),
+    "bye" => println("farewell"),
+    _ => println("unknown")
+  }
+}

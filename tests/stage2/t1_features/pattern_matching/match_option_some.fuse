@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// found 42
+
+@entrypoint
+fn main() {
+  val o: Option<Int> = Some(42)
+  match o {
+    Some(v) => println(f"found {v}"),
+    None => println("nothing")
+  }
+}

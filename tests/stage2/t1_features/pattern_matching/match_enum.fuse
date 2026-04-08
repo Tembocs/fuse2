@@ -1,0 +1,18 @@
+// EXPECTED OUTPUT:
+// green light
+
+enum Light {
+  Red,
+  Yellow,
+  Green
+}
+
+@entrypoint
+fn main() {
+  val l = Light.Green
+  match l {
+    Light.Red => println("stop"),
+    Light.Yellow => println("caution"),
+    Light.Green => println("green light")
+  }
+}

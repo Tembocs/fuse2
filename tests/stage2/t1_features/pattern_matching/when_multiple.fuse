@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// teen
+
+@entrypoint
+fn main() {
+  val age = 15
+  when {
+    age < 0 => println("invalid"),
+    age < 13 => println("child"),
+    age < 18 => println("teen"),
+    age < 65 => println("adult"),
+    else => println("senior")
+  }
+}

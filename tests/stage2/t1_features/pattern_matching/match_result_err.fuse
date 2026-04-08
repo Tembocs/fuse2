@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// err: broken
+
+@entrypoint
+fn main() {
+  val r: Result<Int, String> = Err("broken")
+  match r {
+    Ok(v) => println(f"ok: {v}"),
+    Err(e) => println(f"err: {e}")
+  }
+}

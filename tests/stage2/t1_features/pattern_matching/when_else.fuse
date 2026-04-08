@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// other
+
+@entrypoint
+fn main() {
+  val x = 42
+  when {
+    x == 1 => println("one"),
+    x == 2 => println("two"),
+    else => println("other")
+  }
+}

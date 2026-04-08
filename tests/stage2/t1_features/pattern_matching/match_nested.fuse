@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// inner value: 42
+
+@entrypoint
+fn main() {
+  val o: Option<Result<Int, String>> = Some(Ok(42))
+  match o {
+    Some(inner) => {
+      match inner {
+        Ok(v) => println(f"inner value: {v}"),
+        Err(e) => println(f"inner error: {e}")
+      }
+    },
+    None => println("nothing")
+  }
+}

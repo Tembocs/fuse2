@@ -1,0 +1,9 @@
+// EXPECTED OUTPUT:
+// a=1, b=hello
+
+@entrypoint
+fn main() {
+  val t = (1, "hello")
+  val (a, b) = t
+  println(f"a={a}, b={b}")
+}

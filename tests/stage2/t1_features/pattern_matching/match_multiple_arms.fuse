@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// four
+
+@entrypoint
+fn main() {
+  val x = 4
+  val name = match x {
+    1 => "one",
+    2 => "two",
+    3 => "three",
+    4 => "four",
+    5 => "five",
+    _ => "many"
+  }
+  println(name)
+}

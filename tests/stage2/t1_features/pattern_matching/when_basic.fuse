@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// positive
+
+@entrypoint
+fn main() {
+  val x = 5
+  when {
+    x < 0 => println("negative"),
+    x == 0 => println("zero"),
+    x > 0 => println("positive"),
+    else => println("impossible")
+  }
+}

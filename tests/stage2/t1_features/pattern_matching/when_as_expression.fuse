@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// warm
+
+@entrypoint
+fn main() {
+  val temp = 25
+  val desc = when {
+    temp < 0 => "freezing",
+    temp < 15 => "cold",
+    temp < 30 => "warm",
+    else => "hot"
+  }
+  println(desc)
+}

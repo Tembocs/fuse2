@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// ok: 10
+
+@entrypoint
+fn main() {
+  val r: Result<Int, String> = Ok(10)
+  match r {
+    Ok(v) => println(f"ok: {v}"),
+    Err(e) => println(f"err: {e}")
+  }
+}
