@@ -177,6 +177,7 @@ fn checkStatement(mutref state: CheckerState, info: ModuleInfo, stmt: Statement,
       checkBlock(mutref state, info, ls.body, s, loopDepth + 1)
     },
     Statement.Spawn(ss) => {
+      checkSpawnBoundary(mutref state, info, ss.body, s)
       checkBlock(mutref state, info, ss.body, s, loopDepth)
     },
     Statement.Break(span) => {
@@ -292,6 +293,8 @@ fn checkExpr(mutref state: CheckerState, info: ModuleInfo, expr: Expr, scope: Li
     },
     Expr.Call(callExpr) => {
       s = checkExpr(mutref state, info, callExpr.callee, s, loopDepth)
+      // Resolve callee to check parameter conventions.
+      s = checkCallConventions(mutref state, info, callExpr, s)
       var ai = 0
       while ai < callExpr.args.len() {
         match callExpr.args.get(ai) {
@@ -438,6 +441,289 @@ fn bindPattern(scope: List<NamedBinding>, pat: Pattern) -> List<NamedBinding> {
 
 // ---------------------------------------------------------------------------
 // Basic type inference (stub for now — returns None for most expressions)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Call convention checking (mutref at call site)
+// ---------------------------------------------------------------------------
+
+fn checkCallConventions(mutref state: CheckerState, info: ModuleInfo, call: CallExpr, scope: List<NamedBinding>) -> List<NamedBinding> {
+  var s = scope
+  // Resolve the callee function declaration.
+  var resolved: Option<FunctionDecl> = None
+  match call.callee {
+    Expr.Name(nameExpr) => {
+      val sym = findSymbol(info.symbols, nameExpr.value)
+      match sym {
+        Some(symbol) => {
+          match symbol {
+            Symbol.Function(fd, _) => { resolved = Some(fd) },
+            _ => {}
+          }
+        },
+        _ => {}
+      }
+    },
+    Expr.Member(memExpr) => {
+      // Try extension method lookup: receiver.method(...)
+      match memExpr.object {
+        Expr.Name(objName) => {
+          // Static method: Type.method(...)
+          val key = extKey(objName.value, memExpr.name)
+          val sf = findFunc(info.statics, key)
+          match sf {
+            Some(fd) => { resolved = Some(fd) },
+            _ => {
+              // Extension method — would need type inference for receiver.
+              // For now check extensions by name if object is a known binding.
+              val binding = findBinding(s, objName.value)
+              match binding {
+                Some(bi) => {
+                  match bi.typeName {
+                    Some(ty) => {
+                      val eKey = extKey(ty, memExpr.name)
+                      val ef = findFunc(info.extensions, eKey)
+                      match ef {
+                        Some(fd) => { resolved = Some(fd) },
+                        _ => {}
+                      }
+                    },
+                    None => {}
+                  }
+                },
+                _ => {}
+              }
+            }
+          }
+        },
+        _ => {}
+      }
+    },
+    _ => {}
+  }
+  // Check param conventions against arguments.
+  match resolved {
+    Some(func) => {
+      // For method calls, skip implicit self parameter.
+      var paramOffset = 0
+      match call.callee {
+        Expr.Member(_) => {
+          if func.params.len() > 0 {
+            match func.params.get(0) {
+              Some(firstP) => {
+                if firstP.name == "self" { paramOffset = 1 }
+              },
+              None => {}
+            }
+          }
+        },
+        _ => {}
+      }
+      var pi = 0
+      while pi < call.args.len() {
+        val paramIdx = pi + paramOffset
+        match func.params.get(paramIdx) {
+          Some(param) => {
+            match call.args.get(pi) {
+              Some(arg) => {
+                // mutref param requires Expr.MutRef at call site.
+                if param.convention == Some("mutref") {
+                  val isMutRef = match arg {
+                    Expr.MutRef(_) => true,
+                    _ => false
+                  }
+                  if isMutRef == false {
+                    addError(mutref state, call.span, f"`mutref` must be explicit at the call site for `{param.name}`")
+                  }
+                }
+                // ref param cannot receive mutref.
+                if param.convention == Some("ref") {
+                  val isMutRef = match arg {
+                    Expr.MutRef(_) => true,
+                    _ => false
+                  }
+                  if isMutRef {
+                    addError(mutref state, call.span, f"`ref` parameter `{param.name}` cannot receive `mutref`")
+                  }
+                }
+              },
+              None => {}
+            }
+          },
+          None => {}
+        }
+        pi = pi + 1
+      }
+    },
+    _ => {}
+  }
+  s
+}
+
+// ---------------------------------------------------------------------------
+// Spawn boundary checking — no mutref capture of outer-scope names
+// ---------------------------------------------------------------------------
+
+fn checkSpawnBoundary(mutref state: CheckerState, info: ModuleInfo, body: Block, outerScope: List<NamedBinding>) {
+  // Collect outer scope names.
+  var outerNames: List<String> = []
+  var oi = 0
+  while oi < outerScope.len() {
+    match outerScope.get(oi) {
+      Some(nb) => { outerNames = outerNames.concat([nb.name]) },
+      None => {}
+    }
+    oi = oi + 1
+  }
+  var localNames: List<String> = []
+  var si = 0
+  while si < body.statements.len() {
+    match body.statements.get(si) {
+      Some(stmt) => {
+        localNames = checkSpawnStmt(mutref state, stmt, outerNames, localNames)
+      },
+      None => {}
+    }
+    si = si + 1
+  }
+}
+
+fn listContains(list: List<String>, item: String) -> Bool {
+  var i = 0
+  while i < list.len() {
+    match list.get(i) {
+      Some(s) => { if s == item { return true } },
+      None => {}
+    }
+    i = i + 1
+  }
+  false
+}
+
+fn checkSpawnStmt(mutref state: CheckerState, stmt: Statement, outerNames: List<String>, localNames: List<String>) -> List<String> {
+  var locals = localNames
+  match stmt {
+    Statement.VarDecl(vd) => {
+      checkSpawnExpr(mutref state, vd.value, outerNames, locals)
+      locals = locals.concat([vd.name])
+    },
+    Statement.Assign(assign) => {
+      checkSpawnExpr(mutref state, assign.target, outerNames, locals)
+      checkSpawnExpr(mutref state, assign.value, outerNames, locals)
+    },
+    Statement.Return(ret) => {
+      match ret.value {
+        Some(expr) => { checkSpawnExpr(mutref state, expr, outerNames, locals) },
+        None => {}
+      }
+    },
+    Statement.Expr(es) => {
+      checkSpawnExpr(mutref state, es.expr, outerNames, locals)
+    },
+    Statement.Defer(ds) => {
+      checkSpawnExpr(mutref state, ds.expr, outerNames, locals)
+    },
+    Statement.While(ws) => {
+      checkSpawnExpr(mutref state, ws.condition, outerNames, locals)
+      var wi = 0
+      while wi < ws.body.statements.len() {
+        match ws.body.statements.get(wi) {
+          Some(inner) => { locals = checkSpawnStmt(mutref state, inner, outerNames, locals) },
+          None => {}
+        }
+        wi = wi + 1
+      }
+    },
+    Statement.For(fs) => {
+      checkSpawnExpr(mutref state, fs.iterable, outerNames, locals)
+      locals = locals.concat([fs.name])
+      var fi = 0
+      while fi < fs.body.statements.len() {
+        match fs.body.statements.get(fi) {
+          Some(inner) => { locals = checkSpawnStmt(mutref state, inner, outerNames, locals) },
+          None => {}
+        }
+        fi = fi + 1
+      }
+    },
+    Statement.Loop(ls) => {
+      var li = 0
+      while li < ls.body.statements.len() {
+        match ls.body.statements.get(li) {
+          Some(inner) => { locals = checkSpawnStmt(mutref state, inner, outerNames, locals) },
+          None => {}
+        }
+        li = li + 1
+      }
+    },
+    Statement.Spawn(ss) => {
+      var si = 0
+      while si < ss.body.statements.len() {
+        match ss.body.statements.get(si) {
+          Some(inner) => { locals = checkSpawnStmt(mutref state, inner, outerNames, locals) },
+          None => {}
+        }
+        si = si + 1
+      }
+    },
+    Statement.TupleDestruct(td) => {
+      checkSpawnExpr(mutref state, td.value, outerNames, locals)
+    },
+    Statement.Break(_) => {},
+    Statement.Continue(_) => {}
+  }
+  locals
+}
+
+fn checkSpawnExpr(mutref state: CheckerState, expr: Expr, outerNames: List<String>, localNames: List<String>) {
+  match expr {
+    Expr.MutRef(mrExpr) => {
+      match mrExpr.value {
+        Expr.Name(nameExpr) => {
+          if listContains(outerNames, nameExpr.value) and listContains(localNames, nameExpr.value) == false {
+            addError(mutref state, mrExpr.span, "cannot capture mutref across spawn boundary")
+          }
+        },
+        _ => {}
+      }
+      checkSpawnExpr(mutref state, mrExpr.value, outerNames, localNames)
+    },
+    Expr.Binary(bin) => {
+      checkSpawnExpr(mutref state, bin.left, outerNames, localNames)
+      checkSpawnExpr(mutref state, bin.right, outerNames, localNames)
+    },
+    Expr.Unary(un) => {
+      checkSpawnExpr(mutref state, un.value, outerNames, localNames)
+    },
+    Expr.Call(call) => {
+      checkSpawnExpr(mutref state, call.callee, outerNames, localNames)
+      var ci = 0
+      while ci < call.args.len() {
+        match call.args.get(ci) {
+          Some(arg) => { checkSpawnExpr(mutref state, arg, outerNames, localNames) },
+          None => {}
+        }
+        ci = ci + 1
+      }
+    },
+    Expr.Member(mem) => {
+      checkSpawnExpr(mutref state, mem.object, outerNames, localNames)
+    },
+    Expr.Move(mv) => {
+      checkSpawnExpr(mutref state, mv.value, outerNames, localNames)
+    },
+    Expr.Ref(rf) => {
+      checkSpawnExpr(mutref state, rf.value, outerNames, localNames)
+    },
+    Expr.Question(q) => {
+      checkSpawnExpr(mutref state, q.value, outerNames, localNames)
+    },
+    _ => {}
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Basic type inference
 // ---------------------------------------------------------------------------
 
 pub fn inferExprType(info: ModuleInfo, expr: Expr) -> Option<String> {

@@ -1,0 +1,135 @@
+// EXPECTED OUTPUT:
+// --- mutref missing at call site ---
+// errors: 1
+// error: `mutref` must be explicit at the call site for `x`
+// --- mutref present ok ---
+// errors: 0
+// --- use after move ---
+// errors: 1
+// error: use of moved value `r`
+// --- spawn mutref capture ---
+// errors: 1
+// error: cannot capture mutref across spawn boundary
+// --- ref param no mutref ---
+// errors: 1
+// error: `ref` parameter `s` cannot receive `mutref`
+
+import stage2.src.lexer
+import stage2.src.parser
+import stage2.src.ast
+import stage2.src.token
+import stage2.src.module
+import stage2.src.checker
+import stage2.src.error
+
+fn checkSource(source: String) -> List<Diagnostic> {
+  val tokens = lexer.lex(source, "test.fuse")
+  match tokens {
+    Ok(toks) => {
+      val prog = parser.parse(toks, "test.fuse")
+      match prog {
+        Ok(p) => {
+          // Build ModuleInfo with symbols so call convention checking works.
+          var cache: List<CachedModule> = []
+          val loadResult = module.loadModule("__checker_own_fixture__.fuse", cache)
+          // Use a minimal ModuleInfo from the parsed program directly.
+          var symbols: List<NamedSymbol> = []
+          var extensions: List<NamedFunc> = []
+          var statics: List<NamedFunc> = []
+          var i = 0
+          while i < p.declarations.len() {
+            match p.declarations.get(i) {
+              Some(d) => {
+                match d {
+                  Declaration.Function(fd) => {
+                    match fd.receiverType {
+                      Some(rt) => {
+                        val key = module.extKey(rt, fd.name)
+                        val isStatic = if fd.params.len() == 0 { true } else {
+                          match fd.params.get(0) { Some(pp) => pp.name != "self", _ => true }
+                        }
+                        if isStatic { statics = statics.concat([NamedFunc(key, fd)]) }
+                        else { extensions = extensions.concat([NamedFunc(key, fd)]) }
+                      },
+                      None => {
+                        symbols = symbols.concat([NamedSymbol(fd.name, Symbol.Function(fd, fd.isPub))])
+                      }
+                    }
+                  },
+                  Declaration.ExternFn(ef) => {
+                    val synthetic = FunctionDecl(ef.name, [], ef.params, ef.returnType, Block([], Span(1,1)), ef.isPub, [], None, ef.span)
+                    symbols = symbols.concat([NamedSymbol(ef.name, Symbol.Function(synthetic, ef.isPub))])
+                  },
+                  _ => {}
+                }
+              },
+              None => {}
+            }
+            i = i + 1
+          }
+          val info = ModuleInfo("test.fuse", p, symbols, extensions, statics, [], [])
+          var state = CheckerState([], "test.fuse")
+          i = 0
+          while i < p.declarations.len() {
+            match p.declarations.get(i) {
+              Some(d) => {
+                match d {
+                  Declaration.Function(fd) => checker.checkFunction(mutref state, info, fd),
+                  _ => {}
+                }
+              },
+              None => {}
+            }
+            i = i + 1
+          }
+          state.diagnostics
+        },
+        Err(msg) => [error.error(msg, "test.fuse", Span(1, 1), None)]
+      }
+    },
+    Err(msg) => [error.error(msg, "test.fuse", Span(1, 1), None)]
+  }
+}
+
+fn printErrors(diags: List<Diagnostic>) {
+  println(f"errors: {diags.len()}")
+  var i = 0
+  while i < diags.len() {
+    match diags.get(i) {
+      Some(d) => {
+        val sev = if d.isError() { "error" } else { "warning" }
+        println(f"{sev}: {d.message}")
+      },
+      None => {}
+    }
+    i = i + 1
+  }
+}
+
+@entrypoint
+fn main() {
+  // --- W5.2.2: mutref must appear at call site ---
+  println("--- mutref missing at call site ---")
+  val d1 = checkSource("fn inc(mutref x: Int) { x = x + 1 }\nfn test() { var n = 0\n inc(n) }")
+  printErrors(d1)
+
+  // --- mutref present: should be ok ---
+  println("--- mutref present ok ---")
+  val d2 = checkSource("fn inc(mutref x: Int) { x = x + 1 }\nfn test() { var n = 0\n inc(mutref n) }")
+  printErrors(d2)
+
+  // --- W5.2.3-4: use after move ---
+  println("--- use after move ---")
+  val d3 = checkSource("fn consume(owned r: Int) { }\nfn test() { val r = 1\n consume(move r)\n println(r) }")
+  printErrors(d3)
+
+  // --- W5.2.5: spawn mutref capture ---
+  println("--- spawn mutref capture ---")
+  val d4 = checkSource("fn inc(mutref x: Int) { x = x + 1 }\nfn test() { var n = 0\n spawn { inc(mutref n) } }")
+  printErrors(d4)
+
+  // --- ref param cannot receive mutref ---
+  println("--- ref param no mutref ---")
+  val d5 = checkSource("fn show(ref s: String) { println(s) }\nfn test() { var s = \"hi\"\n show(mutref s) }")
+  printErrors(d5)
+}

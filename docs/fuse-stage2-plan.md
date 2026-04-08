@@ -604,13 +604,13 @@ Core programs to native binaries — nothing more, nothing less.
 
 ### Phase W5.2 — Ownership Checking
 
-- [ ] **W5.2.1** Validate `ref` parameter convention: callee cannot assign through it.
-- [ ] **W5.2.2** Validate `mutref` must appear at both declaration and call site.
-- [ ] **W5.2.3** Validate `move` at call site marks binding as consumed.
-- [ ] **W5.2.4** Validate use-after-move: hard error, not warning.
-- [ ] **W5.2.5** Validate spawn boundaries: no `mutref` capture across spawn.
-- [ ] **W5.2.6** Test: `fn f(mutref x: Int) {}; f(x)` → error "expected `mutref` at call site".
-- [ ] **W5.2.7** Test: `move val; println(val)` → error "use after move".
+- [x] **W5.2.1** Validate `ref` parameter convention: callee cannot assign through it.
+- [x] **W5.2.2** Validate `mutref` must appear at both declaration and call site.
+- [x] **W5.2.3** Validate `move` at call site marks binding as consumed.
+- [x] **W5.2.4** Validate use-after-move: hard error, not warning.
+- [x] **W5.2.5** Validate spawn boundaries: no `mutref` capture across spawn.
+- [x] **W5.2.6** Test: `fn f(mutref x: Int) {}; f(x)` → error "expected `mutref` at call site".
+- [x] **W5.2.7** Test: `move val; println(val)` → error "use after move".
 
 ---
 
