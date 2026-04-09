@@ -65,6 +65,7 @@ pub struct ConstDecl {
 #[derive(Clone, Debug)]
 pub struct StructDecl {
     pub name: String,
+    pub type_params: Vec<String>,
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<FunctionDecl>,
     pub is_pub: bool,
@@ -159,6 +160,7 @@ pub struct EnumVariant {
 #[derive(Clone, Debug)]
 pub struct EnumDecl {
     pub name: String,
+    pub type_params: Vec<String>,
     pub variants: Vec<EnumVariant>,
     pub is_pub: bool,
     pub implements: Vec<String>,
@@ -225,6 +227,7 @@ pub struct ReturnStmt {
 
 #[derive(Clone, Debug)]
 pub struct SpawnStmt {
+    pub capture_mode: Option<String>,
     pub body: Block,
     pub span: Span,
 }

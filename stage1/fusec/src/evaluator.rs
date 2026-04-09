@@ -497,7 +497,7 @@ impl Evaluator {
                     // and method resolution. Opaqueness is enforced by the checker, not runtime.
                     let as_data = fa::DataClassDecl {
                         name: struct_decl.name.clone(),
-                        type_params: Vec::new(),
+                        type_params: struct_decl.type_params.clone(),
                         fields: struct_decl.fields.clone(),
                         methods: struct_decl.methods.clone(),
                         is_pub: struct_decl.is_pub,

@@ -339,10 +339,28 @@ impl Parser {
         let mut implements = Vec::new();
         if self.match_kind(TokenKind::Implements).is_some() {
             loop {
-                implements.push(
-                    self.expect(TokenKind::Identifier, "expected interface name")?
-                        .text,
-                );
+                let mut iface_name = self.expect(TokenKind::Identifier, "expected interface name")?
+                    .text;
+                if self.match_kind(TokenKind::Lt).is_some() {
+                    iface_name.push('<');
+                    let mut depth = 1;
+                    while depth > 0 {
+                        let tok = self.take();
+                        if tok.kind == TokenKind::Lt {
+                            depth += 1;
+                        } else if tok.kind == TokenKind::Gt {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        } else if tok.kind == TokenKind::Eof {
+                            return Err(self.syntax_error("unexpected EOF in generic arguments", tok.span));
+                        }
+                        iface_name.push_str(&tok.text);
+                    }
+                    iface_name.push('>');
+                }
+                implements.push(iface_name);
                 if self.match_kind(TokenKind::Comma).is_none() {
                     break;
                 }
@@ -378,13 +396,44 @@ impl Parser {
     fn parse_enum(&mut self) -> Result<EnumDecl, Diagnostic> {
         let start = self.expect(TokenKind::Enum, "expected `enum`")?;
         let name = self.expect(TokenKind::Identifier, "expected enum name")?.text;
+        let mut type_params = Vec::new();
+        if self.match_kind(TokenKind::Lt).is_some() {
+            loop {
+                type_params.push(
+                    self.expect(TokenKind::Identifier, "expected type parameter name")?
+                        .text,
+                );
+                if self.match_kind(TokenKind::Comma).is_none() {
+                    break;
+                }
+            }
+            self.expect(TokenKind::Gt, "expected `>` after type parameters")?;
+        }
         let mut implements = Vec::new();
         if self.match_kind(TokenKind::Implements).is_some() {
             loop {
-                implements.push(
-                    self.expect(TokenKind::Identifier, "expected interface name")?
-                        .text,
-                );
+                let mut iface_name = self.expect(TokenKind::Identifier, "expected interface name")?
+                    .text;
+                if self.match_kind(TokenKind::Lt).is_some() {
+                    iface_name.push('<');
+                    let mut depth = 1;
+                    while depth > 0 {
+                        let tok = self.take();
+                        if tok.kind == TokenKind::Lt {
+                            depth += 1;
+                        } else if tok.kind == TokenKind::Gt {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        } else if tok.kind == TokenKind::Eof {
+                            return Err(self.syntax_error("unexpected EOF in generic arguments", tok.span));
+                        }
+                        iface_name.push_str(&tok.text);
+                    }
+                    iface_name.push('>');
+                }
+                implements.push(iface_name);
                 if self.match_kind(TokenKind::Comma).is_none() {
                     break;
                 }
@@ -417,6 +466,7 @@ impl Parser {
         self.expect(TokenKind::RBrace, "expected `}` after enum")?;
         Ok(EnumDecl {
             name,
+            type_params,
             variants,
             is_pub: false,
             implements,
@@ -525,13 +575,44 @@ impl Parser {
         let name = self
             .expect(TokenKind::Identifier, "expected struct name")?
             .text;
+        let mut type_params = Vec::new();
+        if self.match_kind(TokenKind::Lt).is_some() {
+            loop {
+                type_params.push(
+                    self.expect(TokenKind::Identifier, "expected type parameter name")?
+                        .text,
+                );
+                if self.match_kind(TokenKind::Comma).is_none() {
+                    break;
+                }
+            }
+            self.expect(TokenKind::Gt, "expected `>` after type parameters")?;
+        }
         let mut implements = Vec::new();
         if self.match_kind(TokenKind::Implements).is_some() {
             loop {
-                implements.push(
-                    self.expect(TokenKind::Identifier, "expected interface name")?
-                        .text,
-                );
+                let mut iface_name = self.expect(TokenKind::Identifier, "expected interface name")?
+                    .text;
+                if self.match_kind(TokenKind::Lt).is_some() {
+                    iface_name.push('<');
+                    let mut depth = 1;
+                    while depth > 0 {
+                        let tok = self.take();
+                        if tok.kind == TokenKind::Lt {
+                            depth += 1;
+                        } else if tok.kind == TokenKind::Gt {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        } else if tok.kind == TokenKind::Eof {
+                            return Err(self.syntax_error("unexpected EOF in generic arguments", tok.span));
+                        }
+                        iface_name.push_str(&tok.text);
+                    }
+                    iface_name.push('>');
+                }
+                implements.push(iface_name);
                 if self.match_kind(TokenKind::Comma).is_none() {
                     break;
                 }
@@ -582,6 +663,7 @@ impl Parser {
         self.expect(TokenKind::RBrace, "expected `}` to close struct")?;
         Ok(StructDecl {
             name,
+            type_params,
             fields,
             methods,
             is_pub: false,
@@ -793,7 +875,19 @@ impl Parser {
 
     fn parse_spawn(&mut self) -> Result<SpawnStmt, Diagnostic> {
         let start = self.expect(TokenKind::Spawn, "expected `spawn`")?;
+        let capture_mode = match self.peek(0).kind {
+            TokenKind::Move => {
+                self.take();
+                Some("move".to_string())
+            }
+            TokenKind::Ref => {
+                self.take();
+                Some("ref".to_string())
+            }
+            _ => None,
+        };
         Ok(SpawnStmt {
+            capture_mode,
             body: self.parse_block()?,
             span: start.span,
         })
