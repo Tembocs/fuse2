@@ -1,0 +1,15 @@
+// EXPECTED OUTPUT:
+// 15
+
+data class Counter(var value: Int)
+
+fn add(mutref c: Counter, n: Int) {
+  c.value = c.value + n
+}
+
+@entrypoint
+fn main() {
+  var c = Counter(10)
+  add(mutref c, 5)
+  println(c.value)
+}

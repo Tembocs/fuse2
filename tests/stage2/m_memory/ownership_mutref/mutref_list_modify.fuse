@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// 3
+
+fn addItem(mutref xs: List<Int>, item: Int) {
+  xs.push(item)
+}
+
+@entrypoint
+fn main() {
+  var xs: List<Int> = [1]
+  addItem(mutref xs, 2)
+  addItem(mutref xs, 3)
+  println(xs.len())
+}

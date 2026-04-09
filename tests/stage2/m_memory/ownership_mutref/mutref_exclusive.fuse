@@ -1,0 +1,14 @@
+// EXPECTED ERROR:
+// `mutref` must be explicit at the call site
+
+data class Data(var x: Int)
+
+fn modify(mutref d: Data) {
+  d.x = 99
+}
+
+@entrypoint
+fn main() {
+  var d = Data(1)
+  modify(d)
+}

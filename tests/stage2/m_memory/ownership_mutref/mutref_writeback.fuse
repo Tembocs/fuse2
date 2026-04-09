@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// before: 0
+// after: 42
+
+data class Box(var value: Int)
+
+fn set(mutref b: Box, v: Int) {
+  b.value = v
+}
+
+@entrypoint
+fn main() {
+  var b = Box(0)
+  println(f"before: {b.value}")
+  set(mutref b, 42)
+  println(f"after: {b.value}")
+}

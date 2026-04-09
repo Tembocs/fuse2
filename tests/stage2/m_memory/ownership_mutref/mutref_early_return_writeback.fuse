@@ -1,0 +1,19 @@
+// EXPECTED OUTPUT:
+// 5
+
+data class Counter(var value: Int)
+
+fn addCapped(mutref c: Counter, n: Int, cap: Int) {
+  if c.value + n > cap {
+    return
+  }
+  c.value = c.value + n
+}
+
+@entrypoint
+fn main() {
+  var c = Counter(3)
+  addCapped(mutref c, 2, 10)
+  addCapped(mutref c, 100, 10)
+  println(c.value)
+}

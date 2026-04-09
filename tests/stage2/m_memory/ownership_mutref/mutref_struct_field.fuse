@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// before: Alice
+// after: Bob
+
+data class User(var name: String)
+
+fn rename(mutref u: User, newName: String) {
+  u.name = newName
+}
+
+@entrypoint
+fn main() {
+  var u = User("Alice")
+  println(f"before: {u.name}")
+  rename(mutref u, "Bob")
+  println(f"after: {u.name}")
+}

@@ -1,0 +1,19 @@
+// EXPECTED OUTPUT:
+// 15
+
+data class Box(var value: Int)
+
+fn innerAdd(mutref b: Box, n: Int) {
+  b.value = b.value + n
+}
+
+fn outerAdd(mutref b: Box) {
+  innerAdd(mutref b, 10)
+}
+
+@entrypoint
+fn main() {
+  var b = Box(5)
+  outerAdd(mutref b)
+  println(b.value)
+}

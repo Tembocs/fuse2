@@ -1,0 +1,15 @@
+// EXPECTED ERROR:
+// cannot assign through `ref` parameter
+
+data class Counter(var value: Int)
+
+fn tryMutate(ref c: Counter) {
+  c.value = c.value + 1
+}
+
+@entrypoint
+fn main() {
+  var c = Counter(0)
+  tryMutate(ref c)
+  println(c.value)
+}

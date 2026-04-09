@@ -1,0 +1,19 @@
+// EXPECTED OUTPUT:
+// 10
+
+data class Counter(var value: Int)
+
+fn increment(mutref c: Counter) {
+  c.value = c.value + 1
+}
+
+@entrypoint
+fn main() {
+  var c = Counter(0)
+  var i = 0
+  while i < 10 {
+    increment(mutref c)
+    i = i + 1
+  }
+  println(c.value)
+}
