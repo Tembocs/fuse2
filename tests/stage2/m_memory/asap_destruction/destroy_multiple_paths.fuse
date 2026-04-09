@@ -1,0 +1,27 @@
+// EXPECTED OUTPUT:
+// path A: r
+// [del] r
+// end
+
+@value
+data class Res(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+fn choose(cond: Bool) -> String {
+  val r = Res("r")
+  if cond {
+    println(f"path A: {r.name}")
+    return "A"
+  }
+  println(f"path B: {r.name}")
+  "B"
+}
+
+@entrypoint
+fn main() {
+  choose(true)
+  println("end")
+}

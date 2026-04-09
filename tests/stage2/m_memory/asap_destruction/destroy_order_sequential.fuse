@@ -1,0 +1,24 @@
+// EXPECTED OUTPUT:
+// use a
+// [del] a
+// use b
+// [del] b
+// done
+
+@value
+data class Res(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+@entrypoint
+fn main() {
+  val a = Res("a")
+  val b = Res("b")
+  println(f"use {a.name}")
+  // a last used above — destroyed here
+  println(f"use {b.name}")
+  // b last used above — destroyed here
+  println("done")
+}

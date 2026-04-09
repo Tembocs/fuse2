@@ -1,0 +1,23 @@
+// EXPECTED OUTPUT:
+// branch A: r
+// [del] r
+// after
+
+@value
+data class Res(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+@entrypoint
+fn main() {
+  val r = Res("r")
+  if true {
+    println(f"branch A: {r.name}")
+  } else {
+    println(f"branch B: {r.name}")
+  }
+  // r used in both branches — destroyed after if/else
+  println("after")
+}

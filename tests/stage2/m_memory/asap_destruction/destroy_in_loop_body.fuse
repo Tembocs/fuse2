@@ -1,0 +1,27 @@
+// EXPECTED OUTPUT:
+// created tmp
+// [del] tmp
+// created tmp
+// [del] tmp
+// created tmp
+// [del] tmp
+// done
+
+@value
+data class Res(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+@entrypoint
+fn main() {
+  var i = 0
+  while i < 3 {
+    val tmp = Res("tmp")
+    println(f"created {tmp.name}")
+    // tmp last used above — destroyed before next iteration
+    i = i + 1
+  }
+  println("done")
+}

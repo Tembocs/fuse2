@@ -1,0 +1,23 @@
+// EXPECTED OUTPUT:
+// using first
+// using second
+// [del] second
+// done
+
+@value
+data class Res(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+@entrypoint
+fn main() {
+  var r = Res("first")
+  println(f"using {r.name}")
+  // r reassigned — old value "first" destroyed here
+  r = Res("second")
+  println(f"using {r.name}")
+  // r last used above — "second" destroyed here
+  println("done")
+}

@@ -1,0 +1,21 @@
+// EXPECTED OUTPUT:
+// took true branch: r
+// [del] r
+// after if
+
+@value
+data class Res(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+@entrypoint
+fn main() {
+  val r = Res("r")
+  if true {
+    println(f"took true branch: {r.name}")
+  }
+  // r last used inside if — destroyed after if block
+  println("after if")
+}

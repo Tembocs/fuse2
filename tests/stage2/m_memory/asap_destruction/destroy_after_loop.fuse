@@ -1,0 +1,25 @@
+// EXPECTED OUTPUT:
+// loop 0: r
+// loop 1: r
+// loop 2: r
+// [del] r
+// done
+
+@value
+data class Res(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+@entrypoint
+fn main() {
+  val r = Res("r")
+  var i = 0
+  while i < 3 {
+    println(f"loop {i}: {r.name}")
+    i = i + 1
+  }
+  // r last used inside loop — destroyed after loop ends
+  println("done")
+}

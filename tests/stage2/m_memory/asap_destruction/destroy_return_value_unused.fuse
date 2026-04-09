@@ -1,0 +1,22 @@
+// EXPECTED OUTPUT:
+// creating
+// after
+
+@value
+data class Res(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+fn makeRes() -> Res {
+  println("creating")
+  Res("tmp")
+}
+
+@entrypoint
+fn main() {
+  makeRes()
+  // return value not bound — destroyed immediately
+  println("after")
+}

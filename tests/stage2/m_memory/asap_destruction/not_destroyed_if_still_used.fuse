@@ -1,0 +1,23 @@
+// EXPECTED OUTPUT:
+// step 1
+// step 2
+// still alive: r
+// [del] r
+// done
+
+@value
+data class Res(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+@entrypoint
+fn main() {
+  val r = Res("r")
+  println("step 1")
+  println("step 2")
+  println(f"still alive: {r.name}")
+  // r last used above — destroyed here, before "done"
+  println("done")
+}

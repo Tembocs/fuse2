@@ -1,0 +1,23 @@
+// EXPECTED OUTPUT:
+// entering sink
+// [del] r
+// after sink
+
+@value
+data class Res(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+fn sink(owned r: Res) {
+  println("entering sink")
+  // r is not used — destroyed immediately
+}
+
+@entrypoint
+fn main() {
+  val r = Res("r")
+  sink(move r)
+  println("after sink")
+}
