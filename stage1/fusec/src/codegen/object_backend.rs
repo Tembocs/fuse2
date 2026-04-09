@@ -1796,6 +1796,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         builder.def_var(index_var, zero);
         let cond_block = builder.create_block();
         let body_block = builder.create_block();
+        let increment_block = builder.create_block();
         let exit_block = builder.create_block();
         builder.ins().jump(cond_block, &[]);
         builder.switch_to_block(cond_block);
@@ -1831,7 +1832,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         );
         self.loops.push(LoopFrame {
             break_block: exit_block,
-            continue_block: cond_block,
+            continue_block: increment_block,
         });
         // Protect outer locals from ASAP release inside the loop body.
         let snapshot = self.locals.clone();
@@ -1842,10 +1843,15 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         self.locals = snapshot;
         self.loops.pop();
         if !self.current_block_is_terminated(builder) {
-            let next = builder.ins().iadd_imm(index, 1);
-            builder.def_var(index_var, next);
-            builder.ins().jump(cond_block, &[]);
+            builder.ins().jump(increment_block, &[]);
         }
+        // Increment block: advance index then re-check condition.
+        // Both normal body fallthrough and `continue` land here.
+        builder.switch_to_block(increment_block);
+        let cur_index = builder.use_var(index_var);
+        let next = builder.ins().iadd_imm(cur_index, 1);
+        builder.def_var(index_var, next);
+        builder.ins().jump(cond_block, &[]);
         builder.switch_to_block(exit_block);
         Ok(())
     }

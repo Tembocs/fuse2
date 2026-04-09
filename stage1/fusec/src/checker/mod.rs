@@ -587,6 +587,9 @@ impl Checker {
                 .value
                 .as_ref()
                 .and_then(|expr| self.infer_expr_type(module, expr, scope, owner_name)),
+            // `loop { }` without break is infinite — must exit via return,
+            // so the type is Never (!) which matches any expected type.
+            hir::Statement::Loop(_) => Some("!".to_string()),
             _ => Some("Unit".to_string()),
         }
     }
