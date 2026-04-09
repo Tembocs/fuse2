@@ -1440,10 +1440,24 @@ impl Checker {
 
     /// Look up which interfaces a type declares `implements`.
     fn type_implements(&self, type_name: &str) -> Vec<String> {
-        self.module_cache
+        let mut ifaces = self.module_cache
             .values()
             .find_map(|module| module.implements.get(type_name).cloned())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        // Built-in types implicitly implement core interfaces.
+        let base = type_name.split('<').next().unwrap_or(type_name);
+        match base {
+            "Int" | "Float" | "Float32" | "Bool" | "String" | "Unit"
+            | "Int8" | "UInt8" | "Int32" | "UInt32" | "UInt64" => {
+                for iface in ["Printable", "Debuggable", "Equatable"] {
+                    if !ifaces.iter().any(|i| i == iface) {
+                        ifaces.push(iface.to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+        ifaces
     }
 
     fn check_match_exhaustiveness(

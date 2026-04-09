@@ -1,5 +1,5 @@
 // EXPECTED OUTPUT:
-// 0
+// 3
 
 import stdlib.core.list
 
