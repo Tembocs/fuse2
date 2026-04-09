@@ -685,6 +685,20 @@ impl Checker {
                 for inner in &while_stmt.body.statements {
                     self.check_statement(module, inner, &mut child, loop_depth + 1, owner_name);
                 }
+                // Second pass: re-check with moved state to catch
+                // use-after-move on the next iteration.
+                let any_moved = scope.iter().any(|(n,b)| !b.moved && child.get(n).map_or(false, |cb| cb.moved));
+                if any_moved {
+                    for inner in &while_stmt.body.statements {
+                        self.check_statement(module, inner, &mut child, loop_depth + 1, owner_name);
+                    }
+                }
+                // Merge moved state to parent.
+                for (name, binding) in scope.iter_mut() {
+                    if child.get(name).map_or(false, |b| b.moved) {
+                        binding.moved = true;
+                    }
+                }
             }
             hir::Statement::For(for_stmt) => {
                 self.check_expr(module, &for_stmt.iterable, scope, owner_name, loop_depth);
@@ -705,11 +719,35 @@ impl Checker {
                 for inner in &for_stmt.body.statements {
                     self.check_statement(module, inner, &mut child, loop_depth + 1, owner_name);
                 }
+                // Second pass to catch use-after-move on next iteration.
+                let any_moved = scope.iter().any(|(n,b)| !b.moved && child.get(n).map_or(false, |cb| cb.moved));
+                if any_moved {
+                    for inner in &for_stmt.body.statements {
+                        self.check_statement(module, inner, &mut child, loop_depth + 1, owner_name);
+                    }
+                }
+                for (name, binding) in scope.iter_mut() {
+                    if child.get(name).map_or(false, |b| b.moved) {
+                        binding.moved = true;
+                    }
+                }
             }
             hir::Statement::Loop(loop_stmt) => {
                 let mut child = scope.clone();
                 for inner in &loop_stmt.body.statements {
                     self.check_statement(module, inner, &mut child, loop_depth + 1, owner_name);
+                }
+                // Second pass to catch use-after-move on next iteration.
+                let any_moved = scope.iter().any(|(n,b)| !b.moved && child.get(n).map_or(false, |cb| cb.moved));
+                if any_moved {
+                    for inner in &loop_stmt.body.statements {
+                        self.check_statement(module, inner, &mut child, loop_depth + 1, owner_name);
+                    }
+                }
+                for (name, binding) in scope.iter_mut() {
+                    if child.get(name).map_or(false, |b| b.moved) {
+                        binding.moved = true;
+                    }
                 }
             }
             hir::Statement::Spawn(spawn_stmt) => {
