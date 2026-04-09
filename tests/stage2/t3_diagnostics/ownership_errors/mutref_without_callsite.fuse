@@ -1,0 +1,14 @@
+// EXPECTED ERROR:
+// `mutref` must be explicit at the call site
+
+data class Counter(var value: Int)
+
+fn increment(mutref c: Counter) {
+  c.value = c.value + 1
+}
+
+@entrypoint
+fn main() {
+  var c = Counter(0)
+  increment(c)
+}

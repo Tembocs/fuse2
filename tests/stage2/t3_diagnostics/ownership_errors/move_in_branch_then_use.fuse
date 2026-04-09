@@ -1,0 +1,17 @@
+// EXPECTED ERROR:
+// cannot use `f` after `move`
+
+data class Foo(val x: Int)
+
+fn consume(owned f: Foo) {
+  println(f.x)
+}
+
+@entrypoint
+fn main() {
+  val f = Foo(42)
+  if true {
+    consume(move f)
+  }
+  println(f.x)
+}

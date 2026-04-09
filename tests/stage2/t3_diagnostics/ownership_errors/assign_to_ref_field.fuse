@@ -1,0 +1,14 @@
+// EXPECTED ERROR:
+// cannot assign through `ref` parameter
+
+data class User(var name: String, var score: Int)
+
+fn updateName(ref user: User) {
+  user.name = "changed"
+}
+
+@entrypoint
+fn main() {
+  var u = User("Alice", 100)
+  updateName(ref u)
+}

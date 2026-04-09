@@ -1,0 +1,18 @@
+// EXPECTED ERROR:
+// cannot move from `mutref` parameter
+
+data class Foo(val x: Int)
+
+fn consume(owned f: Foo) {
+  println(f.x)
+}
+
+fn modify(mutref f: Foo) {
+  consume(move f)
+}
+
+@entrypoint
+fn main() {
+  var f = Foo(1)
+  modify(mutref f)
+}

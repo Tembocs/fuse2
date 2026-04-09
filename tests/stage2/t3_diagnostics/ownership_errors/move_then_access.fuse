@@ -1,0 +1,15 @@
+// EXPECTED ERROR:
+// cannot use `conn` after `move`
+
+data class Connection(val dsn: String)
+
+fn close(owned c: Connection) {
+  println(f"closed: {c.dsn}")
+}
+
+@entrypoint
+fn main() {
+  val conn = Connection("db://main")
+  close(move conn)
+  println(conn.dsn)
+}
