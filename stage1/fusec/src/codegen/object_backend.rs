@@ -3279,6 +3279,70 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             .ty
             .clone()
             .ok_or_else(|| format!("cannot infer receiver type for `{}`", member.name))?;
+
+        // Optional chaining: receiver?.method() — unwrap Option, call on inner, rewrap.
+        if member.optional {
+            if let Some(inner_type) = option_inner_type(&receiver_type) {
+                let some = self.runtime_value(
+                    builder, self.compiler.runtime.option_is_some,
+                    &[receiver.value], types::I8,
+                );
+                let then_block = builder.create_block();
+                let else_block = builder.create_block();
+                let done = builder.create_block();
+                builder.append_block_param(done, self.compiler.pointer_type);
+                let cond = builder.ins().icmp_imm(IntCC::NotEqual, some, 0);
+                builder.ins().brif(cond, then_block, &[], else_block, &[]);
+
+                builder.switch_to_block(then_block);
+                let inner = self.runtime(
+                    builder, self.compiler.runtime.option_unwrap,
+                    &[receiver.value], self.compiler.pointer_type,
+                );
+                // Recurse with a non-optional Member using the unwrapped receiver.
+                let inner_member = fa::Member {
+                    object: member.object.clone(),
+                    name: member.name.clone(),
+                    optional: false,
+                    span: member.span,
+                };
+                // We need to compile the call on the unwrapped value. Build a fake
+                // Name expression that resolves to a temp variable holding `inner`.
+                let temp_name = format!("__opt_chain_{}", self.locals.len());
+                let temp_var = self.new_var(builder, self.compiler.pointer_type);
+                builder.def_var(temp_var, inner);
+                self.locals.insert(temp_name.clone(), LocalBinding {
+                    var: temp_var, ty: Some(inner_type.clone()), destroy: false,
+                });
+                // Dispatch the method call on the unwrapped type.
+                let inner_member2 = fa::Member {
+                    object: Box::new(fa::Expr::Name(fa::Name {
+                        value: temp_name.clone(),
+                        span: member.span,
+                    })),
+                    name: member.name.clone(),
+                    optional: false,
+                    span: member.span,
+                };
+                let inner_result = self.compile_member_call(builder, &inner_member2, args)?;
+                self.locals.remove(&temp_name);
+                let wrapped = self.runtime(
+                    builder, self.compiler.runtime.some,
+                    &[inner_result.value], self.compiler.pointer_type,
+                );
+                self.jump_value(builder, done, wrapped);
+
+                builder.switch_to_block(else_block);
+                let none = self.runtime_nullary(builder, self.compiler.runtime.none);
+                self.jump_value(builder, done, none);
+
+                builder.switch_to_block(done);
+                return Ok(TypedValue {
+                    value: builder.block_params(done)[0],
+                    ty: inner_result.ty.map(|t| format!("Option<{t}>")),
+                });
+            }
+        }
         if let Some((target_module, function)) = self
             .compiler
             .session
@@ -4496,22 +4560,39 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         )
                     }
                 };
-                if let Some(fa::Pattern::Name(name)) = variant.args.first() {
-                    let variable = self.new_var(builder, self.compiler.pointer_type);
-                    builder.def_var(variable, payload);
-                    self.locals.insert(
-                        name.name.clone(),
-                        LocalBinding {
-                            var: variable,
-                            ty: match variant.name.as_str() {
-                                "Ok" => result_ok_type(subject_type),
-                                "Err" => result_err_type(subject_type),
-                                "Some" => option_inner_type(subject_type),
-                                _ => None,
+                for (i, arg) in variant.args.iter().enumerate() {
+                    if let fa::Pattern::Name(name) = arg {
+                        let val = if i == 0 {
+                            payload
+                        } else {
+                            let idx = self.usize_const(builder, i as i64);
+                            self.runtime(
+                                builder,
+                                self.compiler.runtime.enum_payload,
+                                &[subject, idx],
+                                self.compiler.pointer_type,
+                            )
+                        };
+                        let variable = self.new_var(builder, self.compiler.pointer_type);
+                        builder.def_var(variable, val);
+                        self.locals.insert(
+                            name.name.clone(),
+                            LocalBinding {
+                                var: variable,
+                                ty: if variant.args.len() == 1 {
+                                    match variant.name.as_str() {
+                                        "Ok" => result_ok_type(subject_type),
+                                        "Err" => result_err_type(subject_type),
+                                        "Some" => option_inner_type(subject_type),
+                                        _ => None,
+                                    }
+                                } else {
+                                    None
+                                },
+                                destroy: false,
                             },
-                            destroy: false,
-                        },
-                    );
+                        );
+                    }
                 }
             }
             fa::Pattern::Tuple(tuple) => {
