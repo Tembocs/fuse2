@@ -4,12 +4,16 @@
 
 struct Box<T> {
   val item: T
+
+  fn getItem(ref self) -> T {
+    self.item
+  }
 }
 
 @entrypoint
 fn main() {
   val intBox = Box(42)
-  println(intBox.item)
+  println(intBox.getItem())
   val strBox = Box("hello")
-  println(strBox.item)
+  println(strBox.getItem())
 }

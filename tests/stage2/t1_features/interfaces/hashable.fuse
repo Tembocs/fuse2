@@ -1,6 +1,8 @@
 // EXPECTED OUTPUT:
 // ok
 
+import stdlib.core.int
+
 data class Key(val id: Int) implements Hashable
 
 @entrypoint
