@@ -3608,6 +3608,12 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 }
                 "get" => {
                     let key = self.compile_expr(builder, &args[0])?;
+                    // Map<K,V>.get(key) returns Option<V>
+                    let value_type = receiver_type.find(',')
+                        .and_then(|comma| {
+                            let after = &receiver_type[comma+1..];
+                            after.strip_suffix('>').map(|v| v.trim().to_string())
+                        });
                     Ok(TypedValue {
                         value: self.runtime(
                             builder,
@@ -3615,7 +3621,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                             &[receiver.value, key.value],
                             self.compiler.pointer_type,
                         ),
-                        ty: None,
+                        ty: value_type.map(|v| format!("Option<{v}>")),
                     })
                 }
                 "remove" => {

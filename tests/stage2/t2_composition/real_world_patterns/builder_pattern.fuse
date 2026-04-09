@@ -1,0 +1,24 @@
+// EXPECTED OUTPUT:
+// Config(host=localhost, port=8080, debug=true)
+
+data class Config(val host: String, val port: Int, val debug: Bool)
+
+fn defaultConfig() -> Config {
+  Config("localhost", 80, false)
+}
+
+fn withPort(ref c: Config, port: Int) -> Config {
+  Config(c.host, port, c.debug)
+}
+
+fn withDebug(ref c: Config, debug: Bool) -> Config {
+  Config(c.host, c.port, debug)
+}
+
+@entrypoint
+fn main() {
+  val base = defaultConfig()
+  val updated = withPort(ref base, 8080)
+  val final_ = withDebug(ref updated, true)
+  println(f"Config(host={final_.host}, port={final_.port}, debug={final_.debug})")
+}

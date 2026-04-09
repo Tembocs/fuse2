@@ -1,0 +1,20 @@
+// EXPECTED OUTPUT:
+// 3
+// a
+// b
+// c
+
+import stdlib.core.map
+
+@entrypoint
+fn main() {
+  val m = Map::<String, Int>.new()
+  m.set("a", 1)
+  m.set("b", 2)
+  m.set("c", 3)
+  val keys = m.keys()
+  println(keys.len())
+  for key in keys {
+    println(key)
+  }
+}

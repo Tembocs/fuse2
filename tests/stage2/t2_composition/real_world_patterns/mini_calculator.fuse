@@ -1,0 +1,20 @@
+// EXPECTED OUTPUT:
+// 15
+// 6
+// 8
+
+fn calculate(a: Int, op: String, b: Int) -> Int {
+  match op {
+    "+" => a + b,
+    "-" => a - b,
+    "*" => a * b,
+    _ => 0
+  }
+}
+
+@entrypoint
+fn main() {
+  println(calculate(10, "+", 5))
+  println(calculate(10, "-", 4))
+  println(calculate(2, "*", 4))
+}

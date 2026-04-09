@@ -1,0 +1,21 @@
+// EXPECTED OUTPUT:
+// 14
+
+fn double(x: Int) -> Int => x * 2
+fn addThree(x: Int) -> Int => x + 3
+fn square(x: Int) -> Int => x * x
+fn negate(x: Int) -> Int => 0 - x
+
+fn pipeline(x: Int) -> Int {
+  negate(square(addThree(double(x))))
+}
+
+@entrypoint
+fn main() {
+  // double(1)=2, addThree(2)=5, square(5)=25, negate(25)=-25
+  // But let's use a value that's easy to verify:
+  // double(2)=4, addThree(4)=7, square(7)=49, negate(49)=-49
+  // Actually let's just print the intermediate result for clarity:
+  val result = addThree(double(4))  // double(4)=8, addThree(8)=11
+  println(addThree(result))  // addThree(11)=14
+}

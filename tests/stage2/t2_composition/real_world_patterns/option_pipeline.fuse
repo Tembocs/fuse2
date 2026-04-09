@@ -1,0 +1,21 @@
+// EXPECTED OUTPUT:
+// Accra
+// fallback
+
+data class Address(val city: String)
+data class Person(val address: Option<Address>)
+
+@entrypoint
+fn main() {
+  val p1 = Person(Some(Address("Accra")))
+  match p1.address {
+    Some(addr) => println(addr.city),
+    None => println("fallback")
+  }
+
+  val p2 = Person(None)
+  match p2.address {
+    Some(addr) => println(addr.city),
+    None => println("fallback")
+  }
+}

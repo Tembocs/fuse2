@@ -1,0 +1,21 @@
+// EXPECTED OUTPUT:
+// 7
+
+enum Tree {
+  Leaf(Int),
+  Branch(Int, Int)
+}
+
+fn treeSum(t: Tree) -> Int {
+  match t {
+    Tree.Leaf(n) => n,
+    Tree.Branch(l, r) => l + r
+  }
+}
+
+@entrypoint
+fn main() {
+  val leaf = Tree.Leaf(1)
+  val branch = Tree.Branch(2, 4)
+  println(treeSum(leaf) + treeSum(branch))
+}

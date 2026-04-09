@@ -1,0 +1,19 @@
+// EXPECTED OUTPUT:
+// a got Ok(10)
+// b got Ok(20)
+// c got Ok(30)
+
+@entrypoint
+fn main() {
+  val chA = Chan::<Int>.new()
+  val chB = Chan::<Int>.new()
+  val chC = Chan::<Int>.new()
+
+  chA.send(10)
+  chB.send(20)
+  chC.send(30)
+
+  println(f"a got {chA.recv()}")
+  println(f"b got {chB.recv()}")
+  println(f"c got {chC.recv()}")
+}

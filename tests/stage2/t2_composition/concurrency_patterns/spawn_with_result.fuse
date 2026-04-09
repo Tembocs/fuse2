@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// Ok(Ok(42))
+
+@entrypoint
+fn main() {
+  val ch = Chan::<Result<Int, String>>.new()
+  spawn {
+    ch.send(Ok(42))
+  }
+  val result = ch.recv()
+  println(result)
+}

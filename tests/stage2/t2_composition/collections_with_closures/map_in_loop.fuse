@@ -1,0 +1,25 @@
+// EXPECTED OUTPUT:
+// 3
+
+import stdlib.core.map
+
+@entrypoint
+fn main() {
+  val words = ["hello", "world", "hello", "fuse", "world", "hello"]
+  val counts = Map::<String, Int>.new()
+  for word in words {
+    if counts.contains(word) {
+      val current = counts.get(word)
+      match current {
+        Some(n) => counts.set(word, n + 1),
+        None => {}
+      }
+    } else {
+      counts.set(word, 1)
+    }
+  }
+  match counts.get("hello") {
+    Some(n) => println(n),
+    None => println(0)
+  }
+}

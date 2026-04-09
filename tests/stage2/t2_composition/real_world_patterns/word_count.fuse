@@ -1,0 +1,26 @@
+// EXPECTED OUTPUT:
+// 3
+
+import stdlib.core.map
+import stdlib.core.string
+
+@entrypoint
+fn main() {
+  val text = "the cat sat on the mat the"
+  val words = text.split(" ")
+  val counts = Map::<String, Int>.new()
+  for word in words {
+    if counts.contains(word) {
+      match counts.get(word) {
+        Some(n) => counts.set(word, n + 1),
+        None => {}
+      }
+    } else {
+      counts.set(word, 1)
+    }
+  }
+  match counts.get("the") {
+    Some(n) => println(n),
+    None => println(0)
+  }
+}

@@ -1,0 +1,45 @@
+// EXPECTED OUTPUT:
+// idle
+// running
+// paused
+// running
+// stopped
+
+enum State {
+  Idle,
+  Running,
+  Paused,
+  Stopped
+}
+
+fn stateName(s: State) -> String {
+  match s {
+    State.Idle => "idle",
+    State.Running => "running",
+    State.Paused => "paused",
+    State.Stopped => "stopped"
+  }
+}
+
+fn nextState(s: State) -> State {
+  match s {
+    State.Idle => State.Running,
+    State.Running => State.Paused,
+    State.Paused => State.Running,
+    State.Stopped => State.Stopped
+  }
+}
+
+@entrypoint
+fn main() {
+  var state = State.Idle
+  println(stateName(state))
+  state = nextState(state)  // idle -> running
+  println(stateName(state))
+  state = nextState(state)  // running -> paused
+  println(stateName(state))
+  state = nextState(state)  // paused -> running
+  println(stateName(state))
+  state = State.Stopped
+  println(stateName(state))
+}

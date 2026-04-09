@@ -1,0 +1,22 @@
+// EXPECTED OUTPUT:
+// got: 42
+
+import stdlib.core.int
+
+fn parseAndDouble(s: String) -> Result<Int, String> {
+  val n = Int.parse(s)?
+  Ok(n * 2)
+}
+
+fn tryAll() -> Result<Int, String> {
+  val result = parseAndDouble("21")?
+  Ok(result)
+}
+
+@entrypoint
+fn main() {
+  match tryAll() {
+    Ok(v) => println(f"got: {v}"),
+    Err(e) => println(f"error: {e}")
+  }
+}

@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// [10, 20, 30]
+// []
+
+fn getScores(found: Bool) -> List<Int> {
+  match found {
+    true => [10, 20, 30],
+    false => []
+  }
+}
+
+@entrypoint
+fn main() {
+  println(getScores(true))
+  println(getScores(false))
+}

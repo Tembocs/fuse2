@@ -1,0 +1,21 @@
+// EXPECTED OUTPUT:
+// Some(42)
+// None
+
+import stdlib.core.map
+
+fn cacheGet<T>(cache: Map<String, T>, key: String) -> Option<T> {
+  cache.get(key)
+}
+
+fn cacheSet<T>(cache: Map<String, T>, key: String, value: T) {
+  cache.set(key, value)
+}
+
+@entrypoint
+fn main() {
+  val cache = Map::<String, Int>.new()
+  cacheSet(cache, "answer", 42)
+  println(cacheGet(cache, "answer"))
+  println(cacheGet(cache, "missing"))
+}

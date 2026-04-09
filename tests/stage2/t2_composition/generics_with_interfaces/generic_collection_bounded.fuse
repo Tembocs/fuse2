@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// [1, 2, 3, 4, 5]
+
+import stdlib.core.list
+
+fn sortAndPrint<T: Comparable>(xs: List<T>) {
+  val sorted = xs.sorted()
+  println(sorted)
+}
+
+@entrypoint
+fn main() {
+  sortAndPrint([3, 1, 4, 5, 2])
+}

@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// [2, 4, 6]
+
+import stdlib.core.list
+
+@entrypoint
+fn main() {
+  val xs = [1, 2, 3, 4, 5, 6]
+  val evens = xs.filter(fn(x: Int) -> Bool => x % 2 == 0)
+  println(evens)
+}

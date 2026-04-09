@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// 3
+
+@value
+data class Counter(var value: Int)
+
+@entrypoint
+fn main() {
+  @rank(1) val counter: Shared<Counter> = Shared::<Counter>.new(Counter(0))
+  val w1 = counter.write()
+  w1.value = 1
+  val w2 = counter.write()
+  w2.value = w2.value + 1
+  val w3 = counter.write()
+  w3.value = w3.value + 1
+  println(counter.read().value)
+}
