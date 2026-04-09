@@ -64,6 +64,10 @@ citizens with dedicated tiers and categories.
    - Removing imports or features from a test to avoid a codegen bug.
    - Weakening assertions (e.g., testing `len()` instead of `.get()`
      because `.get()` crashes).
+   - Simplifying a test to sidestep a known bug (e.g., removing
+     `?.method()` chaining from an optional-chain test because L016
+     doesn't support it yet — the test must define the correct
+     behavior; the bug goes in `known_failures.txt`).
 
    **The only legitimate reasons to edit a test fixture are:**
    - Fixing a typo in the expected output (e.g., `78` → `75` when the
