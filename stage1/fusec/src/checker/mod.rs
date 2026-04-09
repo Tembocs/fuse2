@@ -1106,9 +1106,33 @@ impl Checker {
                             for statement in &block.statements {
                                 self.check_statement(module, statement, &mut else_scope, loop_depth, owner_name);
                             }
+                            // Merge: if moved in either branch, mark as moved.
+                            for (name, binding) in scope.iter_mut() {
+                                let moved_in_then = then_scope.get(name).map_or(false, |b| b.moved);
+                                let moved_in_else = else_scope.get(name).map_or(false, |b| b.moved);
+                                if moved_in_then || moved_in_else {
+                                    binding.moved = true;
+                                }
+                            }
                         }
                         hir::ElseBranch::IfExpr(expr) => {
-                            self.check_expr(module, &hir::Expr::If((**expr).clone()), scope, owner_name, loop_depth)
+                            let mut else_scope = scope.clone();
+                            self.check_expr(module, &hir::Expr::If((**expr).clone()), &mut else_scope, owner_name, loop_depth);
+                            // Merge moved state from both branches.
+                            for (name, binding) in scope.iter_mut() {
+                                let moved_in_then = then_scope.get(name).map_or(false, |b| b.moved);
+                                let moved_in_else = else_scope.get(name).map_or(false, |b| b.moved);
+                                if moved_in_then || moved_in_else {
+                                    binding.moved = true;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // No else branch: if moved in then, it may have been moved.
+                    for (name, binding) in scope.iter_mut() {
+                        if then_scope.get(name).map_or(false, |b| b.moved) {
+                            binding.moved = true;
                         }
                     }
                 }

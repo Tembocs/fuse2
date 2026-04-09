@@ -11,5 +11,4 @@
 # When you fix a bug, delete its lines here.  The test will move from
 # "known fail" to "pass" automatically.
 
-# --- L023: conditional move not tracked across if branches ---
-t2_composition/ownership_with_control_flow/move_in_one_branch.fuse  # L023: move in if branch not detected
+# (empty — all known failures resolved)
