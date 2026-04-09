@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// consumed: db://main
+
+data class Connection(val dsn: String)
+
+fn consume(owned conn: Connection) {
+  println(f"consumed: {conn.dsn}")
+}
+
+@entrypoint
+fn main() {
+  val conn = Connection("db://main")
+  consume(move conn)
+}

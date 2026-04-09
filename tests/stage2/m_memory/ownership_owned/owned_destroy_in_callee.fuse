@@ -1,0 +1,23 @@
+// EXPECTED OUTPUT:
+// inside: r
+// [del] r
+// after call
+
+@value
+data class Res(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+fn sink(owned r: Res) {
+  println(f"inside: {r.name}")
+  // r last used above — destroyed here inside callee
+}
+
+@entrypoint
+fn main() {
+  val r = Res("r")
+  sink(move r)
+  println("after call")
+}

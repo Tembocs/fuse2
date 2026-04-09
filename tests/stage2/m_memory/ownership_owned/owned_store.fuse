@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// stored: item-1
+// stored: item-2
+
+data class Item(val name: String)
+
+fn storeAndPrint(items: List<String>, owned item: Item) {
+  println(f"stored: {item.name}")
+}
+
+@entrypoint
+fn main() {
+  val a = Item("item-1")
+  val b = Item("item-2")
+  storeAndPrint([], move a)
+  storeAndPrint([], move b)
+}

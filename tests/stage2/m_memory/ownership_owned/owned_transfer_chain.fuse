@@ -1,0 +1,26 @@
+// EXPECTED OUTPUT:
+// step A: token
+// step B: token
+// final: token
+
+data class Token(val id: String)
+
+fn stepC(owned t: Token) {
+  println(f"final: {t.id}")
+}
+
+fn stepB(owned t: Token) {
+  println(f"step B: {t.id}")
+  stepC(move t)
+}
+
+fn stepA(owned t: Token) {
+  println(f"step A: {t.id}")
+  stepB(move t)
+}
+
+@entrypoint
+fn main() {
+  val t = Token("token")
+  stepA(move t)
+}
