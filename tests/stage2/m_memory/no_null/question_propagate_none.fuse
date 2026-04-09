@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// Some(6)
+// None
+
+fn increment(opt: Option<Int>) -> Option<Int> {
+  val v = opt?
+  Some(v + 1)
+}
+
+@entrypoint
+fn main() {
+  println(increment(Some(5)))
+  println(increment(None))
+}

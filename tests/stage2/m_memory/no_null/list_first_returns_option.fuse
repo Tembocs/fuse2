@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// Some(10)
+// None
+
+import stdlib.core.list
+
+@entrypoint
+fn main() {
+  val xs = [10, 20, 30]
+  println(xs.first())
+  val empty: List<Int> = []
+  println(empty.first())
+}

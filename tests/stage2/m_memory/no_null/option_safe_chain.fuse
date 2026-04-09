@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// Some(42)
+// None
+
+data class Inner(val x: Int)
+data class Outer(val inner: Option<Inner>)
+
+@entrypoint
+fn main() {
+  val a = Outer(Some(Inner(42)))
+  val b = Outer(None)
+  println(a.inner?.x)
+  println(b.inner?.x)
+}

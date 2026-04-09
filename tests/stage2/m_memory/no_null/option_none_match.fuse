@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// nothing
+
+@entrypoint
+fn main() {
+  val x: Option<Int> = None
+  match x {
+    Some(v) => println(f"got {v}"),
+    None => println("nothing")
+  }
+}

@@ -1,0 +1,40 @@
+// EXPECTED OUTPUT:
+// 42
+// inner none
+// outer none
+
+@entrypoint
+fn main() {
+  val a: Option<Option<Int>> = Some(Some(42))
+  match a {
+    Some(inner) => {
+      match inner {
+        Some(v) => println(v),
+        None => println("inner none")
+      }
+    },
+    None => println("outer none")
+  }
+
+  val b: Option<Option<Int>> = Some(None)
+  match b {
+    Some(inner) => {
+      match inner {
+        Some(v) => println(v),
+        None => println("inner none")
+      }
+    },
+    None => println("outer none")
+  }
+
+  val c: Option<Option<Int>> = None
+  match c {
+    Some(inner) => {
+      match inner {
+        Some(v) => println(v),
+        None => println("inner none")
+      }
+    },
+    None => println("outer none")
+  }
+}

@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// Some(1)
+// None
+
+import stdlib.core.map
+
+@entrypoint
+fn main() {
+  val m = Map::<String, Int>.new()
+  m.set("a", 1)
+  println(m.get("a"))
+  println(m.get("missing"))
+}

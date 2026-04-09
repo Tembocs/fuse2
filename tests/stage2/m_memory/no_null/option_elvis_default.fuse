@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// 42
+// 10
+
+@entrypoint
+fn main() {
+  val x: Option<Int> = None
+  println(x ?: 42)
+  val y: Option<Int> = Some(10)
+  println(y ?: 42)
+}
