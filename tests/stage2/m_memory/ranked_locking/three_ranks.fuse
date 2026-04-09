@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// rank 1: 10
+// rank 2: 20
+// rank 3: 30
+
+@entrypoint
+fn main() {
+  @rank(1) val a: Shared<Int> = Shared::<Int>.new(10)
+  @rank(2) val b: Shared<Int> = Shared::<Int>.new(20)
+  @rank(3) val c: Shared<Int> = Shared::<Int>.new(30)
+  val av = a.read()
+  val bv = b.read()
+  val cv = c.read()
+  println(f"rank 1: {av}")
+  println(f"rank 2: {bv}")
+  println(f"rank 3: {cv}")
+}

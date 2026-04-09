@@ -1,0 +1,12 @@
+// EXPECTED ERROR:
+// cannot acquire @rank(0) while holding @rank(1)
+
+@entrypoint
+fn main() {
+  @rank(1) val first: Shared<Int> = Shared::<Int>.new(1)
+  @rank(0) val second: Shared<Int> = Shared::<Int>.new(2)
+  val f = first.read()
+  val s = second.read()
+  println(f)
+  println(s)
+}

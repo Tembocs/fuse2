@@ -1,0 +1,26 @@
+// EXPECTED OUTPUT:
+// write succeeded: 99
+// timeout handled
+
+@value
+data class Box(var value: Int)
+
+@entrypoint
+fn main() {
+  @rank(1) val s: Shared<Box> = Shared::<Box>.new(Box(0))
+
+  // Non-zero timeout succeeds in single-threaded Stage 1
+  match s.tryWrite(50) {
+    Ok(handle) => {
+      handle.value = 99
+      println(f"write succeeded: {s.read().value}")
+    },
+    Err(e) => println(f"unexpected error: {e}")
+  }
+
+  // Zero timeout forces the error path for testing
+  match s.tryWrite(0) {
+    Ok(_) => println("unexpected success"),
+    Err(e) => println("timeout handled")
+  }
+}

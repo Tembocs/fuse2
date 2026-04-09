@@ -1,0 +1,18 @@
+// EXPECTED ERROR:
+// cannot acquire @rank(1) while holding @rank(2)
+
+@value
+data class Db(var conn: Int)
+
+@value
+data class Cache(var size: Int)
+
+@entrypoint
+fn main() {
+  @rank(2) val db: Shared<Db> = Shared::<Db>.new(Db(1))
+  @rank(1) val cache: Shared<Cache> = Shared::<Cache>.new(Cache(0))
+  val d = db.read()
+  val c = cache.read()
+  println(d.conn)
+  println(c.size)
+}

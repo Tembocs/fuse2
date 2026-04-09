@@ -1,0 +1,19 @@
+// EXPECTED OUTPUT:
+// config: 10
+// metrics: 20
+
+@value
+data class Config(var value: Int)
+
+@value
+data class Metrics(var value: Int)
+
+@entrypoint
+fn main() {
+  @rank(1) val config: Shared<Config> = Shared::<Config>.new(Config(10))
+  @rank(2) val metrics: Shared<Metrics> = Shared::<Metrics>.new(Metrics(20))
+  val c = config.read()
+  val m = metrics.read()
+  println(f"config: {c.value}")
+  println(f"metrics: {m.value}")
+}

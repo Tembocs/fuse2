@@ -1,0 +1,8 @@
+// EXPECTED ERROR:
+// Shared<T> requires @rank annotation
+
+@entrypoint
+fn main() {
+  val s: Shared<Int> = Shared::<Int>.new(42)
+  println(s.read())
+}
