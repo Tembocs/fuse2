@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// received: secret payload
+
+data class Payload(val content: String)
+
+@entrypoint
+fn main() {
+  val ch = Chan::<Payload>.new()
+  val p = Payload("secret payload")
+  spawn move {
+    ch.send(p)
+  }
+  match ch.recv() {
+    Ok(v) => println(f"received: {v.content}"),
+    Err(e) => println(f"error: {e}")
+  }
+}

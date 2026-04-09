@@ -47,6 +47,7 @@ highest-numbered open group and re-triage before starting that group.
 | G5 | L005, L016 | 3 | **Done** (partial: L005 needs multi-payload runtime, L016 needs String.len codegen) |
 | G6 | L019, L020 | 3 | **Done** |
 | G7 | L004, L012, L014, L015 | 6 | **Done** |
+| G8 | L022 | 1 | **Open** — checker doesn't reject `var` mutation inside spawn |
 
 ---
 
@@ -528,6 +529,46 @@ The test plan assumed struct fields are public like data class fields, but the l
 4. After adding the stdlib methods, verify that the autogen-generated `hash()` compiles and produces correct values.
 
 **Status:** Fixed — added hash() to Int, String, Bool.
+
+---
+
+## G8 — Concurrency Safety
+
+### L022: `var` mutation inside `spawn` body not rejected by checker
+
+**Group:** G8
+**Phase:** Stage 2 test plan — M.9 No Data Races
+**Affected tests:** `m_memory/no_data_races/no_raw_mutable_sharing.fuse`
+
+**What happened:** A `var` binding declared in outer scope is mutated
+inside a `spawn { }` block. The compiler accepts this without error.
+The language spec requires that mutable state cannot be shared across
+spawn boundaries without `Shared<T>` — implicit `var` capture with
+mutation is a data race.
+
+**Root cause:** In `stage1/fusec/src/checker/mod.rs`, function
+`check_spawn_mutref_capture` (line ~846) only rejects explicit `mutref`
+expressions (`hir::Expr::MutRef`) that reference outer-scope bindings.
+It does **not** check for `hir::Statement::Assign` targets that reference
+outer-scope `var` bindings. An assignment like `count = count + 1` inside
+spawn reads and writes an outer `var` without going through `mutref`,
+so the check misses it entirely.
+
+**Fix plan:**
+1. In `check_spawn_statement` (line ~859), add a case for
+   `hir::Statement::Assign`: if the assignment target is a
+   `hir::Expr::Name` whose name is in `outer_names` and not in
+   `local_names`, emit an error like
+   `"cannot mutate outer variable across spawn boundary — use Shared<T>"`.
+2. Also check the RHS of the assignment for outer `var` reads that would
+   race (optional — reads are safe if the `var` is not written, but once
+   there is any write the read is also racy).
+3. Add a similar check for compound patterns: `hir::Expr::Member` where
+   the root object is an outer `var`.
+4. Test: `m_memory/no_data_races/no_raw_mutable_sharing.fuse` should
+   then produce a compile error.
+
+**Status:** Open.
 
 ---
 

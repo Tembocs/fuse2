@@ -1,0 +1,15 @@
+// EXPECTED OUTPUT:
+// ref sees: 42
+// main sees: 42
+
+@entrypoint
+fn main() {
+  val x = 42
+  val ch = Chan::<Int>.new()
+  spawn {
+    println(f"ref sees: {x}")
+    ch.send(1)
+  }
+  ch.recv()
+  println(f"main sees: {x}")
+}

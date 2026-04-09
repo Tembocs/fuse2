@@ -1,0 +1,11 @@
+// EXPECTED ERROR:
+// cannot capture mutref across spawn boundary
+
+@entrypoint
+fn main() {
+  var count = 0
+  spawn {
+    count = count + 1
+  }
+  println(count)
+}

@@ -1,0 +1,15 @@
+// EXPECTED OUTPUT:
+// reader a: 100
+// reader b: 100
+// reader c: 100
+
+@entrypoint
+fn main() {
+  @rank(1) val s: Shared<Int> = Shared::<Int>.new(100)
+  val a = s.read()
+  val b = s.read()
+  val c = s.read()
+  println(f"reader a: {a}")
+  println(f"reader b: {b}")
+  println(f"reader c: {c}")
+}

@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// wrote value
+// read: 42
+
+@value
+data class Box(var value: Int)
+
+@entrypoint
+fn main() {
+  @rank(1) val s: Shared<Box> = Shared::<Box>.new(Box(0))
+  val w = s.write()
+  w.value = 42
+  println("wrote value")
+  val snapshot = s.read()
+  println(f"read: {snapshot.value}")
+}

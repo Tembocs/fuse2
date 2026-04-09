@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// after first: 10
+// after second: 20
+
+@value
+data class Counter(var value: Int)
+
+@entrypoint
+fn main() {
+  @rank(1) val s: Shared<Counter> = Shared::<Counter>.new(Counter(0))
+  val w1 = s.write()
+  w1.value = 10
+  println(f"after first: {s.read().value}")
+  val w2 = s.write()
+  w2.value = 20
+  println(f"after second: {s.read().value}")
+}

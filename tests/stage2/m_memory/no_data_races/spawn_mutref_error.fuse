@@ -1,0 +1,15 @@
+// EXPECTED ERROR:
+// cannot capture mutref across spawn boundary
+
+fn increment(mutref x: Int) {
+  x = x + 1
+}
+
+@entrypoint
+fn main() {
+  var x = 0
+  spawn {
+    increment(mutref x)
+  }
+  println(x)
+}

@@ -1,0 +1,15 @@
+// EXPECTED OUTPUT:
+// task owns: hello
+
+data class Msg(val text: String)
+
+@entrypoint
+fn main() {
+  val m = Msg("hello")
+  val ch = Chan::<Int>.new()
+  spawn move {
+    println(f"task owns: {m.text}")
+    ch.send(1)
+  }
+  ch.recv()
+}

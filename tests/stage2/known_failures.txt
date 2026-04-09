@@ -11,4 +11,4 @@
 # When you fix a bug, delete its lines here.  The test will move from
 # "known fail" to "pass" automatically.
 
-# (empty — all known failures resolved)
+m_memory/no_data_races/no_raw_mutable_sharing.fuse  # L022 [G8]: var mutation inside spawn not rejected by checker
