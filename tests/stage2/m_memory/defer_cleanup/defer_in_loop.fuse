@@ -1,10 +1,10 @@
 // EXPECTED OUTPUT:
 // body 0
-// defer 0
-// body 1
 // defer 1
-// body 2
+// body 1
 // defer 2
+// body 2
+// defer 3
 // done
 
 @entrypoint

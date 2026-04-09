@@ -11,5 +11,4 @@
 # When you fix a bug, delete its lines here.  The test will move from
 # "known fail" to "pass" automatically.
 
-# --- L025: defer in loop needs per-block scoping (not yet implemented) ---
-m_memory/defer_cleanup/defer_in_loop.fuse  # L025: defer in loop runs at function exit, not per-iteration
+# (empty — all known failures resolved)

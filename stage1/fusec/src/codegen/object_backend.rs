@@ -664,6 +664,7 @@ struct TypedValue {
 struct LoopFrame {
     break_block: cranelift_codegen::ir::Block,
     continue_block: cranelift_codegen::ir::Block,
+    defer_snapshot: usize,
 }
 
 impl<'a> BackendCompiler<'a> {
@@ -1664,11 +1665,17 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             }
             fa::Statement::Break(_) => {
                 let frame = self.loops.last().ok_or_else(|| "`break` outside loop".to_string())?;
-                builder.ins().jump(frame.break_block, &[]);
+                let snap = frame.defer_snapshot;
+                let block = frame.break_block;
+                self.emit_block_defers(builder, snap)?;
+                builder.ins().jump(block, &[]);
             }
             fa::Statement::Continue(_) => {
                 let frame = self.loops.last().ok_or_else(|| "`continue` outside loop".to_string())?;
-                builder.ins().jump(frame.continue_block, &[]);
+                let snap = frame.defer_snapshot;
+                let block = frame.continue_block;
+                self.emit_block_defers(builder, snap)?;
+                builder.ins().jump(block, &[]);
             }
             fa::Statement::Spawn(spawn_stmt) => {
                 let snapshot = self.locals.clone();
@@ -1779,9 +1786,11 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         let truthy = self.truthy_value(builder, condition.value);
         builder.ins().brif(truthy, body_block, &[], exit_block, &[]);
         builder.switch_to_block(body_block);
+        let defer_snapshot = self.defers.len();
         self.loops.push(LoopFrame {
             break_block: exit_block,
             continue_block: cond_block,
+            defer_snapshot,
         });
         // Protect outer locals from ASAP release inside the loop body.
         let snapshot = self.locals.clone();
@@ -1792,6 +1801,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         self.locals = snapshot;
         self.loops.pop();
         if !self.current_block_is_terminated(builder) {
+            self.emit_block_defers(builder, defer_snapshot)?;
             builder.ins().jump(cond_block, &[]);
         }
         builder.switch_to_block(exit_block);
@@ -1845,9 +1855,11 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 destroy: false,
             },
         );
+        let defer_snapshot = self.defers.len();
         self.loops.push(LoopFrame {
             break_block: exit_block,
             continue_block: increment_block,
+            defer_snapshot,
         });
         // Protect outer locals from ASAP release inside the loop body.
         let snapshot = self.locals.clone();
@@ -1858,6 +1870,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         self.locals = snapshot;
         self.loops.pop();
         if !self.current_block_is_terminated(builder) {
+            self.emit_block_defers(builder, defer_snapshot)?;
             builder.ins().jump(increment_block, &[]);
         }
         // Increment block: advance index then re-check condition.
@@ -1880,9 +1893,11 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         let exit_block = builder.create_block();
         builder.ins().jump(body_block, &[]);
         builder.switch_to_block(body_block);
+        let defer_snapshot = self.defers.len();
         self.loops.push(LoopFrame {
             break_block: exit_block,
             continue_block: body_block,
+            defer_snapshot,
         });
         // Protect outer locals from ASAP release inside the loop body.
         let snapshot = self.locals.clone();
@@ -1893,6 +1908,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         self.locals = snapshot;
         self.loops.pop();
         if !self.current_block_is_terminated(builder) {
+            self.emit_block_defers(builder, defer_snapshot)?;
             builder.ins().jump(body_block, &[]);
         }
         builder.switch_to_block(exit_block);
@@ -4686,6 +4702,19 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         let deferred = self.defers.clone();
         for expr in deferred.iter().rev() {
             self.compile_expr(builder, expr)?;
+        }
+        Ok(())
+    }
+
+    /// Emit defers added since `since` in LIFO order, then remove them.
+    /// Used at block exit (loop iteration end, break, continue).
+    fn emit_block_defers(&mut self, builder: &mut FunctionBuilder, since: usize) -> Result<(), String> {
+        if self.defers.len() > since {
+            let block_defers: Vec<_> = self.defers[since..].to_vec();
+            for expr in block_defers.iter().rev() {
+                self.compile_expr(builder, expr)?;
+            }
+            self.defers.truncate(since);
         }
         Ok(())
     }
