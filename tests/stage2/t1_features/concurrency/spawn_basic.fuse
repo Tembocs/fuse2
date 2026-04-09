@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// hello from spawn
+
+@entrypoint
+fn main() {
+  val ch = Chan::<Int>.new()
+  spawn {
+    println("hello from spawn")
+    ch.send(1)
+  }
+  ch.recv()
+}

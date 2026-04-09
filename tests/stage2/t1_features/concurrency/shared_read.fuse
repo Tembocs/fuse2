@@ -1,0 +1,9 @@
+// EXPECTED OUTPUT:
+// 42
+
+@entrypoint
+fn main() {
+  @rank(1) val s: Shared<Int> = Shared::<Int>.new(42)
+  val v = s.read()
+  println(v)
+}

@@ -1,0 +1,22 @@
+// EXPECTED OUTPUT:
+// opened cache
+// session
+// [del] Cache closed: session
+
+@value
+data class Cache(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] Cache closed: {self.name}")
+  }
+}
+
+fn openCache() -> Cache {
+  Cache("session")
+}
+
+@entrypoint
+fn main() {
+  val cache = openCache()
+  println("opened cache")
+  println(cache.name)
+}

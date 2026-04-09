@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// moved: 42
+
+@entrypoint
+fn main() {
+  val ch = Chan::<Int>.new()
+  val value = 42
+  spawn move {
+    println(f"moved: {value}")
+    ch.send(1)
+  }
+  ch.recv()
+}

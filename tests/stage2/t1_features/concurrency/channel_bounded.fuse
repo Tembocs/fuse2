@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// recv: 42
+
+@entrypoint
+fn main() {
+  val (tx, rx) = Chan::<Int>.bounded(1)
+  tx.send(42)
+  match rx.recv() {
+    Ok(v) => println(f"recv: {v}"),
+    Err(e) => println(f"error: {e}")
+  }
+}

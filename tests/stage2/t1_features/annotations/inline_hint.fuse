@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// 25
+
+@inline
+fn square(n: Int) -> Int {
+  n * n
+}
+
+@entrypoint
+fn main() {
+  println(square(5))
+}

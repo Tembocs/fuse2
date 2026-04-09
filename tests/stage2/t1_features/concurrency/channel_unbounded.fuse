@@ -1,0 +1,20 @@
+// EXPECTED OUTPUT:
+// 1
+// 2
+// 3
+
+@entrypoint
+fn main() {
+  val ch = Chan::<Int>.new()
+  ch.send(1)
+  ch.send(2)
+  ch.send(3)
+  var i = 0
+  while i < 3 {
+    match ch.recv() {
+      Ok(v) => println(v),
+      Err(_) => {}
+    }
+    i = i + 1
+  }
+}

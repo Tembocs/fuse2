@@ -74,3 +74,6 @@ t1_features/generics/bounded_multiple.fuse  # L019: <T: Equatable> not parsed
 
 # --- L020: explicit type args / generic push ---
 t1_features/generics/explicit_type_args.fuse  # L020: generic list push codegen
+
+# --- L021: spawn move syntax not parsed ---
+t1_features/concurrency/spawn_move.fuse  # L021: parser expects { after spawn, rejects move

@@ -1,0 +1,7 @@
+// EXPECTED OUTPUT:
+// hello from entrypoint
+
+@entrypoint
+fn main() {
+  println("hello from entrypoint")
+}

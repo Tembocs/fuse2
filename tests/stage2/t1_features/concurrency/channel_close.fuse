@@ -1,0 +1,18 @@
+// EXPECTED OUTPUT:
+// recv: 1
+// closed
+
+@entrypoint
+fn main() {
+  val ch = Chan::<Int>.new()
+  ch.send(1)
+  ch.close()
+  match ch.recv() {
+    Ok(v) => println(f"recv: {v}"),
+    Err(_) => println("closed")
+  }
+  match ch.recv() {
+    Ok(v) => println(f"recv: {v}"),
+    Err(_) => println("closed")
+  }
+}
