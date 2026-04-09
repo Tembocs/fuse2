@@ -1,0 +1,9 @@
+// EXPECTED ERROR:
+// unexpected top-level token
+
+import stdlib.does.not.exist
+
+@entrypoint
+fn main() {
+  println("hello")
+}

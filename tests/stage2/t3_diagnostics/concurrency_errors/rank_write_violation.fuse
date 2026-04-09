@@ -1,0 +1,16 @@
+// EXPECTED ERROR:
+// cannot acquire @rank(1) while holding @rank(3)
+
+@value
+data class Counter(var value: Int)
+
+@entrypoint
+fn main() {
+  @rank(3) val a: Shared<Counter> = Shared::<Counter>.new(Counter(0))
+  @rank(1) val b: Shared<Counter> = Shared::<Counter>.new(Counter(0))
+  val wa = a.write()
+  wa.value = 10
+  val wb = b.write()
+  wb.value = 20
+  println(a.read().value)
+}

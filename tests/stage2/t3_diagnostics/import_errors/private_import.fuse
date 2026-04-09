@@ -1,0 +1,9 @@
+// EXPECTED ERROR:
+// cannot resolve import
+
+import stdlib.core.stringg
+
+@entrypoint
+fn main() {
+  println("hello")
+}

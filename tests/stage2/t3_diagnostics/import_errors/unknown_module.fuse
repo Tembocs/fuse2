@@ -1,0 +1,9 @@
+// EXPECTED ERROR:
+// cannot resolve import
+
+import nonexistent.module
+
+@entrypoint
+fn main() {
+  println("hello")
+}
