@@ -537,6 +537,7 @@ struct RuntimeFns {
     list_push: FuncId,
     list_len: FuncId,
     list_get: FuncId,
+    list_get_handle: FuncId,
     rt_list_get: FuncId,
     chan_bounded: FuncId,
     chan_new: FuncId,
@@ -691,7 +692,8 @@ impl<'a> BackendCompiler<'a> {
         let rt = &compiler.runtime;
         for (name, id) in [
             ("fuse_list_new", rt.list_new), ("fuse_list_push", rt.list_push),
-            ("fuse_list_len", rt.list_len), ("fuse_list_get", rt.list_get),
+            ("fuse_list_len", rt.list_len), ("fuse_list_get", rt.list_get_handle),
+            ("fuse_list_get_handle", rt.list_get_handle),
             ("fuse_rt_list_get", rt.rt_list_get),
             ("fuse_map_new", rt.map_new), ("fuse_map_set", rt.map_set),
             ("fuse_map_get", rt.map_get), ("fuse_rt_map_get", rt.rt_map_get),
@@ -1412,6 +1414,7 @@ fn declare_runtime_functions(
         list_push: declare(module, "fuse_list_push", &[pointer_type, pointer_type], &[])?,
         list_len: declare(module, "fuse_list_len", &[pointer_type], &[types::I64])?,
         list_get: declare(module, "fuse_list_get", &[pointer_type, pointer_type], &[pointer_type])?,
+        list_get_handle: declare(module, "fuse_list_get_handle", &[pointer_type, pointer_type], &[pointer_type])?,
         rt_list_get: declare(module, "fuse_rt_list_get", &[pointer_type, pointer_type], &[pointer_type])?,
         chan_bounded: declare(module, "fuse_chan_runtime_bounded", &[pointer_type], &[pointer_type])?,
         chan_new: declare(module, "fuse_chan_runtime_new", &[], &[pointer_type])?,

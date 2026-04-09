@@ -483,6 +483,19 @@ pub unsafe extern "C" fn fuse_list_get(list: FuseHandle, index: usize) -> FuseHa
     }
 }
 
+/// Like fuse_list_get but takes a boxed Int index (FuseHandle).
+/// Used by Fuse-level code where the index is a Fuse Int value.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_list_get_handle(list: FuseHandle, index: FuseHandle) -> FuseHandle {
+    unsafe {
+        let i = match &(*index).kind {
+            ValueKind::Int(n) => *n as usize,
+            _ => return ptr::null_mut(),
+        };
+        fuse_list_get(list, i)
+    }
+}
+
 // ---- Map operations ----
 
 fn map_key_eq(a: FuseHandle, b: FuseHandle) -> bool {
