@@ -1,0 +1,14 @@
+// EXPECTED ERROR:
+// cannot assign through `ref` parameter
+
+data class Counter(var value: Int)
+
+fn tryModify(ref c: Counter) {
+  c.value = 99
+}
+
+@entrypoint
+fn main() {
+  var c = Counter(0)
+  tryModify(ref c)
+}

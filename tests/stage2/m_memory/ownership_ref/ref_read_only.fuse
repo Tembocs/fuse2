@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// Alice has score 200
+
+data class User(val name: String, val score: Int)
+
+fn display(ref user: User) {
+  println(f"{user.name} has score {user.score}")
+}
+
+@entrypoint
+fn main() {
+  val u = User("Alice", 200)
+  display(ref u)
+}

@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// inside: Alice
+// after: Alice
+
+data class User(val name: String)
+
+fn peek(ref user: User) {
+  println(f"inside: {user.name}")
+}
+
+@entrypoint
+fn main() {
+  val u = User("Alice")
+  peek(ref u)
+  println(f"after: {u.name}")
+}

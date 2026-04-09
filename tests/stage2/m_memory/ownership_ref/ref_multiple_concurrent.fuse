@@ -1,0 +1,20 @@
+// EXPECTED OUTPUT:
+// name: Alice
+// score: 100
+
+data class User(val name: String, val score: Int)
+
+fn showName(ref user: User) {
+  println(f"name: {user.name}")
+}
+
+fn showScore(ref user: User) {
+  println(f"score: {user.score}")
+}
+
+@entrypoint
+fn main() {
+  val u = User("Alice", 100)
+  showName(ref u)
+  showScore(ref u)
+}

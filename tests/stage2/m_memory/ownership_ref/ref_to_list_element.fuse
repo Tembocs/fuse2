@@ -1,0 +1,12 @@
+// EXPECTED OUTPUT:
+// Some(20)
+
+fn readAt(ref xs: List<Int>, idx: Int) -> Option<Int> {
+  xs.get(idx)
+}
+
+@entrypoint
+fn main() {
+  val nums = [10, 20, 30]
+  println(readAt(ref nums, 1))
+}

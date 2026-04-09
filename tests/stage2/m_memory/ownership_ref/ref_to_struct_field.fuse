@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// name: Server-1
+
+data class Server(val name: String, val port: Int)
+
+fn getName(ref s: Server) -> String {
+  s.name
+}
+
+@entrypoint
+fn main() {
+  val srv = Server("Server-1", 8080)
+  println(f"name: {getName(ref srv)}")
+}

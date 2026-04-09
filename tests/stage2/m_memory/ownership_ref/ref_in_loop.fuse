@@ -1,0 +1,20 @@
+// EXPECTED OUTPUT:
+// iter 0: config
+// iter 1: config
+// iter 2: config
+
+data class Config(val name: String)
+
+fn use_config(ref c: Config, i: Int) {
+  println(f"iter {i}: {c.name}")
+}
+
+@entrypoint
+fn main() {
+  val cfg = Config("config")
+  var i = 0
+  while i < 3 {
+    use_config(ref cfg, i)
+    i = i + 1
+  }
+}

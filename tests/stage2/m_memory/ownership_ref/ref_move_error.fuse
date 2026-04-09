@@ -1,0 +1,18 @@
+// EXPECTED ERROR:
+// cannot move from `ref` parameter
+
+data class Res(val name: String)
+
+fn consume(owned r: Res) {
+  println(r.name)
+}
+
+fn borrowAndMove(ref r: Res) {
+  consume(move r)
+}
+
+@entrypoint
+fn main() {
+  val r = Res("x")
+  borrowAndMove(ref r)
+}
