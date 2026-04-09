@@ -1,0 +1,13 @@
+// EXPECTED ERROR:
+// does not implement interface
+
+fn show<T: Printable>(x: T) {
+  println(x)
+}
+
+data class Opaque(val x: Int)
+
+@entrypoint
+fn main() {
+  show(Opaque(1))
+}

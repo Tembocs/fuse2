@@ -1,0 +1,7 @@
+// EXPECTED ERROR:
+// `continue` outside loop
+
+@entrypoint
+fn main() {
+  continue
+}

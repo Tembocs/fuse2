@@ -1,0 +1,7 @@
+// EXPECTED ERROR:
+// unknown function
+
+@entrypoint
+fn main() {
+  println(doesNotExist())
+}

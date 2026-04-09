@@ -1,0 +1,10 @@
+// EXPECTED ERROR:
+// unknown extension
+
+data class Foo(val x: Int)
+
+@entrypoint
+fn main() {
+  val f = Foo(1)
+  f.bar()
+}

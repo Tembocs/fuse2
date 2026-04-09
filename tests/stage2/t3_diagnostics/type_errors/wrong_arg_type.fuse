@@ -1,0 +1,10 @@
+// EXPECTED ERROR:
+// type mismatch
+
+fn add(a: Int, b: Int) -> Int { a + b }
+
+@entrypoint
+fn main() {
+  val result: String = add(1, 2)
+  println(result)
+}

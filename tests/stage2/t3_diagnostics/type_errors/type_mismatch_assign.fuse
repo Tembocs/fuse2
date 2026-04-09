@@ -1,0 +1,8 @@
+// EXPECTED ERROR:
+// type mismatch
+
+@entrypoint
+fn main() {
+  val x: Int = "hello"
+  println(x)
+}

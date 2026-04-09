@@ -1,0 +1,9 @@
+// EXPECTED ERROR:
+// cannot assign to immutable
+
+@entrypoint
+fn main() {
+  val x = 42
+  x = 99
+  println(x)
+}

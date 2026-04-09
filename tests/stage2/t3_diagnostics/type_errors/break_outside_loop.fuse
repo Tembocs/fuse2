@@ -1,0 +1,7 @@
+// EXPECTED ERROR:
+// `break` outside loop
+
+@entrypoint
+fn main() {
+  break
+}

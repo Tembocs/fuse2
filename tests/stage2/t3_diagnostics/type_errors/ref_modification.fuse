@@ -1,0 +1,14 @@
+// EXPECTED ERROR:
+// cannot assign through `ref` parameter
+
+data class Foo(var x: Int)
+
+fn bar(ref f: Foo) {
+  f.x = 99
+}
+
+@entrypoint
+fn main() {
+  var f = Foo(1)
+  bar(ref f)
+}
