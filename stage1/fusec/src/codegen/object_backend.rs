@@ -577,7 +577,9 @@ struct RuntimeFns {
     asap_release: FuncId,
     to_upper: FuncId,
     string_is_empty: FuncId,
+    string_char_count: FuncId,
     enum_new: FuncId,
+    enum_add_payload: FuncId,
     enum_tag: FuncId,
     enum_payload: FuncId,
     map_new: FuncId,
@@ -1454,7 +1456,9 @@ fn declare_runtime_functions(
         asap_release: declare(module, "fuse_asap_release", &[pointer_type], &[])?,
         to_upper: declare(module, "fuse_to_upper", &[pointer_type], &[pointer_type])?,
         string_is_empty: declare(module, "fuse_string_is_empty", &[pointer_type], &[pointer_type])?,
+        string_char_count: declare(module, "fuse_rt_string_char_count", &[pointer_type], &[pointer_type])?,
         enum_new: declare(module, "fuse_enum_new", &[pointer_type, pointer_type, types::I64, pointer_type, pointer_type, pointer_type], &[pointer_type])?,
+        enum_add_payload: declare(module, "fuse_enum_add_payload", &[pointer_type, pointer_type], &[])?,
         enum_tag: declare(module, "fuse_enum_tag", &[pointer_type], &[types::I64])?,
         enum_payload: declare(module, "fuse_enum_payload", &[pointer_type, pointer_type], &[pointer_type])?,
         map_new: declare(module, "fuse_map_new", &[], &[pointer_type])?,
@@ -2233,6 +2237,15 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         self.compiler.pointer_type,
                     ),
                     ty: Some("Bool".to_string()),
+                }),
+                "len" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.string_char_count,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some("Int".to_string()),
                 }),
                 other => Err(format!("unsupported String zero-arg member `{other}()`")),
             };
@@ -3203,7 +3216,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     let variant_ptr = builder.ins().symbol_value(self.compiler.pointer_type, variant_local);
                     let variant_len = self.usize_const(builder, member.len() as i64);
                     let tag = builder.ins().iconst(types::I64, variant_index as i64);
-                    let payload = if _args.is_empty() {
+                    let first_payload = if _args.is_empty() {
                         builder.ins().iconst(self.compiler.pointer_type, 0)
                     } else {
                         self.compile_expr(builder, &_args[0])?.value
@@ -3211,9 +3224,14 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     let result = self.runtime(
                         builder,
                         self.compiler.runtime.enum_new,
-                        &[type_ptr, type_len, tag, variant_ptr, variant_len, payload],
+                        &[type_ptr, type_len, tag, variant_ptr, variant_len, first_payload],
                         self.compiler.pointer_type,
                     );
+                    // Add remaining payloads for multi-payload variants.
+                    for extra_arg in _args.iter().skip(1) {
+                        let extra = self.compile_expr(builder, extra_arg)?.value;
+                        self.runtime_void(builder, self.compiler.runtime.enum_add_payload, &[result, extra]);
+                    }
                     return Ok(TypedValue {
                         value: result,
                         ty: Some(base.to_string()),
@@ -3714,6 +3732,15 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         self.compiler.pointer_type,
                     ),
                     ty: Some("Bool".to_string()),
+                }),
+                "len" => Ok(TypedValue {
+                    value: self.runtime(
+                        builder,
+                        self.compiler.runtime.string_char_count,
+                        &[receiver.value],
+                        self.compiler.pointer_type,
+                    ),
+                    ty: Some("Int".to_string()),
                 }),
                 other => Err(format!("unsupported String member call `{other}`")),
             };

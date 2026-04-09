@@ -168,7 +168,7 @@ pub fn List.sorted(ref self) -> List<T> {
         fuse_rt_list_set(result, j + 1, fuse_list_get(result, j))
         j = j - 1
       } else {
-        j = -1
+        break
       }
     }
     fuse_rt_list_set(result, j + 1, key)
@@ -195,7 +195,7 @@ pub fn List.sortedBy(ref self, f: fn(T, T) -> Int) -> List<T> {
         fuse_rt_list_set(result, j + 1, fuse_list_get(result, j))
         j = j - 1
       } else {
-        j = -1
+        break
       }
     }
     fuse_rt_list_set(result, j + 1, key)

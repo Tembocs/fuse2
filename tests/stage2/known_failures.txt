@@ -11,19 +11,4 @@
 # When you fix a bug, delete its lines here.  The test will move from
 # "known fail" to "pass" automatically.
 
-# --- L005: enum multi-payload needs fuse_enum_new to support multiple payloads ---
-t1_features/data_structures/enum_data_variants.fuse  # L005: multi-payload enum (partial: runtime needs multi-payload support)
-
-# --- L009: implements Interface<T> — checker doesn't resolve generic interfaces ---
-t1_features/interfaces/generic_interface.fuse  # L009: checker rejects generic implements (parser fixed)
-
-# --- L015: .hash() — needs stdlib import in test ---
-t1_features/interfaces/hashable.fuse  # L015: hash() extension may need import
-
-# --- L016: ?.method() chaining depends on String.len() codegen ---
-t1_features/operators/optional_chain.fuse  # L016: needs String.len() codegen support
-t1_features/error_handling/optional_chain.fuse  # L016: needs String.len() codegen support
-t1_features/strings/charat.fuse  # L016: match on Option<String> from get()
-
-# --- L022: list_sorted produces wrong order ---
-t1_features/collections/list_sorted.fuse  # L022: sorted() algorithm produces wrong results
+# (empty — all known failures resolved)

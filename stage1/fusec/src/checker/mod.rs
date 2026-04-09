@@ -380,9 +380,20 @@ impl Checker {
                         );
                         continue;
                     }
-                    // Check return type match (resolve `Self` → concrete type).
+                    // Check return type match (resolve `Self` → concrete type,
+                    // and generic type params from the implements clause).
                     if let Some(ref iface_rt) = method.return_type {
-                        let resolved_rt = iface_rt.replace("Self", type_name);
+                        let mut resolved_rt = iface_rt.replace("Self", type_name);
+                        // Substitute generic type params: e.g., for
+                        // `implements Convertible<String>`, map T → String.
+                        if let Some(args_str) = iface_name.split_once('<')
+                            .map(|(_, rest)| rest.strip_suffix('>').unwrap_or(rest))
+                        {
+                            let args: Vec<&str> = args_str.split(',').map(|s| s.trim()).collect();
+                            for (param, arg) in iface.type_params.iter().zip(args.iter()) {
+                                resolved_rt = resolved_rt.replace(param.as_str(), arg);
+                            }
+                        }
                         if ext_fn.return_type.as_deref() != Some(resolved_rt.as_str()) {
                             self.add_error(
                                 &filename,
@@ -1385,12 +1396,17 @@ impl Checker {
     }
 
     fn resolve_interface(&self, name: &str) -> Option<InterfaceInfo> {
-        self.module_cache.values().find_map(|module| module.interfaces.get(name).cloned())
+        // Strip generic args: "Convertible<String>" → "Convertible"
+        let base = name.split('<').next().unwrap_or(name);
+        self.module_cache.values().find_map(|module| {
+            module.interfaces.get(name).or_else(|| module.interfaces.get(base)).cloned()
+        })
     }
 
     /// Map well-known stdlib interface names to their module paths.
     fn stdlib_interface_module(name: &str) -> Option<&'static str> {
-        match name {
+        let base = name.split('<').next().unwrap_or(name);
+        match base {
             "Equatable" => Some("core.equatable"),
             "Hashable" => Some("core.hashable"),
             "Comparable" => Some("core.comparable"),

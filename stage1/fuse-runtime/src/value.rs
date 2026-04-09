@@ -430,6 +430,15 @@ pub unsafe extern "C" fn fuse_enum_new(
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_enum_add_payload(handle: FuseHandle, payload: FuseHandle) {
+    unsafe {
+        if let ValueKind::Enum(e) = &mut value_mut(handle).kind {
+            e.payloads.push(payload);
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn fuse_enum_tag(handle: FuseHandle) -> i64 {
     unsafe {
         match &value_ref(handle).kind {
