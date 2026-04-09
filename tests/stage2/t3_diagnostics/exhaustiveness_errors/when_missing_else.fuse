@@ -1,0 +1,12 @@
+// EXPECTED ERROR:
+// `when` requires an `else` arm
+
+@entrypoint
+fn main() {
+  val x = 5
+  val label = when {
+    x > 10 => "big",
+    x > 0 => "small"
+  }
+  println(label)
+}

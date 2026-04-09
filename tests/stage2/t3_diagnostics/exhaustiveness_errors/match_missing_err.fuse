@@ -1,0 +1,10 @@
+// EXPECTED ERROR:
+// non-exhaustive match for `Result`
+
+@entrypoint
+fn main() {
+  val x: Result<Int, String> = Ok(1)
+  match x {
+    Ok(v) => println(v)
+  }
+}

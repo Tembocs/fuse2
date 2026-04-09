@@ -1,0 +1,10 @@
+// EXPECTED ERROR:
+// non-exhaustive match for `Option`
+
+@entrypoint
+fn main() {
+  val x: Option<Int> = Some(42)
+  match x {
+    Some(v) => println(v)
+  }
+}

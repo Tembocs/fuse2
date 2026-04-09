@@ -1,0 +1,10 @@
+// EXPECTED ERROR:
+// non-exhaustive match for `Bool`
+
+@entrypoint
+fn main() {
+  val x = true
+  match x {
+    true => println("yes")
+  }
+}
