@@ -1,0 +1,17 @@
+// EXPECTED ERROR:
+// cannot use `m` after `move`
+
+data class Msg(val text: String)
+
+fn deliver(owned m: Msg) {
+  println(m.text)
+}
+
+@entrypoint
+fn main() {
+  val m = Msg("hello")
+  if true {
+    deliver(move m)
+  }
+  println(m.text)
+}

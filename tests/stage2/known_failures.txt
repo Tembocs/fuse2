@@ -11,4 +11,5 @@
 # When you fix a bug, delete its lines here.  The test will move from
 # "known fail" to "pass" automatically.
 
-# (empty — all known failures resolved)
+# --- L024: move inside loop body not detected by checker ---
+m_memory/ownership_move/move_in_loop_error.fuse  # L024: move in loop not flagged

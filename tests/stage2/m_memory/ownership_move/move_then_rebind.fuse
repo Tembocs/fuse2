@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// 1
+// 2
+
+data class Foo(val x: Int)
+
+fn consume(owned f: Foo) {
+  println(f.x)
+}
+
+@entrypoint
+fn main() {
+  val f = Foo(1)
+  consume(move f)
+  val g = Foo(2)
+  println(g.x)
+}

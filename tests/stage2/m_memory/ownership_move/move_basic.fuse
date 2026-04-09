@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// received: hello
+
+data class Msg(val text: String)
+
+fn deliver(owned m: Msg) {
+  println(f"received: {m.text}")
+}
+
+@entrypoint
+fn main() {
+  val m = Msg("hello")
+  deliver(move m)
+}
