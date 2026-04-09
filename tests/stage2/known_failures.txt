@@ -11,14 +11,5 @@
 # When you fix a bug, delete its lines here.  The test will move from
 # "known fail" to "pass" automatically.
 
-# --- L025: defer not implemented in codegen (works in evaluator --run) ---
-m_memory/defer_cleanup/defer_runs_at_exit.fuse  # L025: defer codegen not implemented
-m_memory/defer_cleanup/defer_lifo_order.fuse  # L025: defer codegen not implemented
-m_memory/defer_cleanup/defer_on_early_return.fuse  # L025: defer codegen not implemented
-m_memory/defer_cleanup/defer_captures_value.fuse  # L025: defer codegen not implemented
-m_memory/defer_cleanup/defer_after_asap.fuse  # L025: defer codegen not implemented
-m_memory/defer_cleanup/defer_in_loop.fuse  # L025: defer codegen not implemented
-m_memory/defer_cleanup/defer_keeps_alive.fuse  # L025: defer codegen not implemented
-m_memory/defer_cleanup/defer_resource_close.fuse  # L025: defer codegen not implemented
-m_memory/defer_cleanup/multiple_defer_with_asap.fuse  # L025: defer codegen not implemented
-m_memory/defer_cleanup/defer_nested_scopes.fuse  # L025: defer codegen not implemented
+# --- L025: defer in loop needs per-block scoping (not yet implemented) ---
+m_memory/defer_cleanup/defer_in_loop.fuse  # L025: defer in loop runs at function exit, not per-iteration

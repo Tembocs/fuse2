@@ -997,14 +997,15 @@ impl<'a> BackendCompiler<'a> {
         };
         lowering.compile_statements(&mut builder, prefix_statements)?;
         if !lowering.current_block_is_terminated(&builder) {
+            if function.return_type.is_none() && final_expr.is_none() {
+                lowering.release_remaining(&mut builder);
+            }
+            lowering.emit_defers(&mut builder)?;
             let result = if let Some(expr) = final_expr.as_ref() {
                 lowering.compile_expr(&mut builder, expr)?.value
             } else {
                 lowering.runtime_nullary(&mut builder, lowering.compiler.runtime.unit)
             };
-            if function.return_type.is_none() && final_expr.is_none() {
-                lowering.release_remaining(&mut builder);
-            }
             builder.ins().return_(&[result]);
         }
         builder.seal_all_blocks();
@@ -1108,6 +1109,7 @@ impl<'a> BackendCompiler<'a> {
                 if function.return_type.is_none() && final_expr.is_none() {
                     lowering.release_remaining(&mut builder);
                 }
+                lowering.emit_defers(&mut builder)?;
                 builder.ins().return_(&[result]);
             }
         }
@@ -1218,6 +1220,7 @@ impl<'a> BackendCompiler<'a> {
                 if function.return_type.is_none() && final_expr.is_none() {
                     lowering.release_remaining(&mut builder);
                 }
+                lowering.emit_defers(&mut builder)?;
                 builder.ins().return_(&[result]);
             }
         }
@@ -1588,6 +1591,7 @@ struct LoweringState<'a, 'b> {
     locals: HashMap<String, LocalBinding>,
     next_var: usize,
     loops: Vec<LoopFrame>,
+    defers: Vec<fa::Expr>,
 }
 
 impl<'a, 'b> LoweringState<'a, 'b> {
@@ -1603,6 +1607,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             locals: HashMap::new(),
             next_var: 0,
             loops: Vec::new(),
+            defers: Vec::new(),
         }
     }
 
@@ -1654,6 +1659,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 } else {
                     self.runtime_nullary(builder, self.compiler.runtime.unit)
                 };
+                self.emit_defers(builder)?;
                 builder.ins().return_(&[value]);
             }
             fa::Statement::Break(_) => {
@@ -1677,7 +1683,9 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             fa::Statement::While(while_stmt) => self.compile_while(builder, while_stmt)?,
             fa::Statement::For(for_stmt) => self.compile_for(builder, for_stmt)?,
             fa::Statement::Loop(loop_stmt) => self.compile_loop(builder, &loop_stmt.body.statements)?,
-            fa::Statement::Defer(_) => {}
+            fa::Statement::Defer(defer_stmt) => {
+                self.defers.push(defer_stmt.expr.clone());
+            }
             fa::Statement::TupleDestruct(td) => {
                 let value = self.compile_expr(builder, &td.value)?;
                 // Extract element types from the tuple type "(T1,T2,...)"
@@ -4674,6 +4682,14 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         }
     }
 
+    fn emit_defers(&mut self, builder: &mut FunctionBuilder) -> Result<(), String> {
+        let deferred = self.defers.clone();
+        for expr in deferred.iter().rev() {
+            self.compile_expr(builder, expr)?;
+        }
+        Ok(())
+    }
+
     fn release_remaining(&mut self, builder: &mut FunctionBuilder) {
         let names = self.locals.keys().cloned().collect::<Vec<_>>();
         for name in names {
@@ -5088,8 +5104,17 @@ fn escape_string(path: &Path) -> String {
 }
 
 fn compute_future_uses(statements: &[fa::Statement]) -> Vec<HashSet<String>> {
+    // Collect names used in all defer bodies — these must stay alive
+    // until function exit, so they appear in every position's future set.
+    let mut defer_names = HashSet::new();
+    for stmt in statements {
+        if let fa::Statement::Defer(defer_stmt) = stmt {
+            defer_names.extend(collect_expr_names(&defer_stmt.expr));
+        }
+    }
     let mut future = vec![HashSet::new(); statements.len()];
     let mut seen = HashSet::new();
+    seen.extend(defer_names.clone());
     for index in (0..statements.len()).rev() {
         future[index] = seen.clone();
         seen.extend(collect_stmt_names(&statements[index]));
