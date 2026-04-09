@@ -1,0 +1,8 @@
+// EXPECTED ERROR:
+// unterminated string
+
+@entrypoint
+fn main() {
+  val s = "hello world
+  println(s)
+}

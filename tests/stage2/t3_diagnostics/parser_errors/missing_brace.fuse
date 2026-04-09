@@ -1,0 +1,7 @@
+// EXPECTED ERROR:
+// unexpected token
+
+@entrypoint
+fn main() {
+  val x = 42
+  println(x)

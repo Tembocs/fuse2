@@ -1,0 +1,8 @@
+// EXPECTED ERROR:
+// expected `(` after `fn` in lambda
+
+@entrypoint
+fn main() {
+  val f = fn
+  println(f)
+}

@@ -1,0 +1,11 @@
+// EXPECTED ERROR:
+// expected parameter name
+
+fn foo(a: Int,, b: Int) -> Int {
+  a + b
+}
+
+@entrypoint
+fn main() {
+  println(foo(1, 2))
+}

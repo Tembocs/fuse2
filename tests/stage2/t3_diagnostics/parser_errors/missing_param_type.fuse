@@ -1,0 +1,11 @@
+// EXPECTED ERROR:
+// type mismatch
+
+fn foo(x:) -> Int {
+  x
+}
+
+@entrypoint
+fn main() {
+  println(foo(1))
+}

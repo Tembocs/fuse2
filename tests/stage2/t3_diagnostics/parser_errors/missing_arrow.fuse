@@ -1,0 +1,11 @@
+// EXPECTED ERROR:
+// expected `{` to start block
+
+fn foo() Int {
+  42
+}
+
+@entrypoint
+fn main() {
+  println(foo())
+}

@@ -1,0 +1,6 @@
+// EXPECTED ERROR:
+// @entrypoint
+
+fn helper() -> Int {
+  42
+}

@@ -1,0 +1,10 @@
+// EXPECTED ERROR:
+// expected `)` after parameters
+
+fn foo(x: Int {
+}
+
+@entrypoint
+fn main() {
+  foo(1)
+}

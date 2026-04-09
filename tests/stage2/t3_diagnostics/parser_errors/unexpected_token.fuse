@@ -1,0 +1,4 @@
+// EXPECTED ERROR:
+// expected annotation name
+
+@@@ fn main() {}
