@@ -869,6 +869,19 @@ impl Checker {
                 local_names.insert(var_decl.name.clone());
             }
             hir::Statement::Assign(assign) => {
+                // Check if the assignment target is an outer-scope variable —
+                // mutating an outer var inside spawn is a data race.
+                let root_name = Self::assign_target_root(&assign.target);
+                if let Some((name, span)) = root_name {
+                    if outer_names.contains(name) && !local_names.contains(name) {
+                        self.add_error(
+                            &display_name(&module.path),
+                            span,
+                            format!("cannot mutate `{}` across spawn boundary — use Shared<T>", name),
+                            None,
+                        );
+                    }
+                }
                 self.check_spawn_expr(module, &assign.target, outer_names, local_names);
                 self.check_spawn_expr(module, &assign.value, outer_names, local_names);
             }
@@ -1028,6 +1041,16 @@ impl Checker {
                     self.check_spawn_statement(module, statement, outer_names, &mut local_names.clone());
                 }
             }
+        }
+    }
+
+    /// Walk an assignment target to find the root variable name.
+    /// `x` → Some("x"), `x.field` → Some("x"), `x.a.b` → Some("x"), anything else → None.
+    fn assign_target_root(expr: &hir::Expr) -> Option<(&str, Span)> {
+        match expr {
+            hir::Expr::Name(name) => Some((&name.value, name.span)),
+            hir::Expr::Member(member) => Self::assign_target_root(&member.object),
+            _ => None,
         }
     }
 

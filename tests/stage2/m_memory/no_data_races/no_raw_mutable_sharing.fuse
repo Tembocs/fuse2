@@ -1,5 +1,5 @@
 // EXPECTED ERROR:
-// cannot capture mutref across spawn boundary
+// cannot mutate `count` across spawn boundary
 
 @entrypoint
 fn main() {

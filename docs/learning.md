@@ -47,7 +47,7 @@ highest-numbered open group and re-triage before starting that group.
 | G5 | L005, L016 | 3 | **Done** (partial: L005 needs multi-payload runtime, L016 needs String.len codegen) |
 | G6 | L019, L020 | 3 | **Done** |
 | G7 | L004, L012, L014, L015 | 6 | **Done** |
-| G8 | L022 | 1 | **Open** — checker doesn't reject `var` mutation inside spawn |
+| G8 | L022 | 1 | **Done** |
 
 ---
 
@@ -568,7 +568,7 @@ so the check misses it entirely.
 4. Test: `m_memory/no_data_races/no_raw_mutable_sharing.fuse` should
    then produce a compile error.
 
-**Status:** Open.
+**Status:** Fixed — added `assign_target_root` check in `check_spawn_statement`.
 
 ---
 
