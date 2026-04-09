@@ -1,0 +1,18 @@
+// EXPECTED OUTPUT:
+// Alice: 200
+// Bob: 50
+// Charlie: 150
+
+data class User(val name: String, val score: Int)
+
+fn display(ref user: User) {
+  println(f"{user.name}: {user.score}")
+}
+
+@entrypoint
+fn main() {
+  val users = [User("Alice", 200), User("Bob", 50), User("Charlie", 150)]
+  for user in users {
+    display(ref user)
+  }
+}

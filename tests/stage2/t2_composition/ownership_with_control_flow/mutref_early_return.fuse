@@ -1,0 +1,25 @@
+// EXPECTED OUTPUT:
+// 10
+// 3
+
+data class Counter(var value: Int)
+
+fn addUntilLimit(mutref c: Counter, amount: Int, limit: Int) -> Int {
+  var added = 0
+  while added < amount {
+    if c.value >= limit {
+      return added
+    }
+    c.value = c.value + 1
+    added = added + 1
+  }
+  added
+}
+
+@entrypoint
+fn main() {
+  var c = Counter(7)
+  val added = addUntilLimit(mutref c, 5, 10)
+  println(c.value)
+  println(added)
+}

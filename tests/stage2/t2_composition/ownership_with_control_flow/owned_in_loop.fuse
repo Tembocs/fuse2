@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// Processing: a
+// Processing: b
+// Processing: c
+
+fn consume(owned s: String) {
+  println(f"Processing: {s}")
+}
+
+@entrypoint
+fn main() {
+  val items = ["a", "b", "c"]
+  for item in items {
+    consume(item)
+  }
+}

@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// 5
+
+data class Counter(var value: Int)
+
+fn countUp(mutref c: Counter, target: Int) {
+  while c.value < target {
+    c.value = c.value + 1
+  }
+}
+
+@entrypoint
+fn main() {
+  var c = Counter(0)
+  countUp(mutref c, 5)
+  println(c.value)
+}

@@ -1,0 +1,21 @@
+// EXPECTED OUTPUT:
+// premium user: Alice
+// regular user: Bob
+
+data class User(val name: String, val score: Int)
+
+fn describe(ref user: User) -> String {
+  if user.score > 100 {
+    f"premium user: {user.name}"
+  } else {
+    f"regular user: {user.name}"
+  }
+}
+
+@entrypoint
+fn main() {
+  val a = User("Alice", 200)
+  val b = User("Bob", 50)
+  println(describe(ref a))
+  println(describe(ref b))
+}

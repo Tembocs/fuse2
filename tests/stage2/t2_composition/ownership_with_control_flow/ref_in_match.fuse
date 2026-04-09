@@ -1,0 +1,20 @@
+// EXPECTED OUTPUT:
+// Found Alice with score 200
+// Nobody found
+
+data class User(val name: String, val score: Int)
+
+fn describeResult(ref result: Option<User>) -> String {
+  match result {
+    Some(user) => f"Found {user.name} with score {user.score}",
+    None => "Nobody found"
+  }
+}
+
+@entrypoint
+fn main() {
+  val found: Option<User> = Some(User("Alice", 200))
+  val missing: Option<User> = None
+  println(describeResult(ref found))
+  println(describeResult(ref missing))
+}

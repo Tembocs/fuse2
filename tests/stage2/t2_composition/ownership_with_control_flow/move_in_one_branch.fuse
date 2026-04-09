@@ -1,0 +1,19 @@
+// EXPECTED ERROR:
+// cannot use `conn` after `move`
+
+data class Connection(val dsn: String)
+
+fn closeConnection(owned conn: Connection) {
+  println(f"Closing: {conn.dsn}")
+}
+
+@entrypoint
+fn main() {
+  val conn = Connection("db://main")
+  val close = true
+  if close {
+    closeConnection(move conn)
+  }
+  // conn may have been moved — use after potential move is an error
+  println(conn.dsn)
+}
