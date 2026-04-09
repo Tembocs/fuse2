@@ -3,10 +3,14 @@
 
 struct Person {
   val name: String
+
+  fn getName(ref self) -> String {
+    self.name
+  }
 }
 
 @entrypoint
 fn main() {
   val p = Person("Alice")
-  println(p.name)
+  println(p.getName())
 }

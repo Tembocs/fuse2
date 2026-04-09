@@ -19,3 +19,9 @@ pub fn Bool.toString(ref self) -> String {
 pub fn Bool.toInt(ref self) -> Int {
   if self { 1 } else { 0 }
 }
+
+// --- Hashable support ---
+
+pub fn Bool.hash(ref self) -> Int {
+  if self { 1 } else { 0 }
+}

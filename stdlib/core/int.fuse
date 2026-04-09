@@ -242,3 +242,9 @@ fn hexCharToInt(ch: String) -> Int {
     else => -1
   }
 }
+
+// --- Hashable support ---
+
+pub fn Int.hash(ref self) -> Int {
+  self
+}

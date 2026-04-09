@@ -1,6 +1,8 @@
 // EXPECTED OUTPUT:
 // 5.5
 
+import stdlib.core.int
+
 @entrypoint
 fn main() {
   val a = 2

@@ -4,12 +4,20 @@
 
 struct Box {
   var value: Int
+
+  fn getValue(ref self) -> Int {
+    self.value
+  }
+
+  fn setValue(mutref self, v: Int) {
+    self.value = v
+  }
 }
 
 @entrypoint
 fn main() {
   var b = Box(10)
-  println(b.value)
-  b.value = 20
-  println(b.value)
+  println(b.getValue())
+  b.setValue(20)
+  println(b.getValue())
 }

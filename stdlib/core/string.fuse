@@ -195,3 +195,16 @@ pub fn String.fromBytes(bytes: List<Int>) -> Result<String, String> {
 pub fn String.fromChar(code: Int) -> String {
   fuse_rt_string_from_char_code(code)
 }
+
+// --- Hashable support ---
+
+pub fn String.hash(ref self) -> Int {
+  // DJB2 hash via charCodeAt iteration
+  var h = 5381
+  var i = 0
+  while i < self.len() {
+    h = h * 33 + self.charCodeAt(i)
+    i = i + 1
+  }
+  h
+}

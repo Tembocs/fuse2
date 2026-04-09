@@ -108,7 +108,7 @@ def run_test(compiler: Path, fixture: Path, tmp_dir: str):
     if mode is None:
         return name, None, "SKIP: no EXPECTED block"
 
-    stem = fixture.stem + "_" + str(hash(str(fixture)) % 100000)
+    stem = fixture.relative_to(STAGE2_TESTS).as_posix().replace("/", "_").replace(".fuse", "")
     exe_suffix = ".exe" if sys.platform == "win32" else ""
     output_path = Path(tmp_dir) / (stem + exe_suffix)
 
