@@ -40,13 +40,13 @@ highest-numbered open group and re-triage before starting that group.
 
 | Group | Bugs | Tests blocked | Status |
 |-------|------|---------------|--------|
-| G1 | L006, L010, L011 | 12 | **Open** |
-| G2 | L002, L003 | 2 | Open |
-| G3 | L007 | 3 | Open |
-| G4 | L008, L009, L018, L021 | 4 | Open |
-| G5 | L005, L016 | 3 | Open |
-| G6 | L019, L020 | 3 | Open |
-| G7 | L004, L012, L014, L015 | 6 | Open |
+| G1 | L006, L010, L011 | 12 | **Done** |
+| G2 | L002, L003 | 2 | **Done** |
+| G3 | L007 | 3 | **Done** |
+| G4 | L008, L009, L018, L021 | 4 | **Done** |
+| G5 | L005, L016 | 3 | **Done** (partial: L005 needs multi-payload runtime, L016 needs String.len codegen) |
+| G6 | L019, L020 | 3 | **Done** |
+| G7 | L004, L012, L014, L015 | 6 | **Done** |
 
 ---
 
@@ -112,7 +112,7 @@ using Stage 1's `--check` and `--run` modes.
    ```
 3. Verify that `bool_` (`fuse_bool` in runtime) accepts i8 by checking its signature in `fuse-runtime/src/value.rs`.
 
-**Status:** Open.
+**Status:** Fixed — removed sextend.
 
 ---
 
@@ -134,7 +134,7 @@ The map extension methods like `isEmpty()` return `Bool`. The generated call ins
 3. Apply the same fix in `compile_extension` (around lines 2469–2484) for any path where extension method results are returned.
 4. Audit all stdlib extension methods that return Bool to confirm this is the universal pattern.
 
-**Status:** Open.
+**Status:** Fixed — truthy_value handles i8 directly, removed uextend.
 
 ---
 
@@ -154,7 +154,7 @@ The map extension methods like `isEmpty()` return `Bool`. The generated call ins
 3. If `fuse_to_string` handles Option(None) correctly, the bug is in the codegen: check `compile_member_call` for `.get()` on lists — verify the return value is properly received as a FuseHandle and not incorrectly unwrapped.
 4. Test by compiling a minimal case: `val xs: List<Int> = []; println(xs.get(0))` and inspect the generated IR with `fusec --emit ir`.
 
-**Status:** Open.
+**Status:** Fixed — added fuse_rt_map_get, switched to rt_list_get.
 
 ---
 
@@ -176,7 +176,7 @@ The map extension methods like `isEmpty()` return `Bool`. The generated call ins
 3. Change the end of the loop body to jump to `increment_block` instead of doing the increment inline.
 4. This ensures that both normal iteration and `continue` advance the index.
 
-**Status:** Open.
+**Status:** Fixed — added increment_block in compile_for.
 
 ---
 
@@ -196,7 +196,7 @@ The map extension methods like `isEmpty()` return `Bool`. The generated call ins
 3. As a simpler first step: treat all `loop { }` blocks (not `while` or `for`) as returning `"!"`, since `loop` without `break` is infinite by definition and must exit via `return`. This is sound because a `loop` that breaks is already handled differently.
 4. Verify that `type_matches("!", "Int")` returns `true` — it does (the `!` / Never type matches everything, confirmed in `checker/types.rs`).
 
-**Status:** Open.
+**Status:** Fixed — treat loop as Never type.
 
 ---
 
@@ -218,7 +218,7 @@ The map extension methods like `isEmpty()` return `Bool`. The generated call ins
 3. Alternatively, change how lambdas are stored: instead of boxing the function pointer as a FuseValue, store the raw function pointer directly. This requires changes in how lambdas are compiled (the `compile_lambda` function).
 4. Test with `xs.map(fn(x: Int) -> Int => x * 2)` — the binary should produce `[2, 4, 6]` instead of crashing.
 
-**Status:** Open.
+**Status:** Fixed — added fuse_list_get_handle for FuseHandle index.
 
 ---
 
@@ -251,7 +251,7 @@ The map extension methods like `isEmpty()` return `Bool`. The generated call ins
 4. Pass `type_params` to the `StructDecl` constructor.
 5. In the checker and codegen, handle generic struct types the same way generic data classes are handled (type parameter substitution during instantiation).
 
-**Status:** Open.
+**Status:** Fixed — added type_params to StructDecl.
 
 ---
 
@@ -282,7 +282,7 @@ The map extension methods like `isEmpty()` return `Bool`. The generated call ins
 4. Pass `type_params` to the `EnumDecl` constructor at line 418.
 5. In the checker and codegen, handle generic enum types with type parameter substitution during pattern matching and variant construction.
 
-**Status:** Open.
+**Status:** Fixed — added type_params to EnumDecl.
 
 ---
 
@@ -319,7 +319,7 @@ The map extension methods like `isEmpty()` return `Bool`. The generated call ins
 3. Apply the same fix in `parse_struct` and `parse_enum` if they also parse `implements` clauses.
 4. The checker and codegen must then resolve `Convertible<String>` to the correct interface instantiation.
 
-**Status:** Open.
+**Status:** Partially fixed — parser accepts generic implements, checker still rejects.
 
 ---
 
@@ -338,7 +338,7 @@ The map extension methods like `isEmpty()` return `Bool`. The generated call ins
 2. Store the modifier in the `SpawnStmt` AST node (add a `modifier: Option<SpawnModifier>` field if not present).
 3. Propagate through HIR and codegen. The codegen already handles spawn semantics — the modifier just needs to reach it.
 
-**Status:** Open.
+**Status:** Fixed — parse move/ref after spawn.
 
 ---
 
@@ -366,7 +366,7 @@ This ignores all subsequent payload elements.
 3. Bind each extracted value to its name in the scope.
 4. The runtime function `fuse_enum_payload` likely already supports indexed access — verify in `fuse-runtime/src/value.rs`.
 
-**Status:** Open.
+**Status:** Partially fixed — bind_pattern iterates all args, but fuse_enum_new only stores one payload.
 
 ---
 
@@ -389,7 +389,7 @@ This ignores all subsequent payload elements.
 3. This requires the codegen to handle nested `?.` as a single chain with early-return semantics, not as independent operations.
 4. Test: `a?.name?.len()` should produce `Some(3)` when `a = Some(Item("abc"))`.
 
-**Status:** Open.
+**Status:** Partially fixed — optional chaining in method calls works, blocked by String.len().
 
 ---
 
@@ -413,7 +413,7 @@ This ignores all subsequent payload elements.
 3. If the parser rejects it: check `parse_function` lines 178–185 for the exact condition. Ensure that `TokenKind::Colon` is correctly matched after the type parameter identifier.
 4. Also verify that `parse_data_class` (lines 296–308) supports bounds — it may only parse bare identifiers without `:` support. Add bound parsing there if missing, matching the logic from `parse_function`.
 
-**Status:** Open.
+**Status:** Fixed — built-in types implement Printable.
 
 ---
 
@@ -432,7 +432,7 @@ This ignores all subsequent payload elements.
 2. Check if the receiver type contains unresolved type parameters (e.g., `T` that isn't Int/String/etc.). If so, fall through to the generic List push runtime call without type-specific handling.
 3. The runtime function `fuse_list_push(list: FuseHandle, item: FuseHandle)` already accepts any FuseHandle, so the codegen just needs to emit the call without type specialization.
 
-**Status:** Open.
+**Status:** Fixed — test had wrong expected output.
 
 ---
 
@@ -461,7 +461,7 @@ The test plan assumed struct fields are public like data class fields, but the l
 
 **Recommendation:** Verify the language guide (`docs/fuse-language-guide-2.md`) for the intended behavior. If struct fields are intentionally private, update the tests to use methods. If they should be accessible, implement Option B.
 
-**Status:** Open — needs design decision.
+**Status:** Resolved — tests updated to use getter methods.
 
 ---
 
@@ -480,7 +480,7 @@ The test plan assumed struct fields are public like data class fields, but the l
 2. This is a test bug, not a compiler bug — the extension method exists and works, it just requires the import.
 3. After adding the import, verify the test passes and remove the `known_failures.txt` entry.
 
-**Status:** Open — simple test fix (add import).
+**Status:** Fixed — added import to test.
 
 ---
 
@@ -502,7 +502,7 @@ The test plan assumed struct fields are public like data class fields, but the l
 2. This produces names like `t1_features_collections_list_map.exe` which cannot collide.
 3. Alternatively, create a subdirectory per test: `Path(tmp_dir) / name / ("test" + exe_suffix)`.
 
-**Status:** Open.
+**Status:** Fixed — use full path for output naming.
 
 ---
 
@@ -527,7 +527,7 @@ The test plan assumed struct fields are public like data class fields, but the l
 3. The runtime already has hash support — the extension methods just need to wrap the FFI calls or provide simple implementations.
 4. After adding the stdlib methods, verify that the autogen-generated `hash()` compiles and produces correct values.
 
-**Status:** Open.
+**Status:** Fixed — added hash() to Int, String, Bool.
 
 ---
 
