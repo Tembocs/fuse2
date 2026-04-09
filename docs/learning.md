@@ -47,7 +47,7 @@ highest-numbered open group and re-triage before starting that group.
 | G5 | L005, L016 | 3 | **Done** (partial: L005 needs multi-payload runtime, L016 needs String.len codegen) |
 | G6 | L019, L020 | 3 | **Done** |
 | G7 | L004, L012, L014, L015 | 6 | **Done** |
-| G8 | L022 | 1 | **Done** |
+| G8 | L022, L023 | 2 | **Done** |
 
 ---
 
@@ -569,6 +569,42 @@ so the check misses it entirely.
    then produce a compile error.
 
 **Status:** Fixed — added `assign_target_root` check in `check_spawn_statement`.
+
+---
+
+### L023: Multiple `__del__` methods in same file cause duplicate symbol error
+
+**Group:** G8
+**Phase:** Stage 2 test plan — M.11 Resource Lifecycle
+**Affected tests:** `m_memory/resource_lifecycle/nested_struct_del.fuse`
+
+**What happened:** A file with two data classes both defining `fn __del__(owned self)`
+fails with `Duplicate definition of identifier: fuse_fn_...__del__`. Only one
+`__del__` per file was possible.
+
+**Root cause:** In `stage1/fusec/src/codegen/object_backend.rs`, inline data class
+methods were compiled at line ~871 via `compile_function`, which used
+`symbol_for_function`. For methods without `receiver_type` set, the symbol was
+`fuse_fn_{path}___del__` — identical for all types in the same file. The
+`receiver_type` field was never set for inline methods; it was only set for
+extension methods registered separately.
+
+Additionally, instance methods (non-`__del__`) were compiled twice — once via
+the extensions registration path (with correct `extension_symbol`) and once
+via the inline methods path (with incorrect `function_symbol`). This was
+harmless before because the two symbols were different, but was redundant.
+
+**Fix plan:**
+1. For inline instance methods that are NOT `__del__`, skip the inline
+   declaration/compile/IR paths — they are already handled via extensions.
+2. For `__del__` methods specifically, set `receiver_type` so the symbol
+   uses `extension_symbol` (includes type name), then compile normally.
+3. Update the destructor bridge to look up via `extension_symbol` instead
+   of `function_symbol`.
+4. Apply to all three code paths: declaration, emit_object, emit_ir.
+5. Apply to both data classes and structs.
+
+**Status:** Fixed — skip non-`__del__` instance methods in inline paths, set receiver_type for `__del__`.
 
 ---
 

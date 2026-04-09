@@ -1,0 +1,26 @@
+// EXPECTED OUTPUT:
+// sink: token
+// [del] token
+// after move
+// done
+
+@value
+data class Token(val tag: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.tag}")
+  }
+}
+
+fn sink(owned t: Token) {
+  println(f"sink: {t.tag}")
+  // t destroyed here inside callee — exactly once
+}
+
+@entrypoint
+fn main() {
+  val t = Token("token")
+  sink(move t)
+  // t was moved — no second destructor call
+  println("after move")
+  println("done")
+}

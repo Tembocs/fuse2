@@ -1,0 +1,25 @@
+// EXPECTED OUTPUT:
+// original: alpha
+// copy: alpha
+// [del] alpha
+// done
+
+@value
+data class Token(val tag: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.tag}")
+  }
+}
+
+fn inspect(ref t: Token) {
+  println(f"copy: {t.tag}")
+}
+
+@entrypoint
+fn main() {
+  val t = Token("alpha")
+  println(f"original: {t.tag}")
+  inspect(ref t)
+  // both the original and any internal copy should be destroyed
+  println("done")
+}

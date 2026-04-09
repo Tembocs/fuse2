@@ -1,0 +1,29 @@
+// EXPECTED OUTPUT:
+// created: a
+// [del] a
+// created: b
+// [del] b
+// created: c
+// [del] c
+// done
+
+@value
+data class Item(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+@entrypoint
+fn main() {
+  val a = Item("a")
+  val b = Item("b")
+  val c = Item("c")
+  println(f"created: {a.name}")
+  // a last used above — ASAP destroys it here
+  println(f"created: {b.name}")
+  // b last used above — ASAP destroys it here
+  println(f"created: {c.name}")
+  // c last used above — ASAP destroys it here
+  println("done")
+}

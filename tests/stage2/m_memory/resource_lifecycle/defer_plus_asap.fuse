@@ -1,0 +1,24 @@
+// EXPECTED OUTPUT:
+// use: short
+// [del] short
+// use: long
+// [del] long
+// defer: cleanup
+
+@value
+data class Res(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+@entrypoint
+fn main() {
+  val long = Res("long")
+  defer println("defer: cleanup")
+  val short = Res("short")
+  println(f"use: {short.name}")
+  // short ASAP destroyed here
+  println(f"use: {long.name}")
+  // long ASAP destroyed here — defer fires after at function exit
+}

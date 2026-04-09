@@ -773,7 +773,16 @@ impl<'a> BackendCompiler<'a> {
             }
             for data in loaded.data_classes.values() {
                 for method in &data.methods {
-                    let name = layout::function_symbol(loaded.path.as_path(), &method.name);
+                    let is_instance = method.params.first().map_or(false, |p| p.name == "self");
+                    // Instance methods (except __del__) are declared via extensions path.
+                    if is_instance && method.name != "__del__" {
+                        continue;
+                    }
+                    let name = if is_instance {
+                        layout::extension_symbol(loaded.path.as_path(), &data.name, &method.name)
+                    } else {
+                        layout::function_symbol(loaded.path.as_path(), &method.name)
+                    };
                     let func_id = self
                         .module
                         .declare_function(&name, Linkage::Local, &self.handle_signature(method.params.len()))
@@ -791,7 +800,15 @@ impl<'a> BackendCompiler<'a> {
             }
             for s in loaded.structs.values() {
                 for method in &s.methods {
-                    let name = layout::function_symbol(loaded.path.as_path(), &method.name);
+                    let is_instance = method.params.first().map_or(false, |p| p.name == "self");
+                    if is_instance && method.name != "__del__" {
+                        continue;
+                    }
+                    let name = if is_instance {
+                        layout::extension_symbol(loaded.path.as_path(), &s.name, &method.name)
+                    } else {
+                        layout::function_symbol(loaded.path.as_path(), &method.name)
+                    };
                     let func_id = self
                         .module
                         .declare_function(&name, Linkage::Local, &self.handle_signature(method.params.len()))
@@ -862,11 +879,22 @@ impl<'a> BackendCompiler<'a> {
             }
             for data in loaded.data_classes.values() {
                 for method in &data.methods {
+                    // Instance methods (except __del__) are compiled via the extensions path.
+                    // Only compile __del__ and static methods here.
+                    let is_instance = method.params.first().map_or(false, |p| p.name == "self");
+                    if is_instance && method.name != "__del__" {
+                        continue;
+                    }
                     let mut method = method.clone();
                     if let Some(param) = method.params.first_mut() {
                         if param.name == "self" && param.type_name.is_none() {
                             param.type_name = Some(data.name.clone());
                         }
+                    }
+                    // Set receiver_type so the symbol includes the type name,
+                    // avoiding collisions when multiple types define __del__.
+                    if is_instance && method.receiver_type.is_none() {
+                        method.receiver_type = Some(data.name.clone());
                     }
                     self.compile_function(loaded.path.as_path(), &method)?;
                 }
@@ -876,11 +904,18 @@ impl<'a> BackendCompiler<'a> {
             }
             for s in loaded.structs.values() {
                 for method in &s.methods {
+                    let is_instance = method.params.first().map_or(false, |p| p.name == "self");
+                    if is_instance && method.name != "__del__" {
+                        continue;
+                    }
                     let mut method = method.clone();
                     if let Some(param) = method.params.first_mut() {
                         if param.name == "self" && param.type_name.is_none() {
                             param.type_name = Some(s.name.clone());
                         }
+                    }
+                    if is_instance && method.receiver_type.is_none() {
+                        method.receiver_type = Some(s.name.clone());
                     }
                     self.compile_function(loaded.path.as_path(), &method)?;
                 }
@@ -928,11 +963,18 @@ impl<'a> BackendCompiler<'a> {
             }
             for data in loaded.data_classes.values() {
                 for method in &data.methods {
+                    let is_instance = method.params.first().map_or(false, |p| p.name == "self");
+                    if is_instance && method.name != "__del__" {
+                        continue;
+                    }
                     let mut method = method.clone();
                     if let Some(param) = method.params.first_mut() {
                         if param.name == "self" && param.type_name.is_none() {
                             param.type_name = Some(data.name.clone());
                         }
+                    }
+                    if is_instance && method.receiver_type.is_none() {
+                        method.receiver_type = Some(data.name.clone());
                     }
                     if let Some(ir) = self.compile_function_to_ir(loaded.path.as_path(), &method)? {
                         ir_parts.push(ir);
@@ -941,11 +983,18 @@ impl<'a> BackendCompiler<'a> {
             }
             for s in loaded.structs.values() {
                 for method in &s.methods {
+                    let is_instance = method.params.first().map_or(false, |p| p.name == "self");
+                    if is_instance && method.name != "__del__" {
+                        continue;
+                    }
                     let mut method = method.clone();
                     if let Some(param) = method.params.first_mut() {
                         if param.name == "self" && param.type_name.is_none() {
                             param.type_name = Some(s.name.clone());
                         }
+                    }
+                    if is_instance && method.receiver_type.is_none() {
+                        method.receiver_type = Some(s.name.clone());
                     }
                     if let Some(ir) = self.compile_function_to_ir(loaded.path.as_path(), &method)? {
                         ir_parts.push(ir);
@@ -1256,7 +1305,7 @@ impl<'a> BackendCompiler<'a> {
             .destructor_ids
             .get(&bridge_name)
             .ok_or_else(|| format!("missing destructor bridge `{bridge_name}`"))?;
-        let target_name = layout::function_symbol(module_path, &destructor_method.name);
+        let target_name = layout::extension_symbol(module_path, &data.name, &destructor_method.name);
         let target_id = *self
             .function_ids
             .get(&target_name)
@@ -1294,7 +1343,7 @@ impl<'a> BackendCompiler<'a> {
             .destructor_ids
             .get(&bridge_name)
             .ok_or_else(|| format!("missing destructor bridge `{bridge_name}`"))?;
-        let target_name = layout::function_symbol(module_path, &destructor_method.name);
+        let target_name = layout::extension_symbol(module_path, &s.name, &destructor_method.name);
         let target_id = *self
             .function_ids
             .get(&target_name)

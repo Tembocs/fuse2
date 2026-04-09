@@ -1,0 +1,21 @@
+// EXPECTED OUTPUT:
+// constructed: conn
+// using: conn
+// [del] conn
+// done
+
+@value
+data class Connection(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+@entrypoint
+fn main() {
+  val c = Connection("conn")
+  println(f"constructed: {c.name}")
+  println(f"using: {c.name}")
+  // c last used above — ASAP destroys it here
+  println("done")
+}

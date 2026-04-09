@@ -1,0 +1,23 @@
+// EXPECTED OUTPUT:
+// step 1
+// use: lock
+// [del] lock
+// step 2
+// done
+
+@value
+data class Lock(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+@entrypoint
+fn main() {
+  println("step 1")
+  val lk = Lock("lock")
+  println(f"use: {lk.name}")
+  // lk last used above — destroyed before step 2
+  println("step 2")
+  println("done")
+}

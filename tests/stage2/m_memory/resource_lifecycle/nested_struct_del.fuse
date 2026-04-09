@@ -1,0 +1,26 @@
+// EXPECTED OUTPUT:
+// using outer
+// [del] outer
+// done
+
+@value
+data class Inner(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+@value
+data class Outer(val name: String, val child: Inner) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+@entrypoint
+fn main() {
+  val o = Outer("outer", Inner("inner"))
+  println(f"using {o.name}")
+  // o last used above — outer destructor fires
+  println("done")
+}

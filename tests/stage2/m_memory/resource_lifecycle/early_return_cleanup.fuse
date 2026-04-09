@@ -1,0 +1,26 @@
+// EXPECTED OUTPUT:
+// opened: db
+// [del] db
+// end
+
+@value
+data class Handle(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+fn process(early: Bool) -> String {
+  val h = Handle("db")
+  println(f"opened: {h.name}")
+  if early {
+    return "done early"
+  }
+  "done normal"
+}
+
+@entrypoint
+fn main() {
+  process(true)
+  println("end")
+}

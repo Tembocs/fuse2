@@ -1,0 +1,28 @@
+// EXPECTED OUTPUT:
+// opened: tmp
+// [del] tmp
+// handled error: bad input
+
+@value
+data class TmpFile(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+fn tryWork(fail: Bool) -> Result<String, String> {
+  val t = TmpFile("tmp")
+  println(f"opened: {t.name}")
+  if fail {
+    return Err("bad input")
+  }
+  Ok("success")
+}
+
+@entrypoint
+fn main() {
+  match tryWork(true) {
+    Ok(v) => println(f"ok: {v}"),
+    Err(e) => println(f"handled error: {e}")
+  }
+}
