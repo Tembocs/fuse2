@@ -1,0 +1,17 @@
+// EXPECTED OUTPUT:
+// failed: not found
+// is error: true
+
+@entrypoint
+fn main() {
+  val r: Result<Int, String> = Err("not found")
+  match r {
+    Ok(v) => println(f"ok: {v}"),
+    Err(e) => println(f"failed: {e}")
+  }
+  val isErr = match r {
+    Ok(_) => false,
+    Err(_) => true
+  }
+  println(f"is error: {isErr}")
+}

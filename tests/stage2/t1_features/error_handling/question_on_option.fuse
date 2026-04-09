@@ -1,0 +1,18 @@
+// EXPECTED OUTPUT:
+// Some(5)
+// None
+
+fn half(n: Int) -> Option<Int> {
+  if n % 2 == 0 { Some(n / 2) } else { None }
+}
+
+fn doubleHalf(n: Int) -> Option<Int> {
+  val h = half(n)?
+  Some(h)
+}
+
+@entrypoint
+fn main() {
+  println(doubleHalf(10))
+  println(doubleHalf(7))
+}

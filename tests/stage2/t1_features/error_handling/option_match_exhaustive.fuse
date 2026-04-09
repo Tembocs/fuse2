@@ -1,0 +1,13 @@
+// EXPECTED ERROR:
+// error: non-exhaustive match for `Option`
+
+fn unwrap(o: Option<Int>) -> Int {
+  match o {
+    Some(v) => v
+  }
+}
+
+@entrypoint
+fn main() {
+  println(unwrap(Some(5)))
+}

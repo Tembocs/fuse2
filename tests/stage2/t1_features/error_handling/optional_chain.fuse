@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// Some(5)
+// None
+
+data class Address(val city: String)
+data class Person(val name: String, val address: Option<Address>)
+
+@entrypoint
+fn main() {
+  val p1 = Person("Alice", Some(Address("Accra")))
+  val p2 = Person("Bob", None)
+  println(p1.address?.city?.len())
+  println(p2.address?.city)
+}

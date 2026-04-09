@@ -1,0 +1,35 @@
+// EXPECTED OUTPUT:
+// found: 42
+// inner none
+// outer err: failed
+
+fn lookup(key: String) -> Result<Option<Int>, String> {
+  if key == "a" { Ok(Some(42)) }
+  else if key == "b" { Ok(None) }
+  else { Err("failed") }
+}
+
+@entrypoint
+fn main() {
+  match lookup("a") {
+    Ok(inner) => match inner {
+      Some(v) => println(f"found: {v}"),
+      None => println("inner none")
+    },
+    Err(e) => println(f"outer err: {e}")
+  }
+  match lookup("b") {
+    Ok(inner) => match inner {
+      Some(v) => println(f"found: {v}"),
+      None => println("inner none")
+    },
+    Err(e) => println(f"outer err: {e}")
+  }
+  match lookup("x") {
+    Ok(inner) => match inner {
+      Some(v) => println(f"found: {v}"),
+      None => println("inner none")
+    },
+    Err(e) => println(f"outer err: {e}")
+  }
+}

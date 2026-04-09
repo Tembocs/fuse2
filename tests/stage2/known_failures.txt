@@ -62,6 +62,7 @@ t1_features/interfaces/hashable.fuse  # L015: hash() extension missing
 
 # --- L016: Optional chaining into method call ---
 t1_features/operators/optional_chain.fuse  # L016: ?.field?.method() chain fails
+t1_features/error_handling/optional_chain.fuse  # L016: ?.field?.method() chain fails
 t1_features/strings/charat.fuse  # L011: match on Option<String> from get()
 
 # --- L018: generic enum not supported ---

@@ -1,0 +1,28 @@
+// EXPECTED OUTPUT:
+// Ok(3)
+// Err(step1 failed)
+
+fn step1(ok: Bool) -> Result<Int, String> {
+  if ok { Ok(1) } else { Err("step1 failed") }
+}
+
+fn step2(n: Int) -> Result<Int, String> {
+  Ok(n + 1)
+}
+
+fn step3(n: Int) -> Result<Int, String> {
+  Ok(n + 1)
+}
+
+fn pipeline(ok: Bool) -> Result<Int, String> {
+  val a = step1(ok)?
+  val b = step2(a)?
+  val c = step3(b)?
+  Ok(c)
+}
+
+@entrypoint
+fn main() {
+  println(pipeline(true))
+  println(pipeline(false))
+}
