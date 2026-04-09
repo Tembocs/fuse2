@@ -1,6 +1,6 @@
 // EXPECTED OUTPUT:
-// 10
-// world
+// Some(10)
+// Some(world)
 
 fn wrap<T>(x: T) -> List<T> => [x]
 

@@ -612,6 +612,16 @@ pub unsafe extern "C" fn fuse_map_entries(map: FuseHandle) -> FuseHandle {
     }
 }
 
+// --- Map FFI helpers ---
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fuse_rt_map_get(map: FuseHandle, key: FuseHandle) -> FuseHandle {
+    unsafe {
+        let raw = fuse_map_get(map, key);
+        if raw.is_null() { fuse_none() } else { fuse_some(raw) }
+    }
+}
+
 // --- SIMD scalar fallback helpers ---
 
 unsafe fn simd_extract_f64(h: FuseHandle) -> f64 {

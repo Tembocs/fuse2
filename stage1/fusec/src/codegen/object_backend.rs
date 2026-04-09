@@ -537,6 +537,7 @@ struct RuntimeFns {
     list_push: FuncId,
     list_len: FuncId,
     list_get: FuncId,
+    rt_list_get: FuncId,
     chan_bounded: FuncId,
     chan_new: FuncId,
     chan_send: FuncId,
@@ -581,6 +582,7 @@ struct RuntimeFns {
     map_new: FuncId,
     map_set: FuncId,
     map_get: FuncId,
+    rt_map_get: FuncId,
     map_remove: FuncId,
     map_len: FuncId,
     map_contains: FuncId,
@@ -690,8 +692,10 @@ impl<'a> BackendCompiler<'a> {
         for (name, id) in [
             ("fuse_list_new", rt.list_new), ("fuse_list_push", rt.list_push),
             ("fuse_list_len", rt.list_len), ("fuse_list_get", rt.list_get),
+            ("fuse_rt_list_get", rt.rt_list_get),
             ("fuse_map_new", rt.map_new), ("fuse_map_set", rt.map_set),
-            ("fuse_map_get", rt.map_get), ("fuse_map_remove", rt.map_remove),
+            ("fuse_map_get", rt.map_get), ("fuse_rt_map_get", rt.rt_map_get),
+            ("fuse_map_remove", rt.map_remove),
             ("fuse_map_len", rt.map_len), ("fuse_map_contains", rt.map_contains),
             ("fuse_map_keys", rt.map_keys), ("fuse_map_values", rt.map_values),
             ("fuse_map_entries", rt.map_entries),
@@ -1408,6 +1412,7 @@ fn declare_runtime_functions(
         list_push: declare(module, "fuse_list_push", &[pointer_type, pointer_type], &[])?,
         list_len: declare(module, "fuse_list_len", &[pointer_type], &[types::I64])?,
         list_get: declare(module, "fuse_list_get", &[pointer_type, pointer_type], &[pointer_type])?,
+        rt_list_get: declare(module, "fuse_rt_list_get", &[pointer_type, pointer_type], &[pointer_type])?,
         chan_bounded: declare(module, "fuse_chan_runtime_bounded", &[pointer_type], &[pointer_type])?,
         chan_new: declare(module, "fuse_chan_runtime_new", &[], &[pointer_type])?,
         chan_send: declare(module, "fuse_chan_runtime_send", &[pointer_type, pointer_type], &[pointer_type])?,
@@ -1452,6 +1457,7 @@ fn declare_runtime_functions(
         map_new: declare(module, "fuse_map_new", &[], &[pointer_type])?,
         map_set: declare(module, "fuse_map_set", &[pointer_type, pointer_type, pointer_type], &[])?,
         map_get: declare(module, "fuse_map_get", &[pointer_type, pointer_type], &[pointer_type])?,
+        rt_map_get: declare(module, "fuse_rt_map_get", &[pointer_type, pointer_type], &[pointer_type])?,
         map_remove: declare(module, "fuse_map_remove", &[pointer_type, pointer_type], &[pointer_type])?,
         map_len: declare(module, "fuse_map_len", &[pointer_type], &[types::I64])?,
         map_contains: declare(module, "fuse_map_contains", &[pointer_type, pointer_type], &[types::I8])?,
@@ -2137,12 +2143,11 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         types::I64,
                     );
                     let is_zero = builder.ins().icmp_imm(IntCC::Equal, raw_len, 0);
-                    let extended = builder.ins().uextend(types::I8, is_zero);
                     Ok(TypedValue {
                         value: self.runtime(
                             builder,
                             self.compiler.runtime.bool_,
-                            &[extended],
+                            &[is_zero],
                             self.compiler.pointer_type,
                         ),
                         ty: Some("Bool".to_string()),
@@ -2428,8 +2433,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                                 _ => unreachable!(),
                             };
                             let cmp = builder.ins().icmp(cc, int_val, zero);
-                            let cmp_ext = builder.ins().sextend(types::I64, cmp);
-                            (self.runtime(builder, self.compiler.runtime.bool_, &[cmp_ext], self.compiler.pointer_type), Some("Bool".to_string()))
+                            (self.runtime(builder, self.compiler.runtime.bool_, &[cmp], self.compiler.pointer_type), Some("Bool".to_string()))
                         } else {
                             let fallback = match binary.op.as_str() {
                                 "<" => lt,
@@ -3312,17 +3316,17 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     Ok(TypedValue {
                         value: self.runtime(
                             builder,
-                            self.compiler.runtime.list_get,
+                            self.compiler.runtime.rt_list_get,
                             &[receiver.value, index.value],
                             self.compiler.pointer_type,
                         ),
                         ty: {
-                            // Derive inner type from List<X> → X
+                            // List<X>.get(i) returns Option<X>
                             let inner = receiver_type.strip_prefix("List<")
                                 .and_then(|s| s.strip_suffix('>'))
                                 .unwrap_or("Unknown")
                                 .to_string();
-                            Some(inner)
+                            Some(format!("Option<{inner}>"))
                         },
                     })
                 }
@@ -3516,7 +3520,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     Ok(TypedValue {
                         value: self.runtime(
                             builder,
-                            self.compiler.runtime.map_get,
+                            self.compiler.runtime.rt_map_get,
                             &[receiver.value, key.value],
                             self.compiler.pointer_type,
                         ),
@@ -3560,12 +3564,11 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         types::I64,
                     );
                     let is_zero = builder.ins().icmp_imm(IntCC::Equal, raw_len, 0);
-                    let extended = builder.ins().uextend(types::I8, is_zero);
                     Ok(TypedValue {
                         value: self.runtime(
                             builder,
                             self.compiler.runtime.bool_,
-                            &[extended],
+                            &[is_zero],
                             self.compiler.pointer_type,
                         ),
                         ty: Some("Bool".to_string()),
@@ -4603,6 +4606,13 @@ impl<'a, 'b> LoweringState<'a, 'b> {
     }
 
     fn truthy_value(&mut self, builder: &mut FunctionBuilder, value: Value) -> Value {
+        let val_type = builder.func.dfg.value_type(value);
+        if val_type == types::I8 {
+            // Value is already a native boolean (e.g. from fuse_map_contains,
+            // fuse_is_truthy, icmp).  Use it directly instead of passing it
+            // through fuse_is_truthy which expects a FuseHandle (pointer).
+            return builder.ins().icmp_imm(IntCC::NotEqual, value, 0);
+        }
         let truthy = self.runtime_value(builder, self.compiler.runtime.truthy, &[value], types::I8);
         builder.ins().icmp_imm(IntCC::NotEqual, truthy, 0)
     }
