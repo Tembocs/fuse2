@@ -1,0 +1,19 @@
+// EXPECTED OUTPUT:
+// using r
+// [del] r
+// defer runs
+
+@value
+data class Res(val name: String) {
+  fn __del__(owned self) {
+    println(f"[del] {self.name}")
+  }
+}
+
+@entrypoint
+fn main() {
+  defer println("defer runs")
+  val r = Res("r")
+  println(f"using {r.name}")
+  // r destroyed by ASAP before defer fires at function exit
+}

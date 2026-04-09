@@ -1,0 +1,10 @@
+// EXPECTED OUTPUT:
+// working
+// done: hello
+
+@entrypoint
+fn main() {
+  val name = "hello"
+  defer println(f"done: {name}")
+  println("working")
+}

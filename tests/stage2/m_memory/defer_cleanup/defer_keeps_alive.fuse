@@ -1,0 +1,11 @@
+// EXPECTED OUTPUT:
+// working
+// closing: conn
+
+@entrypoint
+fn main() {
+  val name = "conn"
+  defer println(f"closing: {name}")
+  println("working")
+  // name must not be ASAP'd — defer still needs it
+}

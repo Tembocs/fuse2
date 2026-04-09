@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// body
+// third
+// second
+// first
+
+@entrypoint
+fn main() {
+  defer println("first")
+  defer println("second")
+  defer println("third")
+  println("body")
+}

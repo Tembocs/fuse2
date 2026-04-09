@@ -1,0 +1,9 @@
+// EXPECTED OUTPUT:
+// body
+// deferred
+
+@entrypoint
+fn main() {
+  defer println("deferred")
+  println("body")
+}

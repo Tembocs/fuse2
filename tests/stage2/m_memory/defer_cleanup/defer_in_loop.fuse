@@ -1,0 +1,19 @@
+// EXPECTED OUTPUT:
+// body 0
+// defer 0
+// body 1
+// defer 1
+// body 2
+// defer 2
+// done
+
+@entrypoint
+fn main() {
+  var i = 0
+  while i < 3 {
+    defer println(f"defer {i}")
+    println(f"body {i}")
+    i = i + 1
+  }
+  println("done")
+}

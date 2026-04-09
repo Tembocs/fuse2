@@ -1,0 +1,21 @@
+// EXPECTED OUTPUT:
+// inner body
+// inner defer
+// outer body
+// outer defer
+
+fn inner() {
+  defer println("inner defer")
+  println("inner body")
+}
+
+fn outer() {
+  defer println("outer defer")
+  inner()
+  println("outer body")
+}
+
+@entrypoint
+fn main() {
+  outer()
+}

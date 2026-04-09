@@ -1,0 +1,16 @@
+// EXPECTED OUTPUT:
+// cleanup
+// 1
+
+fn foo() -> Int {
+  defer println("cleanup")
+  if true {
+    return 1
+  }
+  2
+}
+
+@entrypoint
+fn main() {
+  println(foo())
+}

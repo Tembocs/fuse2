@@ -1,0 +1,15 @@
+// EXPECTED OUTPUT:
+// opened: db
+// using: db
+// closed: db
+
+fn openAndUse(name: String) {
+  defer println(f"closed: {name}")
+  println(f"opened: {name}")
+  println(f"using: {name}")
+}
+
+@entrypoint
+fn main() {
+  openAndUse("db")
+}
