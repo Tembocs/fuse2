@@ -1,0 +1,17 @@
+// EXPECTED ERROR:
+// cannot use `r` after `move`
+
+data class Res(val name: String)
+
+fn consume(owned r: Res) { println(r.name) }
+
+@entrypoint
+fn main() {
+  val r = Res("hello")
+  val opt: Option<Int> = Some(1)
+  match opt {
+    Some(v) => consume(move r),
+    None => {}
+  }
+  println(r.name)
+}

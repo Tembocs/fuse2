@@ -1,0 +1,16 @@
+// EXPECTED ERROR:
+// cannot use `r` after `move`
+
+data class Res(val name: String)
+
+fn consume(owned r: Res) { println(r.name) }
+
+@entrypoint
+fn main() {
+  val r = Res("hello")
+  var i = 0
+  while i < 3 {
+    consume(move r)
+    i = i + 1
+  }
+}

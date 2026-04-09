@@ -1191,9 +1191,17 @@ impl Checker {
             }
             hir::Expr::Match(match_expr) => {
                 self.check_expr(module, &match_expr.subject, scope, owner_name, loop_depth);
+                let mut arm_scopes = Vec::new();
                 for arm in &match_expr.arms {
                     let mut local = scope.clone();
                     self.check_arm_body(module, &arm.body, &mut local, owner_name, loop_depth);
+                    arm_scopes.push(local);
+                }
+                // Merge: if moved in any arm, mark as moved in parent.
+                for (name, binding) in scope.iter_mut() {
+                    if arm_scopes.iter().any(|s| s.get(name).map_or(false, |b| b.moved)) {
+                        binding.moved = true;
+                    }
                 }
                 self.check_match_exhaustiveness(module, match_expr, scope, owner_name);
             }
