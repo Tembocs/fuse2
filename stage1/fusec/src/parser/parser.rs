@@ -443,12 +443,18 @@ impl Parser {
         let mut variants = Vec::new();
         while self.peek(0).kind != TokenKind::RBrace {
             let variant = self.expect(TokenKind::Identifier, "expected variant name")?;
-            let mut arity = 0;
+            // Capture payload type names instead of just counting them.
+            // Before B3 the parser called parse_type_name() and threw the
+            // result away, leaving the codegen with no way to bind a
+            // user-defined variant's payload to the right type. See
+            // docs/fuse-stage2-parity-plan.md Phase B3.2.
+            let mut payload_types = Vec::new();
             if self.match_kind(TokenKind::LParen).is_some() {
                 if self.peek(0).kind != TokenKind::RParen {
                     loop {
-                        self.parse_type_name(&[TokenKind::Comma, TokenKind::RParen]);
-                        arity += 1;
+                        let type_name =
+                            self.parse_type_name(&[TokenKind::Comma, TokenKind::RParen]);
+                        payload_types.push(type_name);
                         if self.match_kind(TokenKind::Comma).is_none() {
                             break;
                         }
@@ -458,7 +464,7 @@ impl Parser {
             }
             variants.push(EnumVariant {
                 name: variant.text,
-                arity,
+                payload_types,
                 span: variant.span,
             });
             self.match_kind(TokenKind::Comma);
@@ -1258,6 +1264,66 @@ impl Parser {
             }
             _ => Err(self.syntax_error("unsupported match pattern", token.span)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn enum_decl(source: &str) -> EnumDecl {
+        let program = parse_source(source, "<test>").expect("parse should succeed");
+        program
+            .declarations
+            .into_iter()
+            .find_map(|decl| match decl {
+                Declaration::Enum(e) => Some(e),
+                _ => None,
+            })
+            .expect("enum declaration in source")
+    }
+
+    #[test]
+    fn enum_variant_payload_types_capture_concrete_types() {
+        // B3.2.3 — the canonical regression test for enum payload type
+        // capture. Before B3, parse_enum called parse_type_name() and
+        // discarded the result, leaving variants with only an arity
+        // counter. The codegen `bind_pattern` could then only handle
+        // Ok/Err/Some payloads. After B3, every variant carries the
+        // parsed type names so B6 can use them.
+        let decl = enum_decl(
+            "enum Shape { Circle(Float), Rect(Float, Float), Empty }",
+        );
+        assert_eq!(decl.name, "Shape");
+        assert_eq!(decl.variants.len(), 3);
+
+        assert_eq!(decl.variants[0].name, "Circle");
+        assert_eq!(decl.variants[0].payload_types, vec!["Float".to_string()]);
+
+        assert_eq!(decl.variants[1].name, "Rect");
+        assert_eq!(
+            decl.variants[1].payload_types,
+            vec!["Float".to_string(), "Float".to_string()]
+        );
+
+        assert_eq!(decl.variants[2].name, "Empty");
+        assert!(decl.variants[2].payload_types.is_empty());
+    }
+
+    #[test]
+    fn enum_variant_payload_types_handle_generic_arguments() {
+        // Generic payload types should round-trip through the parser
+        // exactly as parse_type_name produces them. parse_type_name
+        // concatenates tokens without inserting spaces, so the stored
+        // representation matches what canonical_type_name later strips.
+        let decl = enum_decl(
+            "enum Boxed { One(Option<Int>), Two(List<String>, Map<String, Int>) }",
+        );
+        assert_eq!(decl.variants[0].payload_types, vec!["Option<Int>".to_string()]);
+        assert_eq!(
+            decl.variants[1].payload_types,
+            vec!["List<String>".to_string(), "Map<String,Int>".to_string()]
+        );
     }
 }
 

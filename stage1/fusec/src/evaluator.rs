@@ -2453,7 +2453,7 @@ impl Evaluator {
                 if let fa::Expr::Name(name) = member.object.as_ref() {
                     if env.resolve(&name.value).is_none() {
                         if let Some(enum_decl) = self.find_enum(&name.value) {
-                            if let Some(variant) = enum_decl.variants.iter().find(|v| v.name == member.name && v.arity == 0) {
+                            if let Some(variant) = enum_decl.variants.iter().find(|v| v.name == member.name && v.payload_types.is_empty()) {
                                 return Ok(Value::Enum { type_name: name.value.clone(), variant: variant.name.clone(), payloads: Vec::new() });
                             }
                         }
@@ -2516,9 +2516,9 @@ impl Evaluator {
                                     for arg in &call.args {
                                         payloads.push(self.eval_expr(module_path, arg, env)?);
                                     }
-                                    if payloads.len() != variant.arity {
+                                    if payloads.len() != variant.payload_types.len() {
                                         return Err(ControlFlow::Abort(runtime_error(
-                                            format!("enum variant `{}.{}` expects {} argument(s), got {}", name.value, member.name, variant.arity, payloads.len()),
+                                            format!("enum variant `{}.{}` expects {} argument(s), got {}", name.value, member.name, variant.payload_types.len(), payloads.len()),
                                             &display_name(module_path), call.span.line, call.span.column,
                                         )));
                                     }

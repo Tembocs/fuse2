@@ -231,7 +231,7 @@ closed, so the checker — not a reviewer — drives the fix).
 | B0 | Baseline & Verification Infrastructure | 3 | 10 | — | **Done** (commits 36a8e9c, 11ff7e7, c5fc4b6) |
 | B1 | Determinism | 2 | 7 | B0 | **Done** (commits 1ebbf1e, fb09dba) |
 | B2 | Checker: Extension Resolution Enforcement | 3 | 11 | B1 | **Done** (commits f5cb947, 99af0a0, 9b0e77c) |
-| B3 | Parser & AST: Enum Variant Payload Types | 2 | 8 | B1 | Not started |
+| B3 | Parser & AST: Enum Variant Payload Types | 2 | 8 | B1 | **Done** (commit pending push) |
 | B4 | Codegen: Generic Type Substitution | 3 | 11 | B1 | Not started |
 | B5 | Codegen: Hardcoded Specialization Ordering | 2 | 9 | B4 | Not started |
 | B6 | Codegen: User-Defined Enum Variant Binding | 3 | 12 | B3, B4 | Not started |
@@ -583,11 +583,11 @@ all readers.
 
 **Tasks:**
 
-- [ ] **B3.1.1** Add `pub payload_types: Vec<String>` to `ast::EnumVariant`.
-- [ ] **B3.1.2** Add the same field to `hir::EnumVariant` if it exists as a separate type.
-- [ ] **B3.1.3** Update HIR lowering (`hir/lower.rs` or equivalent) to copy the field through.
-- [ ] **B3.1.4** Remove `arity` field, or keep it as a derived method — pick one and apply consistently.
-- [ ] **B3.1.5** Fix every reader of `EnumVariant` in the tree (grep `EnumVariant`) to compile.
+- [x] **B3.1.1** Add `pub payload_types: Vec<String>` to `ast::EnumVariant`.
+- [x] **B3.1.2** Add the same field to `hir::EnumVariant` if it exists as a separate type. **No-op:** `hir::Module.enums` re-uses `ast::nodes::EnumDecl` directly (HIR has no separate enum types). The single AST update propagates through HIR automatically.
+- [x] **B3.1.3** Update HIR lowering (`hir/lower.rs` or equivalent) to copy the field through. **No-op for the same reason** — `hir::lower::lower_program` clones `EnumDecl` whole, so the new field rides along.
+- [x] **B3.1.4** Remove `arity` field, or keep it as a derived method — pick one and apply consistently. **Removed.** Per the plan's recommendation: "fewer invariants to maintain". `payload_types.len()` is the count.
+- [x] **B3.1.5** Fix every reader of `EnumVariant` in the tree (grep `EnumVariant`) to compile. Three reader sites updated: `parser.rs:459` (constructor), `evaluator.rs:2456` (`v.arity == 0` → `v.payload_types.is_empty()`), and `evaluator.rs:2519-2521` (`variant.arity` → `variant.payload_types.len()`). The `arity` mention in `object_backend.rs:1085` is an unrelated function-arity parameter — left untouched.
 
 **Deliverables:** Updated AST and HIR types; build passes.
 
@@ -611,9 +611,11 @@ into a local vector and pass it to the `EnumVariant` constructor.
 
 **Tasks:**
 
-- [ ] **B3.2.1** Rewrite the enum payload loop in `parse_enum` to collect type names into `payload_types`.
-- [ ] **B3.2.2** Run `cargo test -p fusec` — AST-related tests should still pass.
-- [ ] **B3.2.3** Add a unit test: parse `enum Shape { Circle(Float), Rect(Float, Float) }` and assert `payload_types == [["Float"], ["Float", "Float"]]`.
+- [x] **B3.2.1** Rewrite the enum payload loop in `parse_enum` to collect type names into `payload_types`. The loop now captures `parse_type_name(...)`'s return value (previously discarded) and pushes it into the variant's `payload_types` Vec.
+- [x] **B3.2.2** Run `cargo test -p fusec` — AST-related tests should still pass. **Confirmed:** 91 passing total (was 89; +2 from the new parser tests), same six pre-existing failures, no new failures, no morphing.
+- [x] **B3.2.3** Add a unit test: parse `enum Shape { Circle(Float), Rect(Float, Float) }` and assert `payload_types == [["Float"], ["Float", "Float"]]`. Two unit tests added at the end of `stage1/fusec/src/parser/parser.rs`: `enum_variant_payload_types_capture_concrete_types` (the canonical Shape example plus a unit variant `Empty`) and `enum_variant_payload_types_handle_generic_arguments` (`Option<Int>`, `List<String>`, `Map<String,Int>` payloads — the second confirms that `parse_type_name` produces unspaced concatenation, which downstream `canonical_type_name` handles).
+
+**Note on commit granularity:** B3.1 and B3.2 are mechanically coupled — replacing `arity: usize` with `payload_types: Vec<String>` in the AST forces the parser update in the same commit (otherwise the parser's `EnumVariant { ..., arity, ... }` initializer would not compile). Splitting would require either an additive intermediate state (both fields coexisting, then one removed) or a placeholder commit that pushes empty strings — both add noise without audit value. The two phases ship in a single commit whose message and this checkbox set map every change to its phase ID.
 
 **Deliverables:** Updated `parse_enum` with passing unit test.
 

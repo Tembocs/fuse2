@@ -153,7 +153,13 @@ pub struct DataClassDecl {
 #[derive(Clone, Debug)]
 pub struct EnumVariant {
     pub name: String,
-    pub arity: usize,
+    /// Type names of the variant's payload positions, in source order.
+    /// Empty for unit variants. The previous `arity: usize` field has
+    /// been replaced — use `payload_types.len()` for the count.
+    /// Captured by the parser so that codegen `bind_pattern` can
+    /// resolve the concrete payload type for user-defined variants
+    /// (B3 + B6 of docs/fuse-stage2-parity-plan.md).
+    pub payload_types: Vec<String>,
     pub span: Span,
 }
 
