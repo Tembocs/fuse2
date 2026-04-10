@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use crate::ast::nodes as hir;
 use crate::autogen;
+use crate::codegen::type_names::unify_match_arm_types;
 use crate::common::resolve_import_path;
 use crate::error::{Diagnostic, Span};
 use crate::hir::{lower_program, Module};
@@ -1290,11 +1291,34 @@ impl Checker {
             hir::Expr::Match(match_expr) => {
                 self.check_expr(module, &match_expr.subject, scope, owner_name, loop_depth);
                 let mut arm_scopes = Vec::new();
+                // B7.4 — Capture each arm expression's inferred type
+                // and its span so we can validate arm compatibility
+                // per rules U1-U6 from the parity plan.
+                let mut arm_types: Vec<(Option<String>, Span)> = Vec::with_capacity(match_expr.arms.len());
                 for arm in &match_expr.arms {
                     let mut local = scope.clone();
                     self.check_arm_body(module, &arm.body, &mut local, owner_name, loop_depth);
+                    // B7.4 — Infer the arm's output type. For a
+                    // block body, the type comes from the block's
+                    // trailing expression (via `infer_block_type`),
+                    // NOT from a hardcoded "Unit". Many existing
+                    // fixtures use `Ok(p) => { ...; state.diagnostics }`
+                    // where the block evaluates to a non-Unit type;
+                    // marking those as Unit would false-positive a
+                    // "Unit vs List" diagnostic against a sibling
+                    // list arm.
+                    let ty = match &arm.body {
+                        hir::ArmBody::Expr(expr) => {
+                            self.infer_expr_type(module, expr, &local, owner_name)
+                        }
+                        hir::ArmBody::Block(block) => {
+                            self.infer_block_type(module, block, &local, owner_name)
+                        }
+                    };
+                    arm_types.push((ty, arm.span));
                     arm_scopes.push(local);
                 }
+                self.check_match_arm_compatibility(module, &arm_types);
                 // Merge: if moved in any arm, mark as moved in parent.
                 for (name, binding) in scope.iter_mut() {
                     if arm_scopes.iter().any(|s| s.get(name).map_or(false, |b| b.moved)) {
@@ -1351,6 +1375,80 @@ impl Checker {
                 }
             }
             hir::ArmBody::Expr(expr) => self.check_expr(module, expr, scope, owner_name, loop_depth),
+        }
+    }
+
+    /// B7.4 — Validate that every known arm type unifies per rules
+    /// U1-U6 (see docs/fuse-stage2-parity-plan.md). On Rule U5
+    /// (incompatible arms), emit a diagnostic pointing at the two
+    /// arms whose types could not unify, naming both types.
+    ///
+    /// The helper is conservative: it only flags arms where both
+    /// types are *known*. Arms whose expression type inference
+    /// returned `None` are skipped — they neither block nor trigger
+    /// the diagnostic. This matches the codegen's behavior in
+    /// `unify_match_arm_types` (the None case is Rule U6, not U5).
+    ///
+    /// The diagnostic is only emitted once per match expression,
+    /// naming the first known arm and the first subsequent arm that
+    /// fails to unify with it pairwise. Reporting every clashing
+    /// pair would produce noise when three or more arms disagree;
+    /// the first clash is enough for the user to locate the bug.
+    fn check_match_arm_compatibility(
+        &mut self,
+        module: &ModuleInfo,
+        arm_types: &[(Option<String>, Span)],
+    ) {
+        // Collect only arms whose type is known. Arms with
+        // unknown types are ignored (Rule U6 — insufficient info,
+        // not an error).
+        let knowns: Vec<&(Option<String>, Span)> = arm_types
+            .iter()
+            .filter(|(ty, _)| ty.is_some())
+            .collect();
+        if knowns.len() < 2 {
+            return;
+        }
+
+        // Feed every known arm type into the full unifier. If it
+        // returns Some, every arm unifies under rules U1-U4 and
+        // there is nothing to report.
+        let types_only: Vec<Option<String>> =
+            knowns.iter().map(|(ty, _)| ty.clone()).collect();
+        if unify_match_arm_types(&types_only).is_some() {
+            return;
+        }
+
+        // Unification failed — Rule U5 (incompatible arms). Find
+        // the first pair of known-type arms that can't unify
+        // pairwise, and point the diagnostic at the second arm of
+        // that pair (the one that introduces the conflict). This
+        // localizes the error to the "new" arm from the user's
+        // perspective, which is usually where they made the
+        // mistake. Only one diagnostic per match expression is
+        // emitted to avoid cascades when 3+ arms disagree.
+        for i in 0..knowns.len() {
+            for j in (i + 1)..knowns.len() {
+                let a = knowns[i].0.as_deref().unwrap();
+                let b = knowns[j].0.as_deref().unwrap();
+                let pair = [Some(a.to_string()), Some(b.to_string())];
+                if unify_match_arm_types(&pair).is_none() {
+                    let message = format!(
+                        "match arms have incompatible types `{a}` and `{b}`"
+                    );
+                    let hint = Some(
+                        "every arm of a match used as an expression must produce a unifiable type"
+                            .to_string(),
+                    );
+                    self.add_error(
+                        &display_name(&module.path),
+                        knowns[j].1,
+                        message,
+                        hint,
+                    );
+                    return;
+                }
+            }
         }
     }
 

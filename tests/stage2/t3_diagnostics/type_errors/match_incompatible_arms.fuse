@@ -1,0 +1,17 @@
+// EXPECTED ERROR:
+// match arms have incompatible types `Int` and `String`
+
+// B7.4 — An Int arm and a String arm cannot be unified
+// under rules U1-U6, so the checker rejects this match
+// used in expression position with a clear diagnostic
+// that names both types.
+
+@entrypoint
+fn main() {
+  val x = 3
+  val y = match x {
+    1 => 42
+    _ => "hello"
+  }
+  println(y)
+}

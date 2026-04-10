@@ -1075,10 +1075,10 @@ import.
 
 **Tasks:**
 
-- [ ] **B7.4.1** Move `unify_match_arm_types` to a shared location.
-- [ ] **B7.4.2** Call it from the checker's match handling.
-- [ ] **B7.4.3** Emit "match arms have incompatible types `A` and `B`" with spans.
-- [ ] **B7.4.4** T3 fixture: `match_incompatible_arms.fuse` expecting the new error.
+- [x] **B7.4.1** Rather than physically moving the helper, the checker imports it directly: `use crate::codegen::type_names::unify_match_arm_types`. The function is pure — no codegen-specific types — so cross-module use is fine. Deviation from the plan's "new shared `types.rs` module" wording is documented here and in the commit message. Avoids duplicating the 8 existing unit tests and keeps a single source of truth.
+- [x] **B7.4.2** New `check_match_arm_compatibility(&mut self, module, arm_types)` in `checker/mod.rs`, called from the `hir::Expr::Match` branch of `check_expr` (line ~1290). Each arm's output type is inferred while the arm's scope is still live (pattern bindings included), using `infer_expr_type` for expression arms and `infer_block_type` for block arms. **Critical fix uncovered during B7.4:** an earlier draft hardcoded block-arm types to `Some("Unit")`, which false-positive-flagged every existing fixture that used `match x { Some(y) => { ...; state.diagnostics }, Err(m) => [...] }` (Unit vs List). Per Rule 2, fixed in the same phase: the block arm's type now flows from its trailing expression via the existing `infer_block_type` helper.
+- [x] **B7.4.3** Diagnostic: `match arms have incompatible types \`A\` and \`B\`` with a hint `every arm of a match used as an expression must produce a unifiable type`. Spans point at the second arm of the first failing pair (pairwise linear search over known-type arms). Only one diagnostic per match expression to avoid cascade noise when 3+ arms disagree.
+- [x] **B7.4.4** `tests/stage2/t3_diagnostics/type_errors/match_incompatible_arms.fuse` (Int vs String arms) confirms the new error.
 
 **Deliverables:** Shared helper and checker diagnostic.
 
