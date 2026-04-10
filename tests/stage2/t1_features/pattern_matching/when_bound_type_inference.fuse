@@ -1,0 +1,25 @@
+// EXPECTED OUTPUT:
+// a=5 label=low
+// size=3
+
+// B7.5 — `when` used in expression position unifies its arm
+// types via `infer_expr_type`. Before B7.5, the checker and
+// codegen both returned None for Whens, which left variables
+// bound to a when expression with no type and prevented
+// method resolution on the binding. After B7.5, the unified
+// arm type flows through so `label.len()` resolves.
+
+import stdlib.core.string
+
+@entrypoint
+fn main() {
+  val a = 5
+  val label = when {
+    a < 0 => "negative"
+    a < 10 => "low"
+    else => "high"
+  }
+  println(f"a={a} label={label}")
+  val size: Int = label.len()
+  println(f"size={size}")
+}

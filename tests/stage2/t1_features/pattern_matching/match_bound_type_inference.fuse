@@ -1,0 +1,26 @@
+// EXPECTED OUTPUT:
+// 3
+
+// B7.5 — A variable bound to a match expression (without an
+// explicit annotation) must pick up the unified arm type via
+// `infer_expr_type`. Without B7.5, `infer_expr_type(Match)`
+// takes the first arm's type via `find_map` (List<Int> for
+// the single-element arm), and the empty-list fallback has
+// no effect — but the second arm, which is also List<Int>,
+// still unifies cleanly. The real exercise is `xs.len()`
+// where the binding must carry a concrete List<Int> so the
+// `len()` extension method resolves.
+
+import stdlib.core.list
+
+@entrypoint
+fn main() {
+  val flag = 2
+  val xs = match flag {
+    1 => [1]
+    2 => [1, 2, 3]
+    _ => []
+  }
+  val y: Int = xs.len()
+  println(y)
+}

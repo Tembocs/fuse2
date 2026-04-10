@@ -235,7 +235,7 @@ closed, so the checker — not a reviewer — drives the fix).
 | B4 | Codegen: Generic Type Substitution | 3 | 11 | B1 | **Done** (commits a088b10, 8007a41, 6e6802a) |
 | B5 | Codegen: Hardcoded Specialization Ordering | 2 | 9 | B4 | **Done** (commits 5c6a8e0, f0d594b) |
 | B6 | Codegen: User-Defined Enum Variant Binding | 3 | 12 | B3, B4 | **Done** (commits 5b7c30f, 893504a, 9b29660) |
-| B7 | Codegen: Match-as-Expression Type Unification | 5 | 22 | B4, B5 | In progress |
+| B7 | Codegen: Match-as-Expression Type Unification | 5 | 22 | B4, B5 | **Done** (commits 8b93265, b434a2a, d78f122, f3d86af, af35565, + B7.5) |
 | B8 | Codegen: Namespace Static Method Calls | 3 | 11 | B5 | Not started |
 | B9 | Codegen: Tuple Field Access Type Propagation | 3 | 10 | B7 | Not started |
 | B10 | Lexer: F-String Brace Escaping | 3 | 9 | — | Not started |
@@ -1103,12 +1103,12 @@ deeply nested matches.
 
 **Tasks:**
 
-- [ ] **B7.5.1** Add the `fa::Expr::Match(match_expr)` arm to `infer_expr_type`.
-- [ ] **B7.5.2** For each arm body, recursively call `infer_expr_type`.
-- [ ] **B7.5.3** Unify the results via `unify_match_arm_types`.
-- [ ] **B7.5.4** Add `fa::Expr::When(_)` handling with the same logic (when expressions are isomorphic).
-- [ ] **B7.5.5** Test: `val x = match foo { A => [1], B => [] }; val y: Int = x.len()` — compiles and runs.
-- [ ] **B7.5.6** Test: `val x = when { a => Some(1), else => None }; val y: Int = x.unwrapOr(0)`.
+- [x] **B7.5.1** The existing `fa::Expr::Match` case in codegen `infer_expr_type` (line ~5493) used `arms.iter().find_map(infer_expr_type)`. Replaced with a call to a new depth-bounded helper `infer_match_expr_type(match_expr, 16)`.
+- [x] **B7.5.2** The helper collects each arm's body type via `infer_arm_body_type`. Block arms return `Unit` (matching the previous behavior — refining block inference via `infer_block_type` would require threading a scope through `infer_expr_type` which is `&self` without a scope parameter; the codegen reads `self.locals` directly. The checker already has the richer `infer_block_type` and uses it in B7.5 for its side.)
+- [x] **B7.5.3** Arm bodies flow into `unify_match_arm_types` at the end of `infer_match_expr_type`, so rules U1-U6 apply.
+- [x] **B7.5.4** Added `fa::Expr::When(_)` handling via `infer_when_expr_type` (depth-bounded mirror). Plus: `compile_when` previously hardcoded its result `ty = Some("Unit")` even though the SSA value at `done` is whatever the arms produced. Fixed it to call `unify_match_arm_types` on the arm types it now also collects (same pattern as B7.3's `compile_match`). Without this, `val x = when {...}` couldn't flow its type to subsequent member calls even with infer_expr_type fixed, since compile_when was the authoritative source when called directly.
+- [x] **B7.5.5** `tests/stage2/t1_features/pattern_matching/match_bound_type_inference.fuse` — `val xs = match flag { 1 => [1], 2 => [1,2,3], _ => [] }; val y: Int = xs.len()`.
+- [x] **B7.5.6** `tests/stage2/t1_features/pattern_matching/when_bound_type_inference.fuse` — simplified from the plan's `.unwrapOr(0)` formulation because `Option<Int>.unwrapOr` hits a pre-existing `substitute_type_vars` gap in the checker (returns `T` literally instead of `Int`). Substituted with `val label = when { ... }; val size: Int = label.len()` — same B7.5 coverage (unified arm type flows through `val` binding, subsequent method call resolves), different extension method. The pre-existing `unwrapOr` gap is tracked separately; fixing it is out of scope for B7.
 
 **Deliverables:** Match and When cases in `infer_expr_type`.
 

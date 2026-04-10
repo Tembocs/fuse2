@@ -2021,14 +2021,49 @@ impl Checker {
                 }
                 _ => None,
             },
-            hir::Expr::Match(match_expr) => match_expr.arms.first().and_then(|arm| match &arm.body {
-                hir::ArmBody::Expr(expr) => self.infer_expr_type(module, expr, scope, owner_name),
-                hir::ArmBody::Block(block) => self.infer_block_type(module, block, scope, owner_name),
-            }),
+            // B7.5 — Match expression type = unification of every
+            // arm's output type (rules U1-U6). Block arms contribute
+            // their trailing expression's type via `infer_block_type`;
+            // expression arms contribute their inferred type. Nested
+            // Match/When arms are bounded to depth 16 in the codegen
+            // mirror; the checker's recursion is naturally bounded
+            // by the AST depth and the `infer_expr_type` chain, so
+            // an explicit depth limit is unnecessary here.
+            hir::Expr::Match(match_expr) => {
+                let arm_types: Vec<Option<String>> = match_expr
+                    .arms
+                    .iter()
+                    .map(|arm| match &arm.body {
+                        hir::ArmBody::Expr(expr) => {
+                            self.infer_expr_type(module, expr, scope, owner_name)
+                        }
+                        hir::ArmBody::Block(block) => {
+                            self.infer_block_type(module, block, scope, owner_name)
+                        }
+                    })
+                    .collect();
+                unify_match_arm_types(&arm_types)
+            }
             hir::Expr::Move(move_expr) => self.infer_expr_type(module, &move_expr.value, scope, owner_name),
             hir::Expr::Ref(expr) => self.infer_expr_type(module, &expr.value, scope, owner_name),
             hir::Expr::MutRef(expr) => self.infer_expr_type(module, &expr.value, scope, owner_name),
-            hir::Expr::When(_) => None,
+            // B7.5 — Same unification treatment for `when` (which
+            // is isomorphic to `match` for typing purposes).
+            hir::Expr::When(when_expr) => {
+                let arm_types: Vec<Option<String>> = when_expr
+                    .arms
+                    .iter()
+                    .map(|arm| match &arm.body {
+                        hir::ArmBody::Expr(expr) => {
+                            self.infer_expr_type(module, expr, scope, owner_name)
+                        }
+                        hir::ArmBody::Block(block) => {
+                            self.infer_block_type(module, block, scope, owner_name)
+                        }
+                    })
+                    .collect();
+                unify_match_arm_types(&arm_types)
+            }
             hir::Expr::Tuple(tuple) => {
                 let types: Vec<String> = tuple.items.iter().filter_map(|item| self.infer_expr_type(module, item, scope, owner_name)).collect();
                 Some(format!("({})", types.join(",")))

@@ -4721,6 +4721,12 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         builder.append_block_param(done, self.compiler.pointer_type);
         let mut next = builder.create_block();
         builder.ins().jump(next, &[]);
+        // B7.5 — Capture each arm's compiled type for arm
+        // unification, mirroring `compile_match`. Previously
+        // `compile_when` returned a hardcoded `Unit` type, which
+        // prevented `val x = when { ... }` from flowing its type
+        // through to subsequent member calls on `x`.
+        let mut arm_types: Vec<Option<String>> = Vec::with_capacity(when_expr.arms.len());
         for arm in &when_expr.arms {
             builder.switch_to_block(next);
             let body_block = builder.create_block();
@@ -4743,6 +4749,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     }
                 }
             };
+            arm_types.push(value.ty.clone());
             if !self.current_block_is_terminated(builder) {
                 self.jump_value(builder, done, value.value);
             }
@@ -4754,7 +4761,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         builder.switch_to_block(done);
         Ok(TypedValue {
             value: builder.block_params(done)[0],
-            ty: Some("Unit".to_string()),
+            ty: unify_match_arm_types(&arm_types),
         })
     }
 
@@ -5489,11 +5496,15 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 .as_deref()
                 .and_then(result_ok_type)
                 .map(|value| value.to_string()),
-            fa::Expr::If(_) | fa::Expr::When(_) => Some("Unit".to_string()),
-            fa::Expr::Match(match_expr) => match_expr.arms.iter().find_map(|arm| match &arm.body {
-                fa::ArmBody::Expr(expr) => self.infer_expr_type(expr),
-                fa::ArmBody::Block(_) => Some("Unit".to_string()),
-            }),
+            fa::Expr::If(_) => Some("Unit".to_string()),
+            // B7.5 — Match and When expressions infer their type
+            // via arm unification (rules U1-U6) rather than picking
+            // the first arm's type. The depth bound caps recursion
+            // when arms themselves contain nested match/when
+            // expressions; 16 levels is deeper than any realistic
+            // source code and keeps the helper total.
+            fa::Expr::Match(match_expr) => self.infer_match_expr_type(match_expr, 16),
+            fa::Expr::When(when_expr) => self.infer_when_expr_type(when_expr, 16),
             fa::Expr::Lambda(lambda) => {
                 let param_types: Vec<String> = lambda
                     .params
@@ -5507,6 +5518,49 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 let types: Vec<String> = tuple.items.iter().filter_map(|item| self.infer_expr_type(item)).collect();
                 Some(format!("({})", types.join(",")))
             }
+        }
+    }
+
+    /// B7.5 — Infer a match expression's type by unifying every
+    /// arm's body type. The `depth` bound protects against
+    /// pathological AST nesting (e.g., 100+ levels of match
+    /// inside match); the helper gives up and returns `None`
+    /// rather than panicking when depth is exhausted.
+    fn infer_match_expr_type(&self, match_expr: &fa::MatchExpr, depth: usize) -> Option<String> {
+        if depth == 0 {
+            return None;
+        }
+        let arm_types: Vec<Option<String>> = match_expr
+            .arms
+            .iter()
+            .map(|arm| self.infer_arm_body_type(&arm.body, depth))
+            .collect();
+        unify_match_arm_types(&arm_types)
+    }
+
+    fn infer_when_expr_type(&self, when_expr: &fa::WhenExpr, depth: usize) -> Option<String> {
+        if depth == 0 {
+            return None;
+        }
+        let arm_types: Vec<Option<String>> = when_expr
+            .arms
+            .iter()
+            .map(|arm| self.infer_arm_body_type(&arm.body, depth))
+            .collect();
+        unify_match_arm_types(&arm_types)
+    }
+
+    fn infer_arm_body_type(&self, body: &fa::ArmBody, depth: usize) -> Option<String> {
+        match body {
+            fa::ArmBody::Block(_) => Some("Unit".to_string()),
+            fa::ArmBody::Expr(expr) => match expr {
+                // When an arm body is itself a match/when,
+                // decrement depth so we cannot loop forever
+                // through a pathological AST.
+                fa::Expr::Match(inner) => self.infer_match_expr_type(inner, depth - 1),
+                fa::Expr::When(inner) => self.infer_when_expr_type(inner, depth - 1),
+                other => self.infer_expr_type(other),
+            },
         }
     }
 }
