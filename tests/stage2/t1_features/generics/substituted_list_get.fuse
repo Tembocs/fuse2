@@ -1,0 +1,23 @@
+// EXPECTED OUTPUT:
+// 42
+// 99
+
+// B4.3.5 — extension call site generic substitution end-to-end.
+// Before B4.3 the codegen returned the literal `Option<T>` for
+// List<Int>.get(...), and the chained `.unwrapOr(0)` could not see
+// that T was Int. After B4.3 the substituted return type is
+// Option<Int>, and the unwrapOr call resolves to the correct
+// extension and produces an Int.
+
+import stdlib.core.option
+
+@entrypoint
+fn main() {
+  val xs: List<Int> = [42, 17, 8]
+  val first: Int = xs.get(0).unwrapOr(0)
+  println(first)
+
+  val empty: List<Int> = []
+  val fallback: Int = empty.get(0).unwrapOr(99)
+  println(fallback)
+}

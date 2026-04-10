@@ -1,0 +1,29 @@
+// EXPECTED OUTPUT:
+// 7
+// hello
+
+// B4.3.6 — generic substitution for user-defined generic data classes.
+// `Pair<A, B>` declares two type parameters; the extension method
+// `Pair.first(ref self) -> A` has formal return type A. After B4.3,
+// calling Pair<Int, String>.first() returns the substituted Int.
+//
+// Before B4.3 the codegen returned the literal "A" as the return
+// type, downstream code could not look up a layout for "A", and the
+// compile failed with "missing layout for `A`".
+
+data class Pair<A, B>(val first: A, val second: B)
+
+fn Pair.first(ref self) -> A {
+  self.first
+}
+
+fn Pair.second(ref self) -> B {
+  self.second
+}
+
+@entrypoint
+fn main() {
+  val p = Pair(7, "hello")
+  println(p.first())
+  println(p.second())
+}

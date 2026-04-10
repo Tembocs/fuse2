@@ -2420,9 +2420,16 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 .ok_or_else(|| format!("missing function id for `{symbol}`"))?;
             let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
             let call = builder.ins().call(local, &[receiver.value]);
+            // B4.3: substitute generic type params in the return type
+            // against the receiver's concrete generic args. Without
+            // this, calling `List<RuntimeFn>.get()` returns the literal
+            // string "Option<T>" and downstream type tracking breaks.
+            let substituted = function.return_type.as_deref().map(|raw| {
+                self.compiler.session.substitute_return_type(&receiver_type, raw)
+            });
             return Ok(TypedValue {
                 value: builder.inst_results(call)[0],
-                ty: function.return_type.clone(),
+                ty: substituted,
             });
         }
         Err(format!(
@@ -2660,9 +2667,14 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         let func_id = *self.compiler.function_ids.get(&symbol)?;
         let local = self.compiler.module.declare_func_in_func(func_id, builder.func);
         let call = builder.ins().call(local, args);
+        // B4.3: substitute generic type params from the receiver type
+        // into the function's formal return type.
+        let substituted = function.return_type.as_deref().map(|raw| {
+            self.compiler.session.substitute_return_type(receiver_type, raw)
+        });
         Some(TypedValue {
             value: builder.inst_results(call)[0],
-            ty: function.return_type.clone(),
+            ty: substituted,
         })
     }
 
@@ -3535,9 +3547,19 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 lowered_args.push(self.compile_expr(builder, arg)?.value);
             }
             let call = builder.ins().call(local, &lowered_args);
+            // B4.3: substitute generic type params in the return type.
+            // This is the canonical fix from the parity plan: before
+            // B4.3 the codegen returned `function.return_type.clone()`
+            // verbatim, so calling List<RuntimeFn>.get() produced the
+            // literal string "Option<T>" and downstream layout lookups
+            // tried to find a type named `T`. After B4.3 the result is
+            // "Option<RuntimeFn>" and pattern binding works.
+            let substituted = function.return_type.as_deref().map(|raw| {
+                self.compiler.session.substitute_return_type(&receiver_type, raw)
+            });
             return Ok(TypedValue {
                 value: builder.inst_results(call)[0],
-                ty: function.return_type.clone(),
+                ty: substituted,
             });
         }
         if receiver_type.starts_with("List") {
@@ -5153,7 +5175,13 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         .session
                         .resolve_extension(&receiver_type, &member.name)
                     {
-                        return function.return_type.clone();
+                        // B4.3: substitute generic params in the return
+                        // type so downstream callers see concrete types
+                        // (e.g., chain receivers like
+                        // `xs.first()?.field`).
+                        return function.return_type.as_deref().map(|raw| {
+                            self.compiler.session.substitute_return_type(&receiver_type, raw)
+                        });
                     }
                     if layout::canonical_type_name(&receiver_type) == "Chan" {
                         return match member.name.as_str() {

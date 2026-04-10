@@ -232,7 +232,7 @@ closed, so the checker — not a reviewer — drives the fix).
 | B1 | Determinism | 2 | 7 | B0 | **Done** (commits 1ebbf1e, fb09dba) |
 | B2 | Checker: Extension Resolution Enforcement | 3 | 11 | B1 | **Done** (commits f5cb947, 99af0a0, 9b0e77c) |
 | B3 | Parser & AST: Enum Variant Payload Types | 2 | 8 | B1 | **Done** (commit 730d18e) |
-| B4 | Codegen: Generic Type Substitution | 3 | 11 | B1 | Not started |
+| B4 | Codegen: Generic Type Substitution | 3 | 11 | B1 | **Done** (commits a088b10, 8007a41, B4.3 pending push) |
 | B5 | Codegen: Hardcoded Specialization Ordering | 2 | 9 | B4 | Not started |
 | B6 | Codegen: User-Defined Enum Variant Binding | 3 | 12 | B3, B4 | Not started |
 | B7 | Codegen: Match-as-Expression Type Unification | 5 | 22 | B4, B5 | Not started |
@@ -716,12 +716,14 @@ extract concrete type arguments from `receiver_type` (via
 
 **Tasks:**
 
-- [ ] **B4.3.1** Modify `compile_member_call` at [object_backend.rs:3454-3457](../stage1/fusec/src/codegen/object_backend.rs#L3454-L3457) to substitute.
-- [ ] **B4.3.2** Handle the edge case where `receiver_type` has no generic args (e.g., plain `"List"`) — fall back to no substitution (the return type stays as formal).
-- [ ] **B4.3.3** Handle the edge case where the function has no return type (Unit fn).
-- [ ] **B4.3.4** Run the full Rust test suite. Any test that previously relied on the buggy behavior is now a real bug to fix.
-- [ ] **B4.3.5** Add a focused test: compile a fuse file with `val x: Int = (myList.get(0)).unwrapOr(0)` where `myList: List<Int>`. The `.get()` return type must be `Option<Int>`.
-- [ ] **B4.3.6** Add a focused test with a user-defined generic type: `data class Pair<A, B>(val first: A, val second: B)` and an extension `fn Pair.first(ref self) -> A` — verify `Pair<Int, String>.first()` returns `Int`.
+- [x] **B4.3.1** Modify `compile_member_call` at [object_backend.rs:3454-3457](../stage1/fusec/src/codegen/object_backend.rs#L3454-L3457) to substitute. Fixed via `self.compiler.session.substitute_return_type(&receiver_type, raw)` at the canonical site; also fixed three sibling sites with the same bug: `call_zero_arg_member`'s extension fallback (line ~2361), `compile_runtime_call_extension` helper (line ~2601), and `infer_expr_type`'s codegen-side member-call branch (line ~5092). Two unrelated `function.return_type.clone()` sites at the static and module-qualified call paths (3349, 3369) are NOT extension calls — receiver type isn't a value type there — and were correctly left alone.
+- [x] **B4.3.2** Handle the edge case where `receiver_type` has no generic args (e.g., plain `"List"`) — fall back to no substitution (the return type stays as formal). Implemented in `BuildSession::substitute_return_type`: when `split_generic_args` returns None, the formal return type is returned unchanged. Test `substitute_return_type_resolves_list_get_inner_type` covers this case.
+- [x] **B4.3.3** Handle the edge case where the function has no return type (Unit fn). Implemented via `function.return_type.as_deref().map(...)` — if `return_type` is None, no substitution attempt is made and the result is None (Unit). All four call sites use this pattern.
+- [x] **B4.3.4** Run the full Rust test suite. Any test that previously relied on the buggy behavior is now a real bug to fix. **Confirmed:** 111 passed, 6 failing (same six pre-existing failures, no new failures, no morphing). Stage 2 fixture suite: 381 passed / 0 failed / 3 skipped (was 379 before; +2 new B4.3 fixtures).
+- [x] **B4.3.5** Add a focused test: compile a fuse file with `val x: Int = (myList.get(0)).unwrapOr(0)` where `myList: List<Int>`. The `.get()` return type must be `Option<Int>`. **Created** `tests/stage2/t1_features/generics/substituted_list_get.fuse`. Both the populated and empty list cases pass; the chain `xs.get(0).unwrapOr(0)` resolves correctly because `get` now returns `Option<Int>` and `unwrapOr` finds the matching stdlib extension on `Option<Int>`.
+- [x] **B4.3.6** Add a focused test with a user-defined generic type: `data class Pair<A, B>(val first: A, val second: B)` and an extension `fn Pair.first(ref self) -> A` — verify `Pair<Int, String>.first()` returns `Int`. **Created** `tests/stage2/t1_features/generics/substituted_user_generic.fuse`. Tests both `Pair.first() -> A` and `Pair.second() -> B` to exercise both type parameters of a multi-param generic. Passes on first run.
+
+**Probe of `stage2/src/main.fuse`:** after B4 lands, `fusec --check stage2/src/main.fuse` now reports only two distinct errors, both pure missing-import diagnostics that B11 will close (`no method 'concat' on type 'List<String>'` with the list import hint, and `no method 'unwrap' on type 'Option<String>'` with the option import hint). Critically, the second error shows the substituted type `Option<String>` rather than bare `Option<T>` — confirming B4.3 is working end-to-end on real Stage 2 source. Before B4, this same code would have produced cascading "missing layout for `T`" or "unknown extension" errors.
 
 **Deliverables:** Correct substitution at the extension call site with
 two tests.
