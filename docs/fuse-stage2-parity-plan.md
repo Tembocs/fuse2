@@ -656,9 +656,9 @@ alpha or `_`) and replaces only complete identifiers.
 
 **Tasks:**
 
-- [ ] **B4.1.1** Implement `substitute_generics` in `type_names.rs`.
-- [ ] **B4.1.2** Implement `build_type_param_map(type_params: &[String], concrete_args: &[String]) -> HashMap<String, String>` — zips formal params with concrete arguments.
-- [ ] **B4.1.3** Unit tests covering: `Option<T>` → `Option<Int>`; `List<T>` → `List<String>`; `Result<T, E>` → `Result<Int, String>`; `Map<K, V>` → `Map<String, Int>`; nested: `List<Option<T>>` → `List<Option<Int>>`; no-match: `Int` → `Int`; edge: name prefix collision `Tail` with param `T` → must remain `Tail`, not `Intail`.
+- [x] **B4.1.1** Implement `substitute_generics` in `type_names.rs`. Whole-word identifier replacement using a byte-level scanner — identifiers are ASCII letter/underscore start, alphanumeric/underscore continue. Empty map returns input unchanged. Non-identifier bytes (`<`, `>`, `,`, ` `) are emitted verbatim.
+- [x] **B4.1.2** Implement `build_type_param_map(type_params: &[String], concrete_args: &[String]) -> HashMap<String, String>` — zips formal params with concrete arguments. Empty inputs yield an empty map. Length mismatch uses the common prefix.
+- [x] **B4.1.3** Unit tests covering: `Option<T>` → `Option<Int>`; `List<T>` → `List<String>`; `Result<T, E>` → `Result<Int, String>`; `Map<K, V>` → `Map<String, Int>`; nested: `List<Option<T>>` → `List<Option<Int>>`; no-match: `Int` → `Int`; edge: name prefix collision `Tail` with param `T` → must remain `Tail`, not `Intail`. **16 unit tests** in `codegen::type_names::tests` cover all six requirements above plus: empty-map fast path, identifier-suffix collision (`MyT` vs `T`), underscore-in-identifier (`T_inner` vs `T`), unspaced arglist (`Map<K,V>` matching the parser's output format), and the `builtin_type_params` table.
 
 **Deliverables:** Two new functions with unit test coverage.
 
