@@ -3530,6 +3530,415 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 });
             }
         }
+        // B5: hardcoded built-in dispatch for List/Chan/Shared/Map/String
+        // runs FIRST. Each block returns immediately on a matched method
+        // and falls through (`_ => {}`) to the extension resolution
+        // pass below for unknown methods. This ensures that core
+        // operations like `xs.len()`, `m.set(k, v)`, `s.toUpper()` use
+        // the precise hardcoded dispatch even when the corresponding
+        // stdlib module is imported, while methods not covered by the
+        // hardcoded blocks (e.g., List.concat from stdlib.core.list)
+        // route through extension resolution with B4.3 substitution.
+        if receiver_type.starts_with("List") {
+            // B5: hardcoded List dispatch runs BEFORE extension
+            // resolution. Matched arms return immediately; the
+            // catch-all falls through to the extension block below.
+            match member.name.as_str() {
+                "len" => {
+                    let raw_len = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.list_len,
+                        &[receiver.value],
+                        types::I64,
+                    );
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.int,
+                            &[raw_len],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Int".to_string()),
+                    });
+                }
+                "get" => {
+                    let index = self.compile_expr(builder, &args[0])?;
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.rt_list_get,
+                            &[receiver.value, index.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: {
+                            // List<X>.get(i) returns Option<X>
+                            let inner = receiver_type.strip_prefix("List<")
+                                .and_then(|s| s.strip_suffix('>'))
+                                .unwrap_or("Unknown")
+                                .to_string();
+                            Some(format!("Option<{inner}>"))
+                        },
+                    });
+                }
+                "push" => {
+                    let item = self.compile_expr(builder, &args[0])?;
+                    self.runtime_void(
+                        builder,
+                        self.compiler.runtime.list_push,
+                        &[receiver.value, item.value],
+                    );
+                    return Ok(TypedValue {
+                        value: self.runtime_nullary(builder, self.compiler.runtime.unit),
+                        ty: Some("Unit".to_string()),
+                    });
+                }
+                _ => {} // fall through to extension resolution
+            }
+        }
+        if layout::canonical_type_name(&receiver_type) == "Chan" {
+            // B5: hardcoded Chan dispatch with fall-through.
+            match member.name.as_str() {
+                "send" => {
+                    let value = self.compile_expr(builder, &args[0])?;
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.chan_send,
+                            &[receiver.value, value.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Result<Unit, String>".to_string()),
+                    });
+                }
+                "recv" => {
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.chan_recv,
+                            &[receiver.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: {
+                            let inner = chan_inner_type(&receiver_type).unwrap_or_else(|| "Unknown".to_string());
+                            Some(format!("Result<{inner}, String>"))
+                        },
+                    });
+                }
+                "close" => {
+                    self.runtime_void(
+                        builder,
+                        self.compiler.runtime.chan_close,
+                        &[receiver.value],
+                    );
+                    return Ok(TypedValue {
+                        value: self.runtime_nullary(builder, self.compiler.runtime.unit),
+                        ty: Some("Unit".to_string()),
+                    });
+                }
+                "tryRecv" => {
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.chan_try_recv,
+                            &[receiver.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: {
+                            let inner = chan_inner_type(&receiver_type).unwrap_or_else(|| "Unknown".to_string());
+                            Some(format!("Option<{inner}>"))
+                        },
+                    });
+                }
+                "isClosed" => {
+                    let raw = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.chan_is_closed,
+                        &[receiver.value],
+                        types::I8,
+                    );
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.bool_,
+                            &[raw],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Bool".to_string()),
+                    });
+                }
+                "len" => {
+                    let raw_len = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.chan_len,
+                        &[receiver.value],
+                        types::I64,
+                    );
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.int,
+                            &[raw_len],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Int".to_string()),
+                    });
+                }
+                "cap" => {
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.chan_cap,
+                            &[receiver.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Option<Int>".to_string()),
+                    });
+                }
+                _ => {} // fall through to extension resolution
+            }
+        }
+        if layout::canonical_type_name(&receiver_type) == "Shared" {
+            // B5: hardcoded Shared dispatch with fall-through.
+            match member.name.as_str() {
+                "read" => {
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.shared_read,
+                            &[receiver.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: shared_inner_type(&receiver_type).or(Some("Unit".to_string())),
+                    });
+                }
+                "write" => {
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.shared_write,
+                            &[receiver.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: shared_inner_type(&receiver_type).or(Some("Unit".to_string())),
+                    });
+                }
+                "try_write" | "tryWrite" => {
+                    let timeout = self.compile_expr(
+                        builder,
+                        args.first()
+                            .ok_or_else(|| "Shared.tryWrite requires a timeout argument".to_string())?,
+                    )?;
+                    let inner = shared_inner_type(&receiver_type).unwrap_or_else(|| "Unit".to_string());
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.shared_try_write,
+                            &[receiver.value, timeout.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some(format!("Result<{inner}, String>")),
+                    });
+                }
+                "tryRead" => {
+                    let timeout = self.compile_expr(
+                        builder,
+                        args.first()
+                            .ok_or_else(|| "Shared.tryRead requires a timeout argument".to_string())?,
+                    )?;
+                    let inner = shared_inner_type(&receiver_type).unwrap_or_else(|| "Unit".to_string());
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.shared_try_read,
+                            &[receiver.value, timeout.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some(format!("Result<{inner}, String>")),
+                    });
+                }
+                _ => {} // fall through to extension resolution
+            }
+        }
+        if layout::canonical_type_name(&receiver_type) == "Map" {
+            // B5: hardcoded Map dispatch with fall-through.
+            match member.name.as_str() {
+                "set" => {
+                    let key = self.compile_expr(builder, &args[0])?;
+                    let value = self.compile_expr(builder, &args[1])?;
+                    self.runtime_void(
+                        builder,
+                        self.compiler.runtime.map_set,
+                        &[receiver.value, key.value, value.value],
+                    );
+                    return Ok(TypedValue {
+                        value: self.runtime_nullary(builder, self.compiler.runtime.unit),
+                        ty: Some("Unit".to_string()),
+                    });
+                }
+                "get" => {
+                    let key = self.compile_expr(builder, &args[0])?;
+                    // Map<K,V>.get(key) returns Option<V>
+                    let value_type = receiver_type.find(',')
+                        .and_then(|comma| {
+                            let after = &receiver_type[comma+1..];
+                            after.strip_suffix('>').map(|v| v.trim().to_string())
+                        });
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.rt_map_get,
+                            &[receiver.value, key.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: value_type.map(|v| format!("Option<{v}>")),
+                    });
+                }
+                "remove" => {
+                    let key = self.compile_expr(builder, &args[0])?;
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.map_remove,
+                            &[receiver.value, key.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: None,
+                    });
+                }
+                "len" => {
+                    let raw_len = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.map_len,
+                        &[receiver.value],
+                        types::I64,
+                    );
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.int,
+                            &[raw_len],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Int".to_string()),
+                    });
+                }
+                "isEmpty" => {
+                    let raw_len = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.map_len,
+                        &[receiver.value],
+                        types::I64,
+                    );
+                    let is_zero = builder.ins().icmp_imm(IntCC::Equal, raw_len, 0);
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.bool_,
+                            &[is_zero],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Bool".to_string()),
+                    });
+                }
+                "contains" => {
+                    let key = self.compile_expr(builder, &args[0])?;
+                    let raw = self.runtime_value(
+                        builder,
+                        self.compiler.runtime.map_contains,
+                        &[receiver.value, key.value],
+                        types::I8,
+                    );
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.bool_,
+                            &[raw],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Bool".to_string()),
+                    });
+                }
+                "keys" => {
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.map_keys,
+                            &[receiver.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("List<String>".to_string()),
+                    });
+                }
+                "values" => {
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.map_values,
+                            &[receiver.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("List<String>".to_string()),
+                    });
+                }
+                "entries" => {
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.map_entries,
+                            &[receiver.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("List<(String,String)>".to_string()),
+                    });
+                }
+                _ => {} // fall through to extension resolution
+            }
+        }
+        if layout::canonical_type_name(&receiver_type) == "String" {
+            // B5: hardcoded String dispatch with fall-through.
+            match member.name.as_str() {
+                "toUpper" => {
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.to_upper,
+                            &[receiver.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("String".to_string()),
+                    });
+                }
+                "isEmpty" => {
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.string_is_empty,
+                            &[receiver.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Bool".to_string()),
+                    });
+                }
+                "len" => {
+                    return Ok(TypedValue {
+                        value: self.runtime(
+                            builder,
+                            self.compiler.runtime.string_char_count,
+                            &[receiver.value],
+                            self.compiler.pointer_type,
+                        ),
+                        ty: Some("Int".to_string()),
+                    });
+                }
+                _ => {} // fall through to extension resolution
+            }
+        }
+
+        // Extension resolution: methods defined as `fn Type.method(...)`
+        // in user code or stdlib. After B4.3 the return type is
+        // substituted against the receiver's concrete generic args, so
+        // calling List<RuntimeFn>.first() correctly returns
+        // Option<RuntimeFn> not Option<T>.
         if let Some((target_module, function)) = self
             .compiler
             .session
@@ -3547,13 +3956,6 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 lowered_args.push(self.compile_expr(builder, arg)?.value);
             }
             let call = builder.ins().call(local, &lowered_args);
-            // B4.3: substitute generic type params in the return type.
-            // This is the canonical fix from the parity plan: before
-            // B4.3 the codegen returned `function.return_type.clone()`
-            // verbatim, so calling List<RuntimeFn>.get() produced the
-            // literal string "Option<T>" and downstream layout lookups
-            // tried to find a type named `T`. After B4.3 the result is
-            // "Option<RuntimeFn>" and pattern binding works.
             let substituted = function.return_type.as_deref().map(|raw| {
                 self.compiler.session.substitute_return_type(&receiver_type, raw)
             });
@@ -3561,374 +3963,6 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 value: builder.inst_results(call)[0],
                 ty: substituted,
             });
-        }
-        if receiver_type.starts_with("List") {
-            return match member.name.as_str() {
-                "len" => {
-                    let raw_len = self.runtime_value(
-                        builder,
-                        self.compiler.runtime.list_len,
-                        &[receiver.value],
-                        types::I64,
-                    );
-                    Ok(TypedValue {
-                        value: self.runtime(
-                            builder,
-                            self.compiler.runtime.int,
-                            &[raw_len],
-                            self.compiler.pointer_type,
-                        ),
-                        ty: Some("Int".to_string()),
-                    })
-                }
-                "get" => {
-                    let index = self.compile_expr(builder, &args[0])?;
-                    Ok(TypedValue {
-                        value: self.runtime(
-                            builder,
-                            self.compiler.runtime.rt_list_get,
-                            &[receiver.value, index.value],
-                            self.compiler.pointer_type,
-                        ),
-                        ty: {
-                            // List<X>.get(i) returns Option<X>
-                            let inner = receiver_type.strip_prefix("List<")
-                                .and_then(|s| s.strip_suffix('>'))
-                                .unwrap_or("Unknown")
-                                .to_string();
-                            Some(format!("Option<{inner}>"))
-                        },
-                    })
-                }
-                "push" => {
-                    let item = self.compile_expr(builder, &args[0])?;
-                    self.runtime_void(
-                        builder,
-                        self.compiler.runtime.list_push,
-                        &[receiver.value, item.value],
-                    );
-                    Ok(TypedValue {
-                        value: self.runtime_nullary(builder, self.compiler.runtime.unit),
-                        ty: Some("Unit".to_string()),
-                    })
-                }
-                _ => {
-                    // Fall through to extension resolution below.
-                    Err(format!("unsupported List member call `{}`", member.name))
-                }
-            };
-        }
-        if layout::canonical_type_name(&receiver_type) == "Chan" {
-            return match member.name.as_str() {
-                "send" => {
-                    let value = self.compile_expr(builder, &args[0])?;
-                    Ok(TypedValue {
-                        value: self.runtime(
-                            builder,
-                            self.compiler.runtime.chan_send,
-                            &[receiver.value, value.value],
-                            self.compiler.pointer_type,
-                        ),
-                        ty: Some("Result<Unit, String>".to_string()),
-                    })
-                }
-                "recv" => Ok(TypedValue {
-                    value: self.runtime(
-                        builder,
-                        self.compiler.runtime.chan_recv,
-                        &[receiver.value],
-                        self.compiler.pointer_type,
-                    ),
-                    ty: {
-                        let inner = chan_inner_type(&receiver_type).unwrap_or_else(|| "Unknown".to_string());
-                        Some(format!("Result<{inner}, String>"))
-                    },
-                }),
-                "close" => {
-                    self.runtime_void(
-                        builder,
-                        self.compiler.runtime.chan_close,
-                        &[receiver.value],
-                    );
-                    Ok(TypedValue {
-                        value: self.runtime_nullary(builder, self.compiler.runtime.unit),
-                        ty: Some("Unit".to_string()),
-                    })
-                }
-                "tryRecv" => Ok(TypedValue {
-                    value: self.runtime(
-                        builder,
-                        self.compiler.runtime.chan_try_recv,
-                        &[receiver.value],
-                        self.compiler.pointer_type,
-                    ),
-                    ty: {
-                        let inner = chan_inner_type(&receiver_type).unwrap_or_else(|| "Unknown".to_string());
-                        Some(format!("Option<{inner}>"))
-                    },
-                }),
-                "isClosed" => {
-                    let raw = self.runtime_value(
-                        builder,
-                        self.compiler.runtime.chan_is_closed,
-                        &[receiver.value],
-                        types::I8,
-                    );
-                    Ok(TypedValue {
-                        value: self.runtime(
-                            builder,
-                            self.compiler.runtime.bool_,
-                            &[raw],
-                            self.compiler.pointer_type,
-                        ),
-                        ty: Some("Bool".to_string()),
-                    })
-                }
-                "len" => {
-                    let raw_len = self.runtime_value(
-                        builder,
-                        self.compiler.runtime.chan_len,
-                        &[receiver.value],
-                        types::I64,
-                    );
-                    Ok(TypedValue {
-                        value: self.runtime(
-                            builder,
-                            self.compiler.runtime.int,
-                            &[raw_len],
-                            self.compiler.pointer_type,
-                        ),
-                        ty: Some("Int".to_string()),
-                    })
-                }
-                "cap" => Ok(TypedValue {
-                    value: self.runtime(
-                        builder,
-                        self.compiler.runtime.chan_cap,
-                        &[receiver.value],
-                        self.compiler.pointer_type,
-                    ),
-                    ty: Some("Option<Int>".to_string()),
-                }),
-                other => Err(format!("unsupported Chan member call `{other}`")),
-            };
-        }
-        if layout::canonical_type_name(&receiver_type) == "Shared" {
-            return match member.name.as_str() {
-                "read" => Ok(TypedValue {
-                    value: self.runtime(
-                        builder,
-                        self.compiler.runtime.shared_read,
-                        &[receiver.value],
-                        self.compiler.pointer_type,
-                    ),
-                    ty: shared_inner_type(&receiver_type).or(Some("Unit".to_string())),
-                }),
-                "write" => Ok(TypedValue {
-                    value: self.runtime(
-                        builder,
-                        self.compiler.runtime.shared_write,
-                        &[receiver.value],
-                        self.compiler.pointer_type,
-                    ),
-                    ty: shared_inner_type(&receiver_type).or(Some("Unit".to_string())),
-                }),
-                "try_write" | "tryWrite" => {
-                    let timeout = self.compile_expr(
-                        builder,
-                        args.first()
-                            .ok_or_else(|| "Shared.tryWrite requires a timeout argument".to_string())?,
-                    )?;
-                    let inner = shared_inner_type(&receiver_type).unwrap_or_else(|| "Unit".to_string());
-                    Ok(TypedValue {
-                        value: self.runtime(
-                            builder,
-                            self.compiler.runtime.shared_try_write,
-                            &[receiver.value, timeout.value],
-                            self.compiler.pointer_type,
-                        ),
-                        ty: Some(format!("Result<{inner}, String>")),
-                    })
-                }
-                "tryRead" => {
-                    let timeout = self.compile_expr(
-                        builder,
-                        args.first()
-                            .ok_or_else(|| "Shared.tryRead requires a timeout argument".to_string())?,
-                    )?;
-                    let inner = shared_inner_type(&receiver_type).unwrap_or_else(|| "Unit".to_string());
-                    Ok(TypedValue {
-                        value: self.runtime(
-                            builder,
-                            self.compiler.runtime.shared_try_read,
-                            &[receiver.value, timeout.value],
-                            self.compiler.pointer_type,
-                        ),
-                        ty: Some(format!("Result<{inner}, String>")),
-                    })
-                }
-                other => Err(format!("unsupported Shared member call `{other}`")),
-            };
-        }
-        if layout::canonical_type_name(&receiver_type) == "Map" {
-            return match member.name.as_str() {
-                "set" => {
-                    let key = self.compile_expr(builder, &args[0])?;
-                    let value = self.compile_expr(builder, &args[1])?;
-                    self.runtime_void(
-                        builder,
-                        self.compiler.runtime.map_set,
-                        &[receiver.value, key.value, value.value],
-                    );
-                    Ok(TypedValue {
-                        value: self.runtime_nullary(builder, self.compiler.runtime.unit),
-                        ty: Some("Unit".to_string()),
-                    })
-                }
-                "get" => {
-                    let key = self.compile_expr(builder, &args[0])?;
-                    // Map<K,V>.get(key) returns Option<V>
-                    let value_type = receiver_type.find(',')
-                        .and_then(|comma| {
-                            let after = &receiver_type[comma+1..];
-                            after.strip_suffix('>').map(|v| v.trim().to_string())
-                        });
-                    Ok(TypedValue {
-                        value: self.runtime(
-                            builder,
-                            self.compiler.runtime.rt_map_get,
-                            &[receiver.value, key.value],
-                            self.compiler.pointer_type,
-                        ),
-                        ty: value_type.map(|v| format!("Option<{v}>")),
-                    })
-                }
-                "remove" => {
-                    let key = self.compile_expr(builder, &args[0])?;
-                    Ok(TypedValue {
-                        value: self.runtime(
-                            builder,
-                            self.compiler.runtime.map_remove,
-                            &[receiver.value, key.value],
-                            self.compiler.pointer_type,
-                        ),
-                        ty: None,
-                    })
-                }
-                "len" => {
-                    let raw_len = self.runtime_value(
-                        builder,
-                        self.compiler.runtime.map_len,
-                        &[receiver.value],
-                        types::I64,
-                    );
-                    Ok(TypedValue {
-                        value: self.runtime(
-                            builder,
-                            self.compiler.runtime.int,
-                            &[raw_len],
-                            self.compiler.pointer_type,
-                        ),
-                        ty: Some("Int".to_string()),
-                    })
-                }
-                "isEmpty" => {
-                    let raw_len = self.runtime_value(
-                        builder,
-                        self.compiler.runtime.map_len,
-                        &[receiver.value],
-                        types::I64,
-                    );
-                    let is_zero = builder.ins().icmp_imm(IntCC::Equal, raw_len, 0);
-                    Ok(TypedValue {
-                        value: self.runtime(
-                            builder,
-                            self.compiler.runtime.bool_,
-                            &[is_zero],
-                            self.compiler.pointer_type,
-                        ),
-                        ty: Some("Bool".to_string()),
-                    })
-                }
-                "contains" => {
-                    let key = self.compile_expr(builder, &args[0])?;
-                    let raw = self.runtime_value(
-                        builder,
-                        self.compiler.runtime.map_contains,
-                        &[receiver.value, key.value],
-                        types::I8,
-                    );
-                    Ok(TypedValue {
-                        value: self.runtime(
-                            builder,
-                            self.compiler.runtime.bool_,
-                            &[raw],
-                            self.compiler.pointer_type,
-                        ),
-                        ty: Some("Bool".to_string()),
-                    })
-                }
-                "keys" => Ok(TypedValue {
-                    value: self.runtime(
-                        builder,
-                        self.compiler.runtime.map_keys,
-                        &[receiver.value],
-                        self.compiler.pointer_type,
-                    ),
-                    ty: Some("List<String>".to_string()),
-                }),
-                "values" => Ok(TypedValue {
-                    value: self.runtime(
-                        builder,
-                        self.compiler.runtime.map_values,
-                        &[receiver.value],
-                        self.compiler.pointer_type,
-                    ),
-                    ty: Some("List<String>".to_string()),
-                }),
-                "entries" => Ok(TypedValue {
-                    value: self.runtime(
-                        builder,
-                        self.compiler.runtime.map_entries,
-                        &[receiver.value],
-                        self.compiler.pointer_type,
-                    ),
-                    ty: Some("List<(String,String)>".to_string()),
-                }),
-                other => Err(format!("unsupported Map member call `{other}`")),
-            };
-        }
-        if layout::canonical_type_name(&receiver_type) == "String" {
-            return match member.name.as_str() {
-                "toUpper" => Ok(TypedValue {
-                    value: self.runtime(
-                        builder,
-                        self.compiler.runtime.to_upper,
-                        &[receiver.value],
-                        self.compiler.pointer_type,
-                    ),
-                    ty: Some("String".to_string()),
-                }),
-                "isEmpty" => Ok(TypedValue {
-                    value: self.runtime(
-                        builder,
-                        self.compiler.runtime.string_is_empty,
-                        &[receiver.value],
-                        self.compiler.pointer_type,
-                    ),
-                    ty: Some("Bool".to_string()),
-                }),
-                "len" => Ok(TypedValue {
-                    value: self.runtime(
-                        builder,
-                        self.compiler.runtime.string_char_count,
-                        &[receiver.value],
-                        self.compiler.pointer_type,
-                    ),
-                    ty: Some("Int".to_string()),
-                }),
-                other => Err(format!("unsupported String member call `{other}`")),
-            };
         }
 
         Err(format!("unknown extension `{receiver_type}.{}`", member.name))

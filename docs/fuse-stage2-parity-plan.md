@@ -779,13 +779,13 @@ currently sit at lines 3459-3828 (roughly). Move them to before line
 
 **Tasks:**
 
-- [ ] **B5.1.1** Cut the hardcoded block at line 3459 (List) and paste it before line 3437. Rewire the `Err(format!("unsupported List member call ..."))` to `{ /* fall through */ }`.
-- [ ] **B5.1.2** Same for Chan.
-- [ ] **B5.1.3** Same for Shared.
-- [ ] **B5.1.4** Same for Map.
-- [ ] **B5.1.5** Same for String.
-- [ ] **B5.1.6** The extension resolution block stays where it is, but is now the second pass.
-- [ ] **B5.1.7** Run `cargo test -p fusec`. Zero regressions required.
+- [x] **B5.1.1** Cut the hardcoded block at line 3459 (List) and paste it before line 3437. Rewire the `Err(format!("unsupported List member call ..."))` to `{ /* fall through */ }`. **Implemented in place:** changed `return match { ..., _ => Err(...) }` to `match { ..., _ => {} }` with each success arm wrapped in `return Ok(...);`. The List block keeps its existing position relative to other hardcoded blocks; the extension resolution block was moved DOWN past all five hardcoded blocks (one move instead of five).
+- [x] **B5.1.2** Same for Chan. Same transformation applied.
+- [x] **B5.1.3** Same for Shared. Same transformation applied.
+- [x] **B5.1.4** Same for Map. Same transformation applied.
+- [x] **B5.1.5** Same for String. Same transformation applied.
+- [x] **B5.1.6** The extension resolution block stays where it is, but is now the second pass. **Moved one block instead of five:** the extension resolution block was relocated from its position right after optional-chain handling to a new position immediately before the final "unknown extension" error. Net effect is identical to moving the five hardcoded blocks up.
+- [x] **B5.1.7** Run `cargo test -p fusec`. Zero regressions required. **Confirmed:** 111 passed, 6 failed (same six pre-existing failures from the B0.1 baseline, no morphing). Stage 2 fixture suite: 381 passed / 0 failed / 3 skipped, identical to the post-B4 baseline.
 
 **Deliverables:** Reordered dispatch.
 
