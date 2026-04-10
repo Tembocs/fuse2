@@ -104,8 +104,12 @@ pub fn collect_symbols(program: &ast::Program) -> Vec<SymbolInfo> {
                         name: v.name.clone(),
                         kind: SymbolKind::EnumVariant,
                         def_span: v.span,
-                        type_info: if v.arity > 0 {
-                            format!("{}({} field{})", v.name, v.arity, if v.arity == 1 { "" } else { "s" })
+                        type_info: if !v.payload_types.is_empty() {
+                            format!(
+                                "{}({})",
+                                v.name,
+                                v.payload_types.join(", ")
+                            )
                         } else {
                             v.name.clone()
                         },
@@ -487,7 +491,11 @@ fn format_data_class(d: &ast::DataClassDecl) -> String {
 
 fn format_enum(e: &ast::EnumDecl) -> String {
     let variants: Vec<String> = e.variants.iter().map(|v| {
-        if v.arity > 0 { format!("{}({})", v.name, v.arity) } else { v.name.clone() }
+        if !v.payload_types.is_empty() {
+            format!("{}({})", v.name, v.payload_types.join(", "))
+        } else {
+            v.name.clone()
+        }
     }).collect();
     format!("enum {} {{ {} }}", e.name, variants.join(", "))
 }
