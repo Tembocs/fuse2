@@ -229,7 +229,7 @@ closed, so the checker — not a reviewer — drives the fix).
 | Wave | Name | Phases | Tasks | Depends On | Status |
 |------|------|--------|-------|------------|--------|
 | B0 | Baseline & Verification Infrastructure | 3 | 10 | — | **Done** (commits 36a8e9c, 11ff7e7, c5fc4b6) |
-| B1 | Determinism | 2 | 7 | B0 | Not started |
+| B1 | Determinism | 2 | 7 | B0 | **Done** (commits 1ebbf1e, B1.2 pending push) |
 | B2 | Checker: Extension Resolution Enforcement | 3 | 11 | B1 | Not started |
 | B3 | Parser & AST: Enum Variant Payload Types | 2 | 8 | B1 | Not started |
 | B4 | Codegen: Generic Type Substitution | 3 | 11 | B1 | Not started |
@@ -428,10 +428,10 @@ decide: (a) internal scratch that never affects output → keep,
 
 **Tasks:**
 
-- [ ] **B1.2.1** Grep: `rg 'HashMap|HashSet' stage1/fusec/src/codegen stage1/fusec/src/hir`.
-- [ ] **B1.2.2** For each hit, document in a short audit note: location, iterated-over?, affects output?, decision.
-- [ ] **B1.2.3** Apply the replacements where needed.
-- [ ] **B1.2.4** Unignore `determinism_suite.rs` from B0.3 and run it. Must pass 10/10.
+- [x] **B1.2.1** Grep: `rg 'HashMap|HashSet' stage1/fusec/src/codegen stage1/fusec/src/hir`. 22 hits found across object_backend.rs, layout.rs, wasm_backend.rs, hir/nodes.rs, hir/lower.rs.
+- [x] **B1.2.2** For each hit, document in a short audit note: location, iterated-over?, affects output?, decision. Audit table committed in commit message and reproduced in this plan: 12 collections replaced with BTreeMap, 11 kept as HashMap/HashSet (lookup-only), 1 unused import in wasm_backend.rs left alone (orphan, not in scope).
+- [x] **B1.2.3** Apply the replacements where needed. Replaced: `LoadedModule.{functions, extensions, statics, data_classes, structs, enums, extern_fns, consts}`, the corresponding three locals in `load_module_recursive`, `LoweringState.locals`, `hir::Module.extension_functions`, and the local in `hir::lower_program`.
+- [x] **B1.2.4** Unignore `determinism_suite.rs` from B0.3 and run it. Must pass 10/10. **Confirmed:** `cargo test -p fusec --test determinism_suite` reports `1 passed` with the message "10 trials of `fusec --emit ir import_multiple.fuse` all byte-identical (1629 bytes each)". The full failing-tests output now also stabilizes — `unsupported List member call concat` appears as the gating error every run instead of varying.
 
 **Deliverables:** Audit decisions in commit message; code changes; green
 `determinism_suite` test.

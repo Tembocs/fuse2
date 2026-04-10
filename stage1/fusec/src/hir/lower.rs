@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::ast::nodes::{Declaration, Program as AstProgram};
@@ -14,7 +14,9 @@ pub fn lower_program(program: &AstProgram, path: PathBuf) -> Module {
     let mut structs = Vec::new();
     let mut consts = Vec::new();
     let mut interfaces = Vec::new();
-    let mut extension_functions = HashMap::new();
+    // BTreeMap (not HashMap) for determinism — see B1.2 audit. The
+    // codegen iterates this map in load_module_recursive.
+    let mut extension_functions = BTreeMap::new();
 
     for declaration in &program.declarations {
         match declaration {

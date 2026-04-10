@@ -13,14 +13,16 @@
 //!   `docs/t4-parity-investigation.md` documents this as Issue 6.
 //!
 //! Status:
-//!   - This test is currently `#[ignore]`d because the bug is real and
-//!     the test fails reproducibly on the current commit.
-//!   - Phase B1.1 of `docs/fuse-stage2-parity-plan.md` replaces the
-//!     HashMap with a BTreeMap. After that lands, Phase B1.2 unignores
-//!     this test. The expectation is 10/10 identical builds.
+//!   - Active guard since Phase B1.2. The audit replaced every codegen
+//!     HashMap whose iteration reached output (modules, per-module
+//!     functions/extensions/statics/data_classes/structs/enums/extern_fns/
+//!     consts, hir extension_functions, LoweringState.locals) with
+//!     BTreeMap. The 10-trial probe is now byte-identical.
+//!   - Any future regression that reintroduces HashMap iteration in
+//!     the codegen will trip this test.
 //!
 //! Run:
-//!   cargo test --test determinism_suite -- --ignored --nocapture
+//!   cargo test --test determinism_suite
 
 use std::process::Command;
 
@@ -29,7 +31,6 @@ mod harness;
 const TRIALS: usize = 10;
 
 #[test]
-#[ignore = "B0.3: enabled by Phase B1.2 after BuildSession.modules: HashMap -> BTreeMap"]
 fn ir_emission_is_deterministic_for_multi_module_fixture() {
     let root = harness::repo_root();
     let fixture = root

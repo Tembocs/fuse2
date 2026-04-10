@@ -114,14 +114,21 @@ pub fn compile_path_to_ir_text(input: &Path) -> Result<String, String> {
 struct LoadedModule {
     path: PathBuf,
     imports: Vec<fa::ImportDecl>,
-    functions: HashMap<String, fa::FunctionDecl>,
-    extensions: HashMap<(String, String), fa::FunctionDecl>,
-    statics: HashMap<(String, String), fa::FunctionDecl>,
-    data_classes: HashMap<String, fa::DataClassDecl>,
-    structs: HashMap<String, fa::StructDecl>,
-    enums: HashMap<String, fa::EnumDecl>,
-    extern_fns: HashMap<String, fa::ExternFnDecl>,
-    consts: HashMap<(String, String), fa::ConstDecl>,
+    // BTreeMap (not HashMap) so codegen iteration is deterministic.
+    // declare_user_surface, emit_object, and collect_ir_text all
+    // iterate `.values()` on each of these maps and emit IR in that
+    // order — HashMap's randomized iteration would produce different
+    // function IDs across runs. See docs/fuse-stage2-parity-plan.md
+    // Phase B1.2 for the audit.
+    functions: BTreeMap<String, fa::FunctionDecl>,
+    extensions: BTreeMap<(String, String), fa::FunctionDecl>,
+    statics: BTreeMap<(String, String), fa::FunctionDecl>,
+    data_classes: BTreeMap<String, fa::DataClassDecl>,
+    structs: BTreeMap<String, fa::StructDecl>,
+    enums: BTreeMap<String, fa::EnumDecl>,
+    extern_fns: BTreeMap<String, fa::ExternFnDecl>,
+    consts: BTreeMap<(String, String), fa::ConstDecl>,
+    // interface_names is lookup-only (`.contains` calls). HashSet is fine.
     interface_names: HashSet<String>,
 }
 
@@ -290,8 +297,9 @@ fn load_module_recursive(
     // Resolve `Self` → concrete type in return types and parameter types,
     // then split extension functions into instance methods (first param is
     // self) and static functions (no self).
-    let mut extensions = HashMap::new();
-    let mut statics = HashMap::new();
+    // BTreeMap (not HashMap) for determinism — see B1.2 audit.
+    let mut extensions: BTreeMap<(String, String), fa::FunctionDecl> = BTreeMap::new();
+    let mut statics: BTreeMap<(String, String), fa::FunctionDecl> = BTreeMap::new();
     for ((receiver_type, name), mut function) in module.extension_functions.clone() {
         if let Some(ref mut rt) = function.return_type {
             if rt.contains("Self") {
@@ -312,7 +320,8 @@ fn load_module_recursive(
             extensions.insert((receiver_type, name), function);
         }
     }
-    let mut data_classes: HashMap<String, fa::DataClassDecl> = module
+    // BTreeMap (not HashMap) for determinism — see B1.2 audit.
+    let mut data_classes: BTreeMap<String, fa::DataClassDecl> = module
         .data_classes
         .iter()
         .map(|data| (data.name.clone(), data.clone()))
@@ -1643,7 +1652,13 @@ struct LoweringState<'a, 'b> {
     compiler: &'a mut BackendCompiler<'b>,
     module_path: &'a Path,
     _function: &'a fa::FunctionDecl,
-    locals: HashMap<String, LocalBinding>,
+    // BTreeMap (not HashMap) so the destruction order in release_dead
+    // and release_remaining is deterministic. Both functions iterate
+    // self.locals.keys() and emit `release` runtime calls in iteration
+    // order — HashMap's randomized order would change the IR (and the
+    // observable __del__ call order for tests with multiple bindings
+    // alive at the same release point) on every run. See B1.2 audit.
+    locals: BTreeMap<String, LocalBinding>,
     next_var: usize,
     loops: Vec<LoopFrame>,
     defers: Vec<fa::Expr>,
@@ -1659,7 +1674,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             compiler,
             module_path,
             _function: function,
-            locals: HashMap::new(),
+            locals: BTreeMap::new(),
             next_var: 0,
             loops: Vec::new(),
             defers: Vec::new(),
