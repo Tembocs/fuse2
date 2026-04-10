@@ -233,7 +233,7 @@ closed, so the checker — not a reviewer — drives the fix).
 | B2 | Checker: Extension Resolution Enforcement | 3 | 11 | B1 | **Done** (commits f5cb947, 99af0a0, 9b0e77c) |
 | B3 | Parser & AST: Enum Variant Payload Types | 2 | 8 | B1 | **Done** (commit 730d18e) |
 | B4 | Codegen: Generic Type Substitution | 3 | 11 | B1 | **Done** (commits a088b10, 8007a41, 6e6802a) |
-| B5 | Codegen: Hardcoded Specialization Ordering | 2 | 9 | B4 | **Done** (commits 5c6a8e0, B5.2 pending push) |
+| B5 | Codegen: Hardcoded Specialization Ordering | 2 | 9 | B4 | **Done** (commits 5c6a8e0, f0d594b) |
 | B6 | Codegen: User-Defined Enum Variant Binding | 3 | 12 | B3, B4 | Not started |
 | B7 | Codegen: Match-as-Expression Type Unification | 5 | 22 | B4, B5 | Not started |
 | B8 | Codegen: Namespace Static Method Calls | 3 | 11 | B5 | Not started |
