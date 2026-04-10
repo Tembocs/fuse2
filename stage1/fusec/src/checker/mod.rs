@@ -137,14 +137,34 @@ impl Checker {
             }
         }
         // Load extension functions from HIR (Type.method definitions).
+        // Substitute `Self` -> concrete receiver type in return types
+        // and parameter types so that downstream type inference sees
+        // concrete types and not the generic placeholder. Mirror of
+        // load_module_recursive in codegen/object_backend.rs:297-313.
+        // Without this, methods like `fn Request.withPath(mutref self,
+        // p: String) -> mutref Self` produce a chain receiver type
+        // that the lookup cannot canonicalize.
         for ((receiver_type, name), function) in &info.module.extension_functions {
             let is_static = function.params.first().map_or(true, |p| p.name != "self");
+            let mut function = function.clone();
+            if let Some(ref mut rt) = function.return_type {
+                if rt.contains("Self") {
+                    *rt = rt.replace("Self", receiver_type);
+                }
+            }
+            for param in function.params.iter_mut() {
+                if let Some(ref mut tn) = param.type_name {
+                    if tn.contains("Self") {
+                        *tn = tn.replace("Self", receiver_type);
+                    }
+                }
+            }
             if is_static {
                 info.static_functions
-                    .insert((receiver_type.clone(), name.clone()), function.clone());
+                    .insert((receiver_type.clone(), name.clone()), function);
             } else {
                 info.extension_functions
-                    .insert((receiver_type.clone(), name.clone()), function.clone());
+                    .insert((receiver_type.clone(), name.clone()), function);
             }
         }
         for data in &info.module.data_classes {
@@ -155,6 +175,35 @@ impl Checker {
                     is_pub: data.is_pub,
                 },
             );
+            // Register data class instance/static methods as extensions
+            // so member calls resolve in infer_expr_type and check_call.
+            // Mirror of load_module_recursive in object_backend.rs:369-385.
+            for method in &data.methods {
+                if method.name == "__del__" {
+                    continue; // destructor — called via runtime bridge
+                }
+                let mut function = method.clone();
+                function.receiver_type = Some(data.name.clone());
+                if let Some(ref mut rt) = function.return_type {
+                    if rt.contains("Self") {
+                        *rt = rt.replace("Self", &data.name);
+                    }
+                }
+                for param in function.params.iter_mut() {
+                    if let Some(ref mut tn) = param.type_name {
+                        if tn.contains("Self") {
+                            *tn = tn.replace("Self", &data.name);
+                        }
+                    }
+                }
+                let is_static = function.params.first().map_or(true, |p| p.name != "self");
+                let key = (data.name.clone(), method.name.clone());
+                if is_static {
+                    info.static_functions.insert(key, function);
+                } else {
+                    info.extension_functions.insert(key, function);
+                }
+            }
         }
         for enum_decl in &info.module.enums {
             info.symbols.insert(
@@ -173,6 +222,31 @@ impl Checker {
                     is_pub: struct_decl.is_pub,
                 },
             );
+            // Register struct instance/static methods as extensions
+            // so member calls resolve. Mirror of object_backend.rs:343-368.
+            for method in &struct_decl.methods {
+                let mut function = method.clone();
+                function.receiver_type = Some(struct_decl.name.clone());
+                if let Some(ref mut rt) = function.return_type {
+                    if rt.contains("Self") {
+                        *rt = rt.replace("Self", &struct_decl.name);
+                    }
+                }
+                for param in function.params.iter_mut() {
+                    if let Some(ref mut tn) = param.type_name {
+                        if tn.contains("Self") {
+                            *tn = tn.replace("Self", &struct_decl.name);
+                        }
+                    }
+                }
+                let is_static = function.params.first().map_or(true, |p| p.name != "self");
+                let key = (struct_decl.name.clone(), method.name.clone());
+                if is_static {
+                    info.static_functions.insert(key, function);
+                } else {
+                    info.extension_functions.insert(key, function);
+                }
+            }
         }
         for iface in &info.module.interfaces {
             info.interfaces.insert(
@@ -1354,6 +1428,59 @@ impl Checker {
             if types::builtin_return_type(&name).is_none() && self.find_data_decl(&name).is_none() {
                 let _ = owner_name;
             }
+        } else if let hir::Expr::Member(member) = call.callee.as_ref() {
+            // B2.2: Method call where extension resolution failed.
+            // Before B2 the checker silently dropped this case and the
+            // codegen later either fell into a hardcoded specialization
+            // (List.len, Map.set, etc.) or crashed with `unsupported X
+            // member call Y`. Now we look up the canonical receiver in
+            // the builtin mirror; if it's not a builtin, emit a hard
+            // error with a stdlib-import hint when we can offer one.
+            //
+            // Static method calls (`Type.method(...)` where the
+            // receiver looks like a type name) are handled by the
+            // resolve_static_function branch above and never reach
+            // here, so we only need to deal with instance calls.
+            //
+            // Optional-chain calls (`obj?.method()`) are skipped here
+            // because infer_expr_type for an optional chain returns
+            // bare "Option" without an inner type, so we cannot tell
+            // whether the method exists on the unwrapped type. The
+            // codegen handles optional chains via recursive dispatch
+            // on the unwrapped value (object_backend.rs:3394-3454);
+            // any genuinely missing method on an optional chain will
+            // surface there. A future phase can improve infer_expr_type
+            // to track optional inner types and let the checker catch
+            // these too.
+            //
+            // We only emit the error if we can infer the receiver type.
+            // An unknown receiver type means a prior error already
+            // exists; doubling up on diagnostics there hurts more than
+            // it helps.
+            if member.optional {
+                // optional chain — defer to codegen recursive dispatch
+            } else if let Some(receiver_type) =
+                self.infer_expr_type(module, &member.object, scope, owner_name)
+            {
+                let canonical = builtins::canonical_receiver(&receiver_type);
+                let resolves_via_builtin =
+                    builtins::is_builtin_method(canonical, &member.name);
+                let resolves_via_interface =
+                    self.type_has_method_via_interface(canonical, &member.name);
+                if !resolves_via_builtin && !resolves_via_interface {
+                    let hint = builtins::suggest_stdlib_import_for(canonical, &member.name)
+                        .map(|module_path| format!("did you forget `import {module_path}`?"));
+                    self.add_error(
+                        &display_name(&module.path),
+                        member.span,
+                        format!(
+                            "no method `{}` on type `{}`",
+                            member.name, receiver_type
+                        ),
+                        hint,
+                    );
+                }
+            }
         }
     }
 
@@ -1437,7 +1564,11 @@ impl Checker {
     }
 
     fn resolve_extension(&self, receiver_type: &str, name: &str) -> Option<hir::FunctionDecl> {
-        let receiver_key = receiver_type.split('<').next().unwrap_or(receiver_type);
+        // Use the same canonicalization as the codegen — strip ownership
+        // prefixes and generic args. Without this, types like
+        // `mutref Request` (which the parser produces as "mutrefRequest")
+        // never resolve.
+        let receiver_key = builtins::canonical_receiver(receiver_type);
         self.module_cache.values().find_map(|module| {
             module
                 .extension_functions
@@ -1447,7 +1578,7 @@ impl Checker {
     }
 
     fn resolve_static_function(&self, type_name: &str, name: &str) -> Option<hir::FunctionDecl> {
-        let type_key = type_name.split('<').next().unwrap_or(type_name);
+        let type_key = builtins::canonical_receiver(type_name);
         self.module_cache.values().find_map(|module| {
             module
                 .static_functions
@@ -1546,6 +1677,76 @@ impl Checker {
             }
         }
         defaults
+    }
+
+    /// True if `type_name` provides `method_name` via any interface it
+    /// declares `implements` — counting abstract methods, default
+    /// methods, and codegen autogen targets. Used by `check_call` to
+    /// avoid false-positive "no method" errors on types that satisfy
+    /// the method through interface conformance.
+    ///
+    /// Mirrors the codegen's three-way method discovery in
+    /// `compile_member_call` (extension resolution + interface defaults
+    /// from `defaults` map + autogen-from-fields). When this function
+    /// returns true, the codegen will find a callable for the method.
+    ///
+    /// See `docs/fuse-stage2-parity-plan.md` Phase B2.2.
+    fn type_has_method_via_interface(&self, type_name: &str, method_name: &str) -> bool {
+        let ifaces = self.type_implements(type_name);
+        if ifaces.is_empty() {
+            return false;
+        }
+
+        let type_kind = if let Some(data) = self.find_data_decl(type_name) {
+            Some(autogen::classify_type(&data.annotations, false))
+        } else if let Some(s) = self.find_struct_decl(type_name) {
+            Some(autogen::classify_type(&s.annotations, true))
+        } else if self.find_enum_decl(type_name).is_some() {
+            Some(autogen::TypeKind::Enum)
+        } else {
+            None
+        };
+
+        for iface_name in &ifaces {
+            // 1. Abstract methods on the interface (transitive parents).
+            if let Some(iface) = self.resolve_interface(iface_name) {
+                if let Some(methods) = self.collect_interface_methods(&iface) {
+                    if methods.iter().any(|m| m.name == method_name) {
+                        return true;
+                    }
+                }
+                // 2. Default methods on the interface (transitive).
+                if self
+                    .collect_interface_defaults(&iface)
+                    .iter()
+                    .any(|f| f.name == method_name)
+                {
+                    return true;
+                }
+            }
+
+            // 3. Codegen autogen targets for built-in stdlib interfaces.
+            // These methods exist even when the interface module is not
+            // loaded into the checker, because the codegen synthesizes
+            // them from field metadata. Mirror of the autogen dispatch
+            // in load_module_recursive (object_backend.rs:444-450).
+            if let Some(kind) = type_kind {
+                if autogen::can_auto_generate(kind, iface_name) {
+                    let target = match iface_name.as_str() {
+                        "Equatable" => "eq",
+                        "Hashable" => "hash",
+                        "Comparable" => "compareTo",
+                        "Printable" => "toString",
+                        "Debuggable" => "debugString",
+                        _ => "",
+                    };
+                    if !target.is_empty() && method_name == target {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// Look up which interfaces a type declares `implements`.

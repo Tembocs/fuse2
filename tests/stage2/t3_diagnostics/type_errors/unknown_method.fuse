@@ -1,5 +1,5 @@
 // EXPECTED ERROR:
-// unknown extension
+// no method `bar` on type `Foo`
 
 data class Foo(val x: Int)
 
