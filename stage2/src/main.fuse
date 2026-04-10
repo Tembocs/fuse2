@@ -25,7 +25,7 @@ import layout
 // Version
 // ---------------------------------------------------------------------------
 
-val VERSION = "0.1.0"
+val Mode.VERSION: String = "0.1.0"
 
 // ---------------------------------------------------------------------------
 // Compilation mode
@@ -86,22 +86,24 @@ fn parseArgs(args: List<String>) -> Result<Mode, String> {
       }
       if first == "--check" {
         // --check <file>
-        match args.get(1) {
-          Some(file) => return Ok(Mode.Check(file)),
-          None => return Err("--check requires a file argument")
+        val checkResult = match args.get(1) {
+          Some(file) => Ok(Mode.Check(file)),
+          None => Err("--check requires a file argument")
         }
+        return checkResult
       }
       // Compile mode: <file> -o <output>
       val inputFile = first
       val outputPath = parseOutputFlag(args)
-      match outputPath {
-        Some(out) => return Ok(Mode.Compile(inputFile, out)),
+      val compileMode = match outputPath {
+        Some(out) => Mode.Compile(inputFile, out),
         None => {
           // Default output: strip .fuse extension, or append .out
           val defaultOut = defaultOutputPath(inputFile)
-          return Ok(Mode.Compile(inputFile, defaultOut))
+          Mode.Compile(inputFile, defaultOut)
         }
       }
+      Ok(compileMode)
     },
     None => Ok(Mode.Help)
   }
@@ -111,16 +113,15 @@ fn parseArgs(args: List<String>) -> Result<Mode, String> {
 fn parseOutputFlag(args: List<String>) -> Option<String> {
   var i = 0
   while i < args.len() {
-    match args.get(i) {
-      Some(arg) => {
-        if arg == "-o" {
-          match args.get(i + 1) {
-            Some(out) => return Some(out),
-            None => {}
-          }
+    val arg = args.get(i)
+    if arg != None {
+      val argVal = arg.unwrap()
+      if argVal == "-o" {
+        val next = args.get(i + 1)
+        if next != None {
+          return next.unwrap()
         }
-      },
-      None => {}
+      }
     }
     i = i + 1
   }
@@ -144,7 +145,7 @@ fn defaultOutputPath(input: String) -> String {
 fn dispatch(mode: Mode) {
   match mode {
     Mode.Help => printUsage(),
-    Mode.Version => println(f"fusec2 {VERSION}"),
+    Mode.Version => println(f"fusec2 {Mode.VERSION}"),
     Mode.Check(file) => runCheck(file),
     Mode.Compile(file, output) => runCompile(file, output)
   }
@@ -378,10 +379,7 @@ fn compileFunctionsInModule(ffiModule: Int, runtimeDeclared: List<DeclaredFn>, u
   while ei < lm.extensions.len() {
     match lm.extensions.get(ei) {
       Some(ne) => {
-        val receiverType = match ne.func.receiverType {
-          Some(rt) => rt,
-          None => ""
-        }
+        val receiverType = ne.func.receiverType.unwrapOr("")
         val sym = layout.extensionSymbol(modPath, receiverType, ne.func.name)
         match runtime.findDeclaredFn(userDeclared, sym) {
           Some(funcId) => {
@@ -409,10 +407,7 @@ fn compileFunctionsInModule(ffiModule: Int, runtimeDeclared: List<DeclaredFn>, u
   while si < lm.statics.len() {
     match lm.statics.get(si) {
       Some(ns) => {
-        val receiverType = match ns.func.receiverType {
-          Some(rt) => rt,
-          None => ""
-        }
+        val receiverType = ns.func.receiverType.unwrapOr("")
         val sym = layout.extensionSymbol(modPath, receiverType, ns.func.name)
         match runtime.findDeclaredFn(userDeclared, sym) {
           Some(funcId) => {
@@ -451,10 +446,7 @@ fn buildWrapper(objectPath: String, output: String) -> Result<Int, String> {
   val srcDir = path.join(workdir, "src")
 
   // Create directories.
-  match os.mkdirAll(srcDir) {
-    Err(e) => return Err(f"failed to create wrapper directory: {e.message}"),
-    Ok(_) => {}
-  }
+  os.mkdirAll(srcDir).mapErr(fn(e: String) -> String { f"failed to create wrapper directory: {e}" })?
 
   // Write object file with unique name based on output stem.
   val objExt = if sys.platform() == "windows" { "obj" } else { "o" }
@@ -463,10 +455,7 @@ fn buildWrapper(objectPath: String, output: String) -> Result<Int, String> {
   val objectDst = path.join(workdir, objectName)
 
   // Copy object file to wrapper directory.
-  match os.copyFile(objectPath, objectDst) {
-    Err(e) => return Err(f"failed to copy object file: {e.message}"),
-    Ok(_) => {}
-  }
+  os.copyFile(objectPath, objectDst).mapErr(fn(e: String) -> String { f"failed to copy object file: {e}" })?
 
   // Escape paths for Cargo.toml (forward slashes).
   val runtimePath = escapePath(path.join(stage1Root, "fuse-runtime"))
@@ -475,43 +464,26 @@ fn buildWrapper(objectPath: String, output: String) -> Result<Int, String> {
   // Write Cargo.toml.
   val cargoToml = f"[package]\nname = \"fuse_generated_wrapper\"\nversion = \"0.1.0\"\nedition = \"2024\"\nbuild = \"build.rs\"\n\n[workspace]\n\n[dependencies]\nfuse-runtime = {{ path = \"{runtimePath}\" }}\ncranelift-ffi = {{ path = \"{craneliftFfiPath}\" }}\n"
 
-  match io.writeFile(path.join(workdir, "Cargo.toml"), cargoToml) {
-    Err(e) => return Err(f"failed to write wrapper Cargo.toml: {e.message}"),
-    Ok(_) => {}
-  }
+  io.writeFile(path.join(workdir, "Cargo.toml"), cargoToml).mapErr(fn(e: String) -> String { f"failed to write wrapper Cargo.toml: {e}" })?
 
   // Write build.rs — link object file and request 8 MB stack on Windows.
   val objectLiteral = escapeString(objectDst)
   val buildRs = f"fn main() {{\n    println!(\"cargo:rerun-if-changed={objectLiteral}\");\n    println!(\"cargo:rustc-link-arg={objectLiteral}\");\n    if cfg!(target_os = \"windows\") {{\n        println!(\"cargo:rustc-link-arg=/STACK:8388608\");\n    }}\n}}\n"
 
-  match io.writeFile(path.join(workdir, "build.rs"), buildRs) {
-    Err(e) => return Err(f"failed to write wrapper build.rs: {e.message}"),
-    Ok(_) => {}
-  }
+  io.writeFile(path.join(workdir, "build.rs"), buildRs).mapErr(fn(e: String) -> String { f"failed to write wrapper build.rs: {e}" })?
 
   // Write src/main.rs — extern declaration + call fuse_user_entry.
   val mainRs = "use fuse_runtime as _;\nuse cranelift_ffi as _;\n\nunsafe extern \"C\" {\n    fn fuse_user_entry() -> i32;\n}\n\nfn main() {\n    std::process::exit(unsafe { fuse_user_entry() });\n}\n"
 
-  match io.writeFile(path.join(srcDir, "main.rs"), mainRs) {
-    Err(e) => return Err(f"failed to write wrapper main.rs: {e.message}"),
-    Ok(_) => {}
-  }
+  io.writeFile(path.join(srcDir, "main.rs"), mainRs).mapErr(fn(e: String) -> String { f"failed to write wrapper main.rs: {e}" })?
 
   // Build with cargo.
   val targetDir = path.join(stage1Root, "target", "generated-target")
-  match os.mkdirAll(targetDir) {
-    Err(e) => return Err(f"failed to create wrapper target dir: {e.message}"),
-    Ok(_) => {}
-  }
+  os.mkdirAll(targetDir).mapErr(fn(e: String) -> String { f"failed to create wrapper target dir: {e}" })?
 
-  val buildResult = process.run("cargo", ["build", "--release", "--target-dir", targetDir, "--manifest-path", path.join(workdir, "Cargo.toml")])
-  match buildResult {
-    Err(e) => return Err(f"failed to launch cargo build: {e.message}"),
-    Ok(buildOutput) => {
-      if buildOutput.success == false {
-        return Err(f"generated wrapper build failed\n{buildOutput.stderr}")
-      }
-    }
+  val buildOutput = process.run("cargo", ["build", "--release", "--target-dir", targetDir, "--manifest-path", path.join(workdir, "Cargo.toml")]).mapErr(fn(e: String) -> String { f"failed to launch cargo build: {e}" })?
+  if buildOutput.success == false {
+    return Err(f"generated wrapper build failed\n{buildOutput.stderr}")
   }
 
   // Copy resulting binary to output path.
@@ -531,10 +503,7 @@ fn buildWrapper(objectPath: String, output: String) -> Result<Int, String> {
     None => {}
   }
 
-  match os.copyFile(builtBinary, output) {
-    Err(e) => return Err(f"failed to copy generated executable: {e.message}"),
-    Ok(_) => {}
-  }
+  os.copyFile(builtBinary, output).mapErr(fn(e: String) -> String { f"failed to copy generated executable: {e}" })?
 
   Ok(0)
 }
@@ -545,22 +514,20 @@ fn buildWrapper(objectPath: String, output: String) -> Result<Int, String> {
 
 fn findRepoRoot() -> Result<String, String> {
   // Try FUSE_REPO_ROOT environment variable first.
-  match env.get("FUSE_REPO_ROOT") {
-    Some(root) => {
-      if looksLikeRepoRoot(root) { return Ok(root) }
-    },
-    None => {}
+  val envRoot = env.get("FUSE_REPO_ROOT")
+  if envRoot != None {
+    val root = envRoot.unwrap()
+    if looksLikeRepoRoot(root) { return Ok(root) }
   }
 
   // Walk up from current working directory.
-  match sys.cwd() {
-    Ok(cwd) => {
-      match walkUpForRoot(cwd) {
-        Some(root) => return Ok(root),
-        None => {}
-      }
-    },
-    Err(_) => {}
+  val cwdResult = sys.cwd()
+  if cwdResult.isOk() {
+    val cwd = cwdResult.unwrap()
+    val found = walkUpForRoot(cwd)
+    if found != None {
+      return Ok(found.unwrap())
+    }
   }
 
   Err("cannot find repository root (expected stage1/ and stdlib/ directories). Set FUSE_REPO_ROOT environment variable.")
@@ -568,13 +535,11 @@ fn findRepoRoot() -> Result<String, String> {
 
 fn walkUpForRoot(dir: String) -> Option<String> {
   if looksLikeRepoRoot(dir) { return Some(dir) }
-  match path.parent(dir) {
-    Some(parentDir) => {
-      if parentDir == dir { return None }
-      walkUpForRoot(parentDir)
-    },
-    None => None
-  }
+  val parentOpt = path.parent(dir)
+  if parentOpt == None { return None }
+  val parentDir = parentOpt.unwrap()
+  if parentDir == dir { return None }
+  walkUpForRoot(parentDir)
 }
 
 fn looksLikeRepoRoot(dir: String) -> Bool {
