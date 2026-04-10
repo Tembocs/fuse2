@@ -17,6 +17,7 @@ use crate::hir::lower_program;
 use crate::parser::parse_source;
 
 use super::layout::{self, ProgramLayout};
+use super::type_names;
 use super::type_names::{chan_inner_type, option_inner_type, result_err_type, result_ok_type, shared_inner_type, split_tuple_types};
 
 pub fn backend_name() -> &'static str {
@@ -268,6 +269,69 @@ impl BuildSession {
     fn find_enum(&self, type_name: &str) -> Option<&fa::EnumDecl> {
         let key = layout::canonical_type_name(type_name);
         self.modules.values().find_map(|module| module.enums.get(key))
+    }
+
+    /// Return the formal type parameter names for `type_name`. Built-in
+    /// generics (List, Map, Option, Result, Chan, Shared, Set) are
+    /// answered from the hardcoded `builtin_type_params` table; user-
+    /// defined types are looked up in the loaded modules' data classes,
+    /// structs, and enums. Returns None for non-generic types and for
+    /// types the session has not loaded.
+    ///
+    /// See `docs/fuse-stage2-parity-plan.md` Phase B4.2.
+    fn type_params_for_type(&self, type_name: &str) -> Option<Vec<String>> {
+        let canonical = layout::canonical_type_name(type_name);
+        if let Some(builtin) = type_names::builtin_type_params(canonical) {
+            return Some(builtin);
+        }
+        for module in self.modules.values() {
+            if let Some(data) = module.data_classes.get(canonical) {
+                if data.type_params.is_empty() {
+                    return None;
+                }
+                return Some(data.type_params.clone());
+            }
+            if let Some(s) = module.structs.get(canonical) {
+                if s.type_params.is_empty() {
+                    return None;
+                }
+                return Some(s.type_params.clone());
+            }
+            if let Some(e) = module.enums.get(canonical) {
+                if e.type_params.is_empty() {
+                    return None;
+                }
+                return Some(e.type_params.clone());
+            }
+        }
+        None
+    }
+
+    /// Substitute generic type parameters in a function's formal
+    /// return type with the concrete type arguments from the receiver
+    /// type. For example, given an extension `fn List.get(...) ->
+    /// Option<T>` called on a `List<RuntimeFn>` receiver, this returns
+    /// `"Option<RuntimeFn>"`.
+    ///
+    /// Falls back to the input string unchanged when:
+    ///   - the receiver type has no generic args (e.g., bare `"List"`)
+    ///   - the receiver type's formal params are unknown to the session
+    ///   - the substitution map is empty
+    ///
+    /// See `docs/fuse-stage2-parity-plan.md` Phase B4.3.
+    fn substitute_return_type(&self, receiver_type: &str, formal_return: &str) -> String {
+        let canonical = layout::canonical_type_name(receiver_type);
+        let Some(concrete_args) = type_names::split_generic_args(receiver_type) else {
+            return formal_return.to_string();
+        };
+        let Some(formal_params) = self.type_params_for_type(canonical) else {
+            return formal_return.to_string();
+        };
+        let map = type_names::build_type_param_map(&formal_params, &concrete_args);
+        if map.is_empty() {
+            return formal_return.to_string();
+        }
+        type_names::substitute_generics(formal_return, &map)
     }
 
     fn field_type(&self, type_name: &str, field: &str) -> Option<String> {
@@ -5481,4 +5545,127 @@ fn fstring_brace_end(s: &str) -> Option<usize> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Locate the repo root from CARGO_MANIFEST_DIR (which points at
+    /// stage1/fusec). Used by white-box tests that need to load real
+    /// .fuse fixtures via BuildSession::load.
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|p| p.parent())
+            .expect("stage1/fusec must sit under the repo root")
+            .to_path_buf()
+    }
+
+    #[test]
+    fn type_params_for_type_returns_builtin_t_for_list() {
+        // B4.2.2 — builtin path. Loading a trivial fixture so the
+        // session exists; the assertion is on the builtin lookup
+        // which does not need any modules to be loaded.
+        let fixture = repo_root()
+            .join("tests")
+            .join("fuse")
+            .join("core")
+            .join("modules")
+            .join("import_basic.fuse");
+        let session = BuildSession::load(&fixture).expect("load import_basic");
+
+        assert_eq!(session.type_params_for_type("List"), Some(vec!["T".to_string()]));
+        assert_eq!(session.type_params_for_type("List<Int>"), Some(vec!["T".to_string()]));
+        assert_eq!(
+            session.type_params_for_type("Map"),
+            Some(vec!["K".to_string(), "V".to_string()])
+        );
+        assert_eq!(
+            session.type_params_for_type("Map<String, Int>"),
+            Some(vec!["K".to_string(), "V".to_string()])
+        );
+        assert_eq!(
+            session.type_params_for_type("Result"),
+            Some(vec!["T".to_string(), "E".to_string()])
+        );
+    }
+
+    #[test]
+    fn type_params_for_type_returns_user_defined_params_for_generic_data_class() {
+        // B4.2.2 — user-defined path. The fixture
+        // generic_data_class_methods.fuse declares
+        // `data class Box<T>(val value: T) { ... }`. After loading,
+        // the session must report ["T"] for "Box".
+        let fixture = repo_root()
+            .join("tests")
+            .join("fuse")
+            .join("core")
+            .join("types")
+            .join("generic_data_class_methods.fuse");
+        let session = BuildSession::load(&fixture).expect("load generic_data_class_methods");
+
+        assert_eq!(
+            session.type_params_for_type("Box"),
+            Some(vec!["T".to_string()])
+        );
+        // The lookup must canonicalize: "Box<Int>" should also resolve.
+        assert_eq!(
+            session.type_params_for_type("Box<Int>"),
+            Some(vec!["T".to_string()])
+        );
+    }
+
+    #[test]
+    fn type_params_for_type_returns_none_for_non_generic_user_type() {
+        // The fixture import_basic.fuse defines no user types but
+        // imports a helper. type_params_for_type on an unknown type
+        // returns None, not Some(empty).
+        let fixture = repo_root()
+            .join("tests")
+            .join("fuse")
+            .join("core")
+            .join("modules")
+            .join("import_basic.fuse");
+        let session = BuildSession::load(&fixture).expect("load import_basic");
+        assert_eq!(session.type_params_for_type("NoSuchType"), None);
+    }
+
+    #[test]
+    fn substitute_return_type_resolves_list_get_inner_type() {
+        // End-to-end check on the load-bearing path: extension
+        // resolution returns a function with formal return type
+        // `Option<T>`, and substitute_return_type rewrites it to
+        // `Option<Int>` when the receiver was `List<Int>`.
+        let fixture = repo_root()
+            .join("tests")
+            .join("fuse")
+            .join("core")
+            .join("modules")
+            .join("import_basic.fuse");
+        let session = BuildSession::load(&fixture).expect("load import_basic");
+
+        assert_eq!(
+            session.substitute_return_type("List<Int>", "Option<T>"),
+            "Option<Int>"
+        );
+        assert_eq!(
+            session.substitute_return_type("List<RuntimeFn>", "Option<T>"),
+            "Option<RuntimeFn>"
+        );
+        assert_eq!(
+            session.substitute_return_type("Map<String, Int>", "Option<V>"),
+            "Option<Int>"
+        );
+        // Bare receiver (no generic args) leaves the formal return alone.
+        assert_eq!(
+            session.substitute_return_type("List", "Option<T>"),
+            "Option<T>"
+        );
+        // Unknown receiver type also leaves the formal return alone.
+        assert_eq!(
+            session.substitute_return_type("NoSuchType<X>", "Option<T>"),
+            "Option<T>"
+        );
+    }
 }

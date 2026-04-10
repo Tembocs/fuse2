@@ -685,8 +685,8 @@ type across all loaded modules and returning its `type_params` field.
 
 **Tasks:**
 
-- [ ] **B4.2.1** Implement `type_params_for_type` on `BuildSession`.
-- [ ] **B4.2.2** Unit test: returns `["T"]` for `"List"`, returns `["K", "V"]` for `"Map"`, returns the declared params for a user-defined generic data class.
+- [x] **B4.2.1** Implement `type_params_for_type` on `BuildSession`. Delegates to `type_names::builtin_type_params` first, then walks `self.modules.values()` looking up data classes, structs, and enums by canonical name. Returns None for non-generic types (empty `type_params` Vec) so callers can distinguish "no type params" from "generic with no info". Also added `substitute_return_type(receiver, formal)` as a sibling helper that orchestrates the full substitution: canonicalize receiver, split generic args, lookup formal params, build the map, apply `substitute_generics`. B4.3 calls this from every extension call site.
+- [x] **B4.2.2** Unit test: returns `["T"]` for `"List"`, returns `["K", "V"]` for `"Map"`, returns the declared params for a user-defined generic data class. Four white-box tests in `codegen::object_backend::tests`: builtin lookups for List/Map/Result (with and without generic args, exercising canonicalization), user-defined `Box<T>` from `tests/fuse/core/types/generic_data_class_methods.fuse`, None for unknown types, and an end-to-end `substitute_return_type` test covering `List<Int>.get() → Option<Int>`, multi-param `Map<String,Int>.something() → V → Int`, and the bare-receiver and unknown-receiver fallback paths.
 
 **Deliverables:** New method on `BuildSession` with unit test.
 
