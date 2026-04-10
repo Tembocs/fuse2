@@ -323,9 +323,9 @@ Exit code: 2 (distinguishable from test failure exit 1)
 
 **Tasks:**
 
-- [ ] **B0.2.1** Add `fusec2_exists_or_exit(path, mode_name)` helper in `run_tests.py`.
-- [ ] **B0.2.2** Call it at the top of `run_parity` and `run_bootstrap`.
-- [ ] **B0.2.3** Commit: the harness now reports "blocked" with exit 2, not masked failure.
+- [x] **B0.2.1** Add `fusec2_exists_or_exit(path, mode_name)` helper in `run_tests.py`.
+- [x] **B0.2.2** Call it at the top of `run_parity` and `run_bootstrap`. (Implemented in the dispatch in `main()` rather than inside `run_parity` itself, since `--bootstrap` does not call `run_parity`. Same effect, same exit code.) Side fix: `DEFAULT_COMPILER` and `DEFAULT_FUSEC2` now include `.exe` on Windows so the gate's path check is correct on Windows. Per Mandatory Rule 2, this fix landed in the same phase rather than being deferred.
+- [x] **B0.2.3** Commit: the harness now reports "blocked" with exit 2, not masked failure.
 
 **Deliverables:** Updated `tests/stage2/run_tests.py` with distinct exit
 codes documented in its module docstring.

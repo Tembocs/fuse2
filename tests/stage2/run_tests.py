@@ -18,6 +18,15 @@ Usage:
   python tests/stage2/run_tests.py --parity
   python tests/stage2/run_tests.py --bootstrap
   python tests/stage2/run_tests.py --lsp
+
+Exit codes:
+  0  — every test in the requested mode passed
+  1  — at least one real test failure (the compiler ran and produced wrong output)
+  2  — the requested mode is BLOCKED by missing prerequisites (e.g.
+       --parity or --bootstrap requested but fusec2 has not been built
+       yet). Exit 2 is intentionally distinguishable from exit 1 so CI
+       can tell "Stage 2 not yet built" apart from "Stage 2 produces
+       wrong output." See docs/fuse-stage2-parity-plan.md, Phase B0.2.
 """
 
 import argparse
@@ -37,9 +46,38 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 STAGE2_TESTS = REPO_ROOT / "tests" / "stage2"
 STAGE1_TESTS = REPO_ROOT / "tests" / "fuse"
 
-DEFAULT_COMPILER = REPO_ROOT / "stage1" / "target" / "release" / "fusec"
+EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
+DEFAULT_COMPILER = REPO_ROOT / "stage1" / "target" / "release" / f"fusec{EXE_SUFFIX}"
 STAGE1_COMPILER = DEFAULT_COMPILER  # for parity mode
+DEFAULT_FUSEC2 = REPO_ROOT / "stage1" / "target" / f"fusec2{EXE_SUFFIX}"
 KNOWN_FAILURES_FILE = STAGE2_TESTS / "known_failures.txt"
+
+# Exit code 2 means "blocked by missing prerequisite," distinct from
+# exit 1 ("real test failure"). See module docstring and Phase B0.2.
+EXIT_BLOCKED = 2
+
+
+def fusec2_exists_or_exit(path: Path, mode_name: str) -> None:
+    """Precondition gate for modes that require a built fusec2 binary.
+
+    If `path` does not exist, print a clear "blocked" message and exit
+    with code 2 (EXIT_BLOCKED). This is intentionally NOT a silent skip:
+    a CI run that requested --parity or --bootstrap and gets exit 2 has
+    a definite signal that the work cannot proceed until Stage 2 is
+    built. Once fusec2 exists, this gate becomes a no-op and the real
+    test runs to completion (success exits 0, failure exits 1).
+    """
+    if path.exists():
+        return
+    msg = (
+        f"\n{mode_name} cannot run: fusec2 binary not built.\n"
+        f"  Expected at: {path}\n"
+        f"  Reason:      Stage 2 self-compile is gated by\n"
+        f"               docs/fuse-stage2-parity-plan.md (Wave B12).\n"
+        f"  Exit code:   {EXIT_BLOCKED} (distinct from test-failure exit 1).\n"
+    )
+    print(msg)
+    sys.exit(EXIT_BLOCKED)
 
 # ---------------------------------------------------------------------------
 # Fixture parsing
@@ -335,10 +373,9 @@ def run_parity(stage1_compiler: Path, stage2_compiler: Path, parallel: int = 1):
         for fixture in output_fixtures:
             name = fixture.relative_to(STAGE1_TESTS).as_posix()
             stem = fixture.stem
-            exe_suffix = ".exe" if sys.platform == "win32" else ""
 
-            s1_out = Path(tmp_dir) / (stem + "_s1" + exe_suffix)
-            s2_out = Path(tmp_dir) / (stem + "_s2" + exe_suffix)
+            s1_out = Path(tmp_dir) / (stem + "_s1" + EXE_SUFFIX)
+            s2_out = Path(tmp_dir) / (stem + "_s2" + EXE_SUFFIX)
 
             try:
                 rc1, _, err1 = compile_fuse(stage1_compiler, fixture, s1_out)
@@ -416,6 +453,12 @@ def main():
     args = parser.parse_args()
 
     if args.bootstrap:
+        # Bootstrap mode rebuilds fusec2 from scratch via cargo. The
+        # gate here checks for a previously-built fusec2 as evidence
+        # that Stage 2 self-compile has worked at least once. If it has
+        # never built, exit 2 with a clear blocked message instead of
+        # letting the cargo test produce a cryptic Gen 0 error.
+        fusec2_exists_or_exit(DEFAULT_FUSEC2, "T5 Bootstrap")
         print("Bootstrap: delegating to cargo test stage2_bootstrap...")
         result = subprocess.run(
             ["cargo", "test", "-p", "fusec", "--test", "stage2_bootstrap", "--", "--nocapture"],
@@ -424,7 +467,8 @@ def main():
         return result.returncode
 
     if args.parity:
-        s2 = args.stage2_compiler or (REPO_ROOT / "stage1" / "target" / "fusec2")
+        s2 = args.stage2_compiler or DEFAULT_FUSEC2
+        fusec2_exists_or_exit(s2, "T4 Parity")
         return run_parity(STAGE1_COMPILER, s2, args.parallel)
 
     if args.lsp:
