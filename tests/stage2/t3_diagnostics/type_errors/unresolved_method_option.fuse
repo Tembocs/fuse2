@@ -1,0 +1,10 @@
+// EXPECTED ERROR:
+// no method `unwrap` on type `Option<Int>`
+// did you forget `import stdlib.core.option`?
+
+@entrypoint
+fn main() {
+  val maybe: Option<Int> = Some(42)
+  val value = maybe.unwrap()
+  println(value)
+}

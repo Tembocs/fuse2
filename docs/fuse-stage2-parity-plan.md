@@ -230,7 +230,7 @@ closed, so the checker — not a reviewer — drives the fix).
 |------|------|--------|-------|------------|--------|
 | B0 | Baseline & Verification Infrastructure | 3 | 10 | — | **Done** (commits 36a8e9c, 11ff7e7, c5fc4b6) |
 | B1 | Determinism | 2 | 7 | B0 | **Done** (commits 1ebbf1e, fb09dba) |
-| B2 | Checker: Extension Resolution Enforcement | 3 | 11 | B1 | Not started |
+| B2 | Checker: Extension Resolution Enforcement | 3 | 11 | B1 | **Done** (commits f5cb947, 99af0a0, B2.3 pending push) |
 | B3 | Parser & AST: Enum Variant Payload Types | 2 | 8 | B1 | Not started |
 | B4 | Codegen: Generic Type Substitution | 3 | 11 | B1 | Not started |
 | B5 | Codegen: Hardcoded Specialization Ordering | 2 | 9 | B4 | Not started |
@@ -534,11 +534,11 @@ undefined (typo), method on unknown receiver type.
 
 **Tasks:**
 
-- [ ] **B2.3.1** Create `unresolved_method_list.fuse` — `.concat` without `import stdlib.core.list`. EXPECTED ERROR.
-- [ ] **B2.3.2** Create `unresolved_method_option.fuse` — `.unwrap` without `import stdlib.core.option`.
-- [ ] **B2.3.3** Create `unresolved_method_result.fuse` — `.mapErr` without `import stdlib.core.result`.
-- [ ] **B2.3.4** Create `unresolved_method_typo.fuse` — `.lenn()` on a List. EXPECTED ERROR with a different hint.
-- [ ] **B2.3.5** Run: `python tests/stage2/run_tests.py --filter unresolved_method`. All five pass.
+- [x] **B2.3.1** Create `unresolved_method_list.fuse` — `.concat` without `import stdlib.core.list`. EXPECTED ERROR. Asserts both the diagnostic message and the stdlib import hint.
+- [x] **B2.3.2** Create `unresolved_method_option.fuse` — `.unwrap` without `import stdlib.core.option`. Asserts the receiver type is rendered as `Option<Int>` and the hint suggests `import stdlib.core.option`.
+- [x] **B2.3.3** Create `unresolved_method_result.fuse` — `.mapErr` without `import stdlib.core.result`. Asserts the receiver type is rendered as `Result<Int,String>` (parser produces unspaced concatenation) and the hint suggests `import stdlib.core.result`.
+- [x] **B2.3.4** Create `unresolved_method_typo.fuse` — `.lenn()` on a List. EXPECTED ERROR with a different hint. Asserts the receiver is `List<Int>` and that NO hint is generated (the typo is not in the stdlib method table, so the generator returns None).
+- [x] **B2.3.5** Run: `python tests/stage2/run_tests.py --filter unresolved_method`. All five pass. **Confirmed:** the four new fixtures all pass; the Stage 2 fixture suite total is now 379 passed / 0 failed / 3 skipped (was 375 in the B0.1 baseline; +4 new fixtures).
 
 **Deliverables:** Five fixtures.
 

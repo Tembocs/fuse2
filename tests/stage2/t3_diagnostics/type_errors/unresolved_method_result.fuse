@@ -1,0 +1,13 @@
+// EXPECTED ERROR:
+// no method `mapErr` on type `Result<Int,String>`
+// did you forget `import stdlib.core.result`?
+
+@entrypoint
+fn main() {
+  val r: Result<Int, String> = Ok(7)
+  val r2 = r.mapErr(fn(e: String) -> String => "wrapped: " + e)
+  match r2 {
+    Ok(v) => println(v),
+    Err(e) => println(e),
+  }
+}
