@@ -849,8 +849,8 @@ declaration by name, find the variant by name, return its
 
 **Tasks:**
 
-- [ ] **B6.1.1** Add `enum_variant_payload_types(enum_name: &str, variant_name: &str) -> Option<Vec<String>>` on `BuildSession`.
-- [ ] **B6.1.2** Unit test with a user-defined enum.
+- [x] **B6.1.1** Add `enum_variant_payload_types(enum_name: &str, variant_name: &str) -> Option<Vec<String>>` on `BuildSession`. Sits next to `type_params_for_type` and `substitute_return_type`. Canonicalizes the enum name (so callers can pass either `Shape` or `Shape<...>`), walks `self.modules.values()` looking up the canonical name in each module's `enums` BTreeMap, and returns the matching variant's `payload_types` Vec (the field added by B3). Returns None for unknown enums or unknown variants. Unit variants return `Some(empty_vec)`, NOT None — empty payload is a valid result distinct from "not found".
+- [x] **B6.1.2** Unit test with a user-defined enum. Three new white-box tests in `codegen::object_backend::tests`: (1) loads `tests/fuse/core/types/user_enum_payload.fuse` and asserts payload types for `Shape.Circle`, `Shape.Square`, and the unit variant `Shape.Point`, (2) None for unknown variant and unknown enum names, (3) the canonicalization path with `Shape<Anything>.Circle`.
 
 **Deliverables:** Lookup method with unit test.
 

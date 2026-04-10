@@ -307,6 +307,39 @@ impl BuildSession {
         None
     }
 
+    /// Look up the formal payload type names for a user-defined enum
+    /// variant. Returns the raw type names as written in the source —
+    /// callers should pass them through `substitute_return_type` (or an
+    /// equivalent) to specialize against a concrete subject type when
+    /// the enum is generic.
+    ///
+    /// For built-in `Result.Ok`, `Result.Err`, and `Option.Some`,
+    /// callers should use the more direct `result_ok_type`,
+    /// `result_err_type`, and `option_inner_type` helpers from
+    /// `type_names`. This method intentionally does not special-case
+    /// them; it walks loaded user-defined enums only.
+    ///
+    /// See `docs/fuse-stage2-parity-plan.md` Phase B6.1.
+    fn enum_variant_payload_types(
+        &self,
+        enum_name: &str,
+        variant_name: &str,
+    ) -> Option<Vec<String>> {
+        let canonical = layout::canonical_type_name(enum_name);
+        for module in self.modules.values() {
+            if let Some(enum_decl) = module.enums.get(canonical) {
+                if let Some(variant) = enum_decl
+                    .variants
+                    .iter()
+                    .find(|v| v.name == variant_name)
+                {
+                    return Some(variant.payload_types.clone());
+                }
+            }
+        }
+        None
+    }
+
     /// Substitute generic type parameters in a function's formal
     /// return type with the concrete type arguments from the receiver
     /// type. For example, given an extension `fn List.get(...) ->
@@ -5755,6 +5788,74 @@ mod tests {
             .join("import_basic.fuse");
         let session = BuildSession::load(&fixture).expect("load import_basic");
         assert_eq!(session.type_params_for_type("NoSuchType"), None);
+    }
+
+    #[test]
+    fn enum_variant_payload_types_returns_concrete_types_for_user_enum() {
+        // B6.1 — user-defined non-generic enum. The fixture
+        // `user_enum_payload.fuse` declares
+        // `enum Shape { Circle(Int), Square(Int), Point }`.
+        let fixture = repo_root()
+            .join("tests")
+            .join("fuse")
+            .join("core")
+            .join("types")
+            .join("user_enum_payload.fuse");
+        let session = BuildSession::load(&fixture).expect("load user_enum_payload");
+
+        assert_eq!(
+            session.enum_variant_payload_types("Shape", "Circle"),
+            Some(vec!["Int".to_string()])
+        );
+        assert_eq!(
+            session.enum_variant_payload_types("Shape", "Square"),
+            Some(vec!["Int".to_string()])
+        );
+        // Unit variant — empty payload list, NOT None.
+        assert_eq!(
+            session.enum_variant_payload_types("Shape", "Point"),
+            Some(Vec::<String>::new())
+        );
+    }
+
+    #[test]
+    fn enum_variant_payload_types_returns_none_for_unknown() {
+        let fixture = repo_root()
+            .join("tests")
+            .join("fuse")
+            .join("core")
+            .join("types")
+            .join("user_enum_payload.fuse");
+        let session = BuildSession::load(&fixture).expect("load user_enum_payload");
+
+        assert_eq!(
+            session.enum_variant_payload_types("Shape", "NoSuchVariant"),
+            None
+        );
+        assert_eq!(
+            session.enum_variant_payload_types("NoSuchEnum", "Circle"),
+            None
+        );
+    }
+
+    #[test]
+    fn enum_variant_payload_types_canonicalizes_receiver() {
+        // Pass the receiver type with generic args attached; the
+        // helper must canonicalize before lookup so that
+        // `Shape<...>.Circle` resolves to the same variant as
+        // `Shape.Circle`.
+        let fixture = repo_root()
+            .join("tests")
+            .join("fuse")
+            .join("core")
+            .join("types")
+            .join("user_enum_payload.fuse");
+        let session = BuildSession::load(&fixture).expect("load user_enum_payload");
+
+        assert_eq!(
+            session.enum_variant_payload_types("Shape<Anything>", "Circle"),
+            Some(vec!["Int".to_string()])
+        );
     }
 
     #[test]
