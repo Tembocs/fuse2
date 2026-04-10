@@ -228,7 +228,7 @@ closed, so the checker — not a reviewer — drives the fix).
 
 | Wave | Name | Phases | Tasks | Depends On | Status |
 |------|------|--------|-------|------------|--------|
-| B0 | Baseline & Verification Infrastructure | 3 | 10 | — | **Done** (commits 36a8e9c, 11ff7e7, B0.3 pending push) |
+| B0 | Baseline & Verification Infrastructure | 3 | 10 | — | **Done** (commits 36a8e9c, 11ff7e7, c5fc4b6) |
 | B1 | Determinism | 2 | 7 | B0 | Not started |
 | B2 | Checker: Extension Resolution Enforcement | 3 | 11 | B1 | Not started |
 | B3 | Parser & AST: Enum Variant Payload Types | 2 | 8 | B1 | Not started |
