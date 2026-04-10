@@ -881,10 +881,12 @@ payload variable to the corresponding payload type.
 
 **Tasks:**
 
-- [ ] **B6.2.1** Implement the new binding logic in `bind_pattern`.
-- [ ] **B6.2.2** Preserve Ok/Err/Some special cases — they short-circuit.
-- [ ] **B6.2.3** Test with simple user enum: `enum Pattern { Name(NamePattern), Variant(String, List<Pattern>) }`. Assert bound variables get correct types.
-- [ ] **B6.2.4** Test with generic user enum: `enum Maybe<T> { Just(T), Nothing }`. For `Maybe<Int>.Just(x)`, assert `x: Int`.
+- [x] **B6.2.1** Implement the new binding logic in `bind_pattern`. Builds a `Vec<Option<String>>` of resolved payload types per pattern argument, then uses `resolved_payload_types.get(i).cloned().flatten()` to populate the `LocalBinding.ty` for each name pattern.
+- [x] **B6.2.2** Preserve Ok/Err/Some special cases — they short-circuit. The first three arms of the `match (base, bare_variant)` expression handle `("Result", "Ok")`, `("Result", "Err")`, and `("Option", "Some")` directly via the existing `result_ok_type` / `result_err_type` / `option_inner_type` helpers. Only user-defined variants reach the `enum_variant_payload_types` lookup.
+- [x] **B6.2.3** Test with simple user enum: `enum Pattern { Name(NamePattern), Variant(String, List<Pattern>) }`. Assert bound variables get correct types. **Verified via the `user_enum_payload_field_access.fuse` fixture in B6.3** which exercises both single-payload (`Pattern.Name(np) => np.ident`) and multi-payload (`Pattern.Both(np, tp) => f"{np.ident} {tp.right}"`) user variants. Both paths produce correct concrete bindings.
+- [x] **B6.2.4** Test with generic user enum: `enum Maybe<T> { Just(T), Nothing }`. For `Maybe<Int>.Just(x)`, assert `x: Int`. **Verified via the `generic_user_enum_payload.fuse` fixture in B6.3.** Both `Maybe<Int>.Just(x) => x * 2` (Int arithmetic on the bound payload) and `Maybe<String>.Just(s) => s + "!"` (String concatenation) work, proving the substitution path through `substitute_return_type` is correct.
+
+**Critical fix found while testing:** the parser stores variant names in the qualified form `Enum.Variant` (e.g., `"Pattern.Name"`), not the bare form `Variant`. The first version of B6.2 looked up `enum_variant_payload_types("Pattern", "Pattern.Name")` and got None for every user-defined variant. Fixed by stripping the enum prefix at the call site: `variant.name.rsplit_once('.').map(|(_, v)| v).unwrap_or(variant.name.as_str())`. This is documented in the bind_pattern comment with a pointer to `parser.rs:1228-1238` so future maintainers don't get tripped up by the same convention.
 
 **Deliverables:** Updated `bind_pattern` with two focused tests.
 

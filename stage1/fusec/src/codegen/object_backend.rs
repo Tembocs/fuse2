@@ -4903,6 +4903,55 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         )
                     }
                 };
+                // B6.2: Resolve the concrete payload type for each
+                // pattern argument so the bound variable carries the
+                // right type for downstream field access and method
+                // resolution.
+                //
+                // Built-in `Result.Ok`, `Result.Err`, and `Option.Some`
+                // keep their existing fast path through the
+                // `result_ok_type` / `result_err_type` /
+                // `option_inner_type` helpers.
+                //
+                // For user-defined enums, look up the variant's
+                // formal payload types via
+                // `BuildSession::enum_variant_payload_types` (B6.1)
+                // and specialize them against the subject type via
+                // `substitute_return_type` (B4) so that
+                // `Maybe<Int>.Just(x)` correctly binds `x` as `Int`
+                // and `Pattern.Name(np)` binds `np` as `NamePattern`.
+                //
+                // The parser stores variant names in the qualified
+                // form `Enum.Variant` (see parser.rs:1228-1238), so we
+                // strip the enum prefix to get the bare variant name
+                // before looking it up.
+                let bare_variant = variant
+                    .name
+                    .rsplit_once('.')
+                    .map(|(_, v)| v)
+                    .unwrap_or(variant.name.as_str());
+                let resolved_payload_types: Vec<Option<String>> = match (base, bare_variant) {
+                    ("Result", "Ok") => vec![result_ok_type(subject_type)],
+                    ("Result", "Err") => vec![result_err_type(subject_type)],
+                    ("Option", "Some") => vec![option_inner_type(subject_type)],
+                    _ => self
+                        .compiler
+                        .session
+                        .enum_variant_payload_types(base, bare_variant)
+                        .map(|raw_types| {
+                            raw_types
+                                .iter()
+                                .map(|raw| {
+                                    Some(
+                                        self.compiler
+                                            .session
+                                            .substitute_return_type(subject_type, raw),
+                                    )
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_else(|| vec![None; variant.args.len()]),
+                };
                 for (i, arg) in variant.args.iter().enumerate() {
                     if let fa::Pattern::Name(name) = arg {
                         let val = if i == 0 {
@@ -4922,16 +4971,10 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                             name.name.clone(),
                             LocalBinding {
                                 var: variable,
-                                ty: if variant.args.len() == 1 {
-                                    match variant.name.as_str() {
-                                        "Ok" => result_ok_type(subject_type),
-                                        "Err" => result_err_type(subject_type),
-                                        "Some" => option_inner_type(subject_type),
-                                        _ => None,
-                                    }
-                                } else {
-                                    None
-                                },
+                                ty: resolved_payload_types
+                                    .get(i)
+                                    .cloned()
+                                    .flatten(),
                                 destroy: false,
                             },
                         );
