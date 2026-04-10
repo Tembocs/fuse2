@@ -1,0 +1,39 @@
+// EXPECTED OUTPUT:
+// 84
+// 0
+// hello!
+// (none)
+
+// B6.3 — generic user-defined enum variant payload binding. Before
+// B6 the binding `Maybe<Int>.Just(x)` would give `x: None` because
+// `bind_pattern` had no way to substitute the formal `T` against the
+// subject type. After B6 the lookup returns the formal payload `[T]`
+// and `substitute_return_type("Maybe<Int>", "T")` rewrites it to
+// `Int`, so `x` is bound as `Int` and arithmetic on it works.
+
+enum Maybe<T> {
+  Just(T),
+  Nothing,
+}
+
+fn doubleOrZero(m: Maybe<Int>) -> Int {
+  match m {
+    Maybe.Just(x) => x * 2,
+    Maybe.Nothing => 0,
+  }
+}
+
+fn shoutOrSilent(m: Maybe<String>) -> String {
+  match m {
+    Maybe.Just(s) => s + "!",
+    Maybe.Nothing => "(none)",
+  }
+}
+
+@entrypoint
+fn main() {
+  println(doubleOrZero(Maybe.Just(42)))
+  println(doubleOrZero(Maybe.Nothing))
+  println(shoutOrSilent(Maybe.Just("hello")))
+  println(shoutOrSilent(Maybe.Nothing))
+}

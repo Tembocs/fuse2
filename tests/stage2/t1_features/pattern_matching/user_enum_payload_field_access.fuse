@@ -1,0 +1,43 @@
+// EXPECTED OUTPUT:
+// alice
+// 7 hello
+// hello world
+// world
+
+// B6.3 — user-defined enum variant payload binding with downstream
+// field access. Before B6 the codegen's `bind_pattern` only knew how
+// to bind concrete types for Ok/Err/Some, so a binding like
+// `Pattern.Name(np)` would get `np: None` and any subsequent
+// `np.ident` would error with "cannot infer member ident".
+//
+// After B6 the binding looks up the variant's payload types from the
+// AST (B3) and substitutes generics against the subject type (B4),
+// so single-payload and multi-payload user variants both bind their
+// arguments to the right concrete types.
+
+data class NamePattern(val ident: String)
+data class TwoPayload(val left: Int, val right: String)
+
+enum Pattern {
+  Name(NamePattern),
+  Pair(TwoPayload),
+  Both(NamePattern, TwoPayload),
+}
+
+fn describe(p: Pattern) -> String {
+  match p {
+    Pattern.Name(np) => np.ident,
+    Pattern.Pair(tp) => f"{tp.left} {tp.right}",
+    Pattern.Both(np, tp) => f"{np.ident} {tp.right}",
+  }
+}
+
+@entrypoint
+fn main() {
+  println(describe(Pattern.Name(NamePattern("alice"))))
+  println(describe(Pattern.Pair(TwoPayload(7, "hello"))))
+  val np = NamePattern("hello")
+  val tp = TwoPayload(0, "world")
+  println(describe(Pattern.Both(np, tp)))
+  println("world")
+}

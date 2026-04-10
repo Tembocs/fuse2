@@ -234,7 +234,7 @@ closed, so the checker — not a reviewer — drives the fix).
 | B3 | Parser & AST: Enum Variant Payload Types | 2 | 8 | B1 | **Done** (commit 730d18e) |
 | B4 | Codegen: Generic Type Substitution | 3 | 11 | B1 | **Done** (commits a088b10, 8007a41, 6e6802a) |
 | B5 | Codegen: Hardcoded Specialization Ordering | 2 | 9 | B4 | **Done** (commits 5c6a8e0, f0d594b) |
-| B6 | Codegen: User-Defined Enum Variant Binding | 3 | 12 | B3, B4 | Not started |
+| B6 | Codegen: User-Defined Enum Variant Binding | 3 | 12 | B3, B4 | **Done** (commits 5b7c30f, 893504a, B6.3 pending push) |
 | B7 | Codegen: Match-as-Expression Type Unification | 5 | 22 | B4, B5 | Not started |
 | B8 | Codegen: Namespace Static Method Calls | 3 | 11 | B5 | Not started |
 | B9 | Codegen: Tuple Field Access Type Propagation | 3 | 10 | B7 | Not started |
@@ -911,9 +911,9 @@ a field of the bound variable.
 
 **Tasks:**
 
-- [ ] **B6.3.1** Create `user_enum_payload_field_access.fuse`.
-- [ ] **B6.3.2** Create `generic_user_enum_payload.fuse` for the generic case.
-- [ ] **B6.3.3** Run both. Must pass.
+- [x] **B6.3.1** Create `user_enum_payload_field_access.fuse`. Lives at `tests/stage2/t1_features/pattern_matching/`. Declares `data class NamePattern(val ident: String)` and `data class TwoPayload(val left: Int, val right: String)`, then `enum Pattern { Name(NamePattern), Pair(TwoPayload), Both(NamePattern, TwoPayload) }`. Exercises field access on the bound payloads (`np.ident`, `tp.left`, `tp.right`) for both single-payload and multi-payload variants.
+- [x] **B6.3.2** Create `generic_user_enum_payload.fuse` for the generic case. Lives at `tests/stage2/t1_features/pattern_matching/`. Declares `enum Maybe<T> { Just(T), Nothing }` and matches on both `Maybe<Int>` (with arithmetic on the bound `x: Int`) and `Maybe<String>` (with concatenation on the bound `s: String`), proving the substitution path through `substitute_return_type` works for two distinct concrete instantiations of the same generic enum.
+- [x] **B6.3.3** Run both. Must pass. **Both fixtures pass on first run** after the bare-variant fix from B6.2 landed. Stage 2 fixture suite total moved from 381 to 383 passing.
 
 **Deliverables:** Two new fixtures.
 
