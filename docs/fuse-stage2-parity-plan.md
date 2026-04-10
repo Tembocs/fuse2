@@ -233,7 +233,7 @@ closed, so the checker — not a reviewer — drives the fix).
 | B2 | Checker: Extension Resolution Enforcement | 3 | 11 | B1 | **Done** (commits f5cb947, 99af0a0, 9b0e77c) |
 | B3 | Parser & AST: Enum Variant Payload Types | 2 | 8 | B1 | **Done** (commit 730d18e) |
 | B4 | Codegen: Generic Type Substitution | 3 | 11 | B1 | **Done** (commits a088b10, 8007a41, 6e6802a) |
-| B5 | Codegen: Hardcoded Specialization Ordering | 2 | 9 | B4 | Not started |
+| B5 | Codegen: Hardcoded Specialization Ordering | 2 | 9 | B4 | **Done** (commits 5c6a8e0, B5.2 pending push) |
 | B6 | Codegen: User-Defined Enum Variant Binding | 3 | 12 | B3, B4 | Not started |
 | B7 | Codegen: Match-as-Expression Type Unification | 5 | 22 | B4, B5 | Not started |
 | B8 | Codegen: Namespace Static Method Calls | 3 | 11 | B5 | Not started |
@@ -811,9 +811,9 @@ return where `None` means "not handled." Prefer the latter for clarity.
 
 **Tasks:**
 
-- [ ] **B5.2.1** Refactor each hardcoded block into a helper `try_compile_XXX_builtin(...) -> Result<Option<TypedValue>, String>`. `None` means "this block did not handle it — continue."
-- [ ] **B5.2.2** `compile_member_call` calls each helper in order, returns early on `Some(Ok)` or `Some(Err)`, continues on `None`.
-- [ ] **B5.2.3** Test: `.concat` on `List` (which has no hardcoded block) correctly falls through to extension resolution and succeeds after B4.
+- [x] **B5.2.1** Refactor each hardcoded block into a helper `try_compile_XXX_builtin(...) -> Result<Option<TypedValue>, String>`. `None` means "this block did not handle it — continue." **Five new helper methods** added to `LoweringState` immediately after `compile_member_call`: `try_compile_list_builtin`, `try_compile_chan_builtin`, `try_compile_shared_builtin`, `try_compile_map_builtin`, `try_compile_string_builtin`. Each takes `&mut self`, the `FunctionBuilder`, the receiver `Value`, the receiver type string, the method name, and the args slice. The String helper omits `args` because none of its hardcoded methods take arguments. Each helper guards on receiver type at the top and returns `Ok(None)` if the type does not match — making it safe to call all five in sequence regardless of receiver type.
+- [x] **B5.2.2** `compile_member_call` calls each helper in order, returns early on `Some(Ok)` or `Some(Err)`, continues on `None`. The dispatch in `compile_member_call` is now five `if let Some(result) = self.try_compile_X_builtin(...)? { return Ok(result); }` calls in series, followed by extension resolution, followed by the final "unknown extension" error. The body of `compile_member_call` shrank from ~480 lines to ~120 lines, with the bulk of the dispatch logic moved into the named helpers.
+- [x] **B5.2.3** Test: `.concat` on `List` (which has no hardcoded block) correctly falls through to extension resolution and succeeds after B4. **Confirmed** by the existing `substituted_list_get.fuse` fixture from B4.3 (uses `xs.get(0).unwrapOr(0)` which exercises both the hardcoded `get` path and the stdlib `unwrapOr` extension path), plus the broader Stage 2 fixture suite which was 381/0/3 before B5 and remains 381/0/3 after B5. Cargo test totals also unchanged (111 passing, 6 same pre-existing failures).
 
 **Deliverables:** Clean fallthrough semantics via helper functions.
 
