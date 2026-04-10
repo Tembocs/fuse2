@@ -228,7 +228,7 @@ closed, so the checker — not a reviewer — drives the fix).
 
 | Wave | Name | Phases | Tasks | Depends On | Status |
 |------|------|--------|-------|------------|--------|
-| B0 | Baseline & Verification Infrastructure | 3 | 10 | — | Not started |
+| B0 | Baseline & Verification Infrastructure | 3 | 10 | — | In progress |
 | B1 | Determinism | 2 | 7 | B0 | Not started |
 | B2 | Checker: Extension Resolution Enforcement | 3 | 11 | B1 | Not started |
 | B3 | Parser & AST: Enum Variant Payload Types | 2 | 8 | B1 | Not started |
@@ -280,12 +280,12 @@ commit — and commit that snapshot to the repo.
 
 **Tasks:**
 
-- [ ] **B0.1.1** `cargo clean` then `cargo build --release -p fusec` in `stage1/`.
-- [ ] **B0.1.2** Run `python tests/stage2/run_tests.py --parallel 1` and capture full stdout/stderr to a file.
-- [ ] **B0.1.3** Run `cargo test -p fusec -- --test-threads=1` and capture full stdout/stderr.
-- [ ] **B0.1.4** Run `cargo test -p fuse-runtime` and `cargo test -p fuse-lsp` and capture results.
-- [ ] **B0.1.5** Write a summary file `tests/stage2/baseline_pre_parity_plan.txt` containing: the commit hash, the date, pass/fail/skip counts for each suite, and the exact error message for each failing test (sorted alphabetically so the file is diffable).
-- [ ] **B0.1.6** Commit the baseline file.
+- [x] **B0.1.1** `cargo clean` then `cargo build --release -p fusec` in `stage1/`.
+- [x] **B0.1.2** Run `python tests/stage2/run_tests.py --parallel 1` and capture full stdout/stderr to a file.
+- [x] **B0.1.3** Run `cargo test -p fusec -- --test-threads=1` and capture full stdout/stderr. (Used `--no-fail-fast` so all targets run; without it cargo short-circuits at the first failing target.)
+- [x] **B0.1.4** Run `cargo test -p fuse-runtime` and `cargo test -p fuse-lsp` and capture results.
+- [x] **B0.1.5** Write a summary file `tests/stage2/baseline_pre_parity_plan.txt` containing: the commit hash, the date, pass/fail/skip counts for each suite, and the exact error message for each failing test (sorted alphabetically so the file is diffable).
+- [x] **B0.1.6** Commit the baseline file.
 
 **Deliverables:** `tests/stage2/baseline_pre_parity_plan.txt` in the repo.
 

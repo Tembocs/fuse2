@@ -1,0 +1,211 @@
+# Pre-Parity-Plan Baseline
+#
+# Frozen snapshot of the test matrix on the commit named below, captured
+# before any change from docs/fuse-stage2-parity-plan.md lands. The
+# purpose of this file is to make every later claim of "X more tests
+# pass after Wave Bn" auditable: the diff against this file is the
+# evidence.
+#
+# Plan reference: docs/fuse-stage2-parity-plan.md, Phase B0.1.
+#
+# Commit:  2745f7260c8d795803e3241b3697294060439111
+# Branch:  main
+# Date:    2026-04-10
+# Host:    Windows 11 Pro 10.0.27924 (win32)
+# Builder: rustc + cargo (workspace edition 2024)
+# fusec:   stage1/target/release/fusec.exe (built clean from this commit)
+#
+# Build provenance:
+#   cargo clean -p fusec
+#   cargo build --release -p fusec
+#   -> Finished in ~25s, 13 warnings, 0 errors
+#
+# Test invocation:
+#   python tests/stage2/run_tests.py --parallel 1 \
+#       --compiler stage1/target/release/fusec.exe
+#   cargo test -p fusec        --no-fail-fast -- --test-threads=1
+#   cargo test -p fuse-runtime --no-fail-fast
+#   cargo test -p fuse-lsp     --no-fail-fast
+#
+# All four invocations were captured to /tmp/baseline_*.txt during the
+# B0.1 run; only the post-processed summary lives in this file (the raw
+# logs contain full file paths and timestamps that change run-to-run and
+# would defeat the purpose of a diffable baseline).
+
+================================================================================
+SUITE TOTALS
+================================================================================
+
+Suite                              Passed   Failed   Skipped   Wall (s)
+Stage 2 fixture suite (Python)        375        0         3      882.0
+cargo test -p fusec                    81        6         0      ~145
+cargo test -p fuse-runtime              0        0         0       ~10
+cargo test -p fuse-lsp                  0        0         0       ~10
+
+Aggregate                             456        6         3
+
+Exit codes:
+  python tests/stage2/run_tests.py             -> 0
+  cargo test -p fusec --no-fail-fast           -> 101 (1+ failed test target)
+  cargo test -p fuse-runtime --no-fail-fast    -> 0
+  cargo test -p fuse-lsp --no-fail-fast        -> 0
+
+================================================================================
+STAGE 2 FIXTURE SUITE (tests/stage2/run_tests.py)
+================================================================================
+
+Total fixtures discovered:  378
+Known failures (file):        0  (known_failures.txt is empty)
+Passed:                     375
+Failed:                       0
+Skipped:                      3
+Elapsed:                  882.0 s
+
+The 3 skipped fixtures are LSP-tier tests (the LSP runner is invoked
+separately via --lsp). All five tiers (T0 smoke, T1 features,
+T2 composition, T3 diagnostics, M memory) are 100% green at this
+commit.
+
+================================================================================
+CARGO TEST -p fusec
+================================================================================
+
+Test target                         Passed   Failed   Status
+fusec lib unittests                      0        0   ok
+fusec main unittests                     0        0   ok
+check_core_suite                         2        0   ok
+check_full_suite                         8        0   ok
+cli_suite                               42        0   ok
+compile_output_suite                     0        1   FAILED
+full_smoke_suite                        27        0   ok
+harness                                  0        0   ok
+stage2_bootstrap                         0        1   FAILED
+stage2_core_suite                        0        4   FAILED
+wasi_suite                               2        0   ok
+
+Sum                                     81        6
+
+================================================================================
+FAILING TESTS (sorted alphabetically for diff stability)
+================================================================================
+
+The six failing test cases all trace to the same two root causes
+(both addressed by the parity plan):
+
+  Root cause A:  Stage 1 codegen errors with
+                 `error: unsupported List member call \`concat\``
+                 when compiling stage2/src/main.fuse. This is gap
+                 #1 + #3 + #5 from the T4 parity investigation
+                 (missing stdlib imports + hardcoded specialization
+                 ordering + match-as-expression type inference).
+
+  Root cause B:  tests/fuse/core/integration/stdlib_foundation.fuse
+                 has stale expected output. The fixture asserts
+                 `name, role` after `Some(alice)`, but the current
+                 compiler emits `alice` for the `m.get("name")` call
+                 (which is the correct behavior for a None-aware
+                 Option-returning method). Pre-existing test bug
+                 documented in docs/t4-parity-investigation.md as
+                 "stdlib_foundation.fuse is a pre-existing test bug
+                 (incorrect expected output), not a regression."
+
+--------------------------------------------------------------------------------
+[1] bootstrap_three_generations
+    target:    stage1/fusec/tests/stage2_bootstrap.rs
+    panic at:  fusec\tests\stage2_bootstrap.rs:35
+    cause:     Root cause A. Gen 0 fails:
+               error: unsupported List member call `concat`
+    fixed by:  Wave B11 (after B2/B4/B5 land)
+
+[2] core_output_fixtures_compile_and_run
+    target:    stage1/fusec/tests/compile_output_suite.rs
+    panic at:  fusec\tests\compile_output_suite.rs:50
+    cause:     Root cause B. Single fixture mismatch on
+               tests/fuse/core/integration/stdlib_foundation.fuse:
+                 expected:  ...Some(alice)\nname, role
+                 actual:    ...alice\nname, role
+    fixed by:  Out of plan scope. The fixture's expected output is
+               wrong; the compiler is right. The plan does not touch
+               this — see Mandatory Rule 1 (no test rewrites) — but
+               this fixture predates the plan and may be corrected as
+               a separate housekeeping task once the parity plan lands.
+
+[3] stage1_and_stage2_produce_identical_output
+    target:    stage1/fusec/tests/stage2_core_suite.rs
+    panic at:  fusec\tests\harness.rs:144
+    cause:     Root cause A. Stage 2 compiler build fails before any
+               comparison can run.
+    fixed by:  Wave B12.5 (T4 Parity verification)
+
+[4] stage2_core_error_fixtures_match_diagnostics
+    target:    stage1/fusec/tests/stage2_core_suite.rs
+    panic at:  fusec\tests\harness.rs:144
+    cause:     Root cause A. Same Stage 2 build failure.
+    fixed by:  Wave B12.4
+
+[5] stage2_core_output_fixtures_compile_and_run
+    target:    stage1/fusec/tests/stage2_core_suite.rs
+    panic at:  fusec\tests\harness.rs:144
+    cause:     Root cause A. Same Stage 2 build failure.
+    fixed by:  Wave B12.3
+
+[6] stage2_core_warning_fixtures_match_diagnostics
+    target:    stage1/fusec/tests/stage2_core_suite.rs
+    panic at:  fusec\tests\harness.rs:144
+    cause:     Root cause A. Same Stage 2 build failure.
+    fixed by:  Wave B12.4
+
+================================================================================
+PASSING SUITE INVENTORY (for change detection)
+================================================================================
+
+Every entry below was green at this commit. If a later phase causes
+any of these to fail, the phase is not done (Mandatory Rule 4).
+
+Stage 2 fixture suite tiers (counts; full per-fixture list lives in
+the suite output and is too long to mirror here):
+
+  t0_smoke/                              passing
+  t1_features/                           passing
+  t2_composition/                        passing
+  t3_diagnostics/                        passing
+  m_memory/                              passing
+
+cargo test -p fusec test targets that are 100% green:
+
+  check_core_suite             (2 tests)
+  check_full_suite             (8 tests)
+  cli_suite                   (42 tests)
+  full_smoke_suite            (27 tests)
+  wasi_suite                   (2 tests)
+  fusec lib unittests          (0 tests)
+  fusec main unittests         (0 tests)
+  harness                      (0 tests; helper module)
+
+cargo test -p fuse-runtime: lib unittests target builds and runs;
+zero #[test] functions are defined in this crate at this commit.
+
+cargo test -p fuse-lsp: main unittests target builds and runs;
+zero #[test] functions are defined in this crate at this commit.
+
+================================================================================
+NOTES ON DETERMINISM
+================================================================================
+
+This baseline was captured BEFORE Wave B1 (the determinism wave).
+At this commit, BuildSession.modules is still a HashMap, so repeated
+runs of `cargo test stage2_core_suite` may surface different first
+errors run-to-run. The "Root cause A" errors above are the ones
+observed on this run; on a different run a different (but equally
+real) error may surface. This is acceptable for the baseline because
+all such errors trace back to the same set of compiler gaps already
+documented in docs/t4-parity-investigation.md.
+
+The B0.3 determinism harness (added in the same wave as this file)
+will lock down byte-for-byte reproducibility from B1 onward. After
+B1, this baseline can be regenerated and will be byte-identical
+across reruns from the same commit.
+
+================================================================================
+END OF BASELINE
+================================================================================
