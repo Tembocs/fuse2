@@ -821,6 +821,14 @@ This reuses the existing 145+ core fixtures. No new files needed.
 
 Implementation: `run_tests.py --parity` mode.
 
+> **Status (2026-04-10):** T4 Parity is currently blocked because
+> `stage1 fusec stage2/src/main.fuse -o fusec2.exe` fails end-to-end.
+> Root-cause analysis is in
+> [docs/t4-parity-investigation.md](t4-parity-investigation.md).
+> The remediation plan — a proper fix, no workarounds — is
+> [docs/fuse-stage2-parity-plan.md](fuse-stage2-parity-plan.md).
+> T4 Parity becomes executable once that plan reaches Wave B12.
+
 ---
 
 ## T5 — Bootstrap
@@ -833,6 +841,12 @@ Also available via `run_tests.py --bootstrap`:
 3. `fusec2-stage2` compiles Stage 2 → `fusec2-verified`
 4. Semantic equivalence check (compile fixture, compare output)
 5. Core test suite with `fusec2-verified`
+
+> **Status (2026-04-10):** T5 Bootstrap depends on the same `fusec2`
+> binary as T4 Parity, and is therefore blocked by the same gaps.
+> See [docs/fuse-stage2-parity-plan.md](fuse-stage2-parity-plan.md) for
+> the remediation plan. T5 Bootstrap becomes executable once that plan
+> reaches Wave B12.
 
 ---
 
@@ -958,4 +972,4 @@ python tests/stage2/run_tests.py --filter mutref
 ---
 
 *Document created: 2026-04-08.*
-*Companion documents: `docs/fuse-stage2-plan.md`, `docs/fuse-language-guide-2.md`.*
+*Companion documents: `docs/fuse-stage2-plan.md`, `docs/fuse-language-guide-2.md`, `docs/fuse-stage2-parity-plan.md`, `docs/t4-parity-investigation.md`.*

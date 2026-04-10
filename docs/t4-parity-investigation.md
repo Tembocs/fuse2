@@ -1,5 +1,23 @@
 # T4 Parity Investigation — Codegen Gaps Blocking Stage 2 Self-Compilation
 
+> **Superseded (2026-04-10) by [docs/fuse-stage2-parity-plan.md](fuse-stage2-parity-plan.md).**
+>
+> This document captures the investigation that identified the gaps.
+> The **remediation plan** — a proper fix for every gap, no workarounds,
+> no compromises — lives in
+> [docs/fuse-stage2-parity-plan.md](fuse-stage2-parity-plan.md).
+>
+> The plan adopts **Option A** from the "Recommended Path Forward"
+> section below: complete the fix, including the deepest gap (Issue 5,
+> match-as-expression type inference). Options B, C, and D are
+> explicitly rejected — patching Stage 2 source to dodge compiler bugs
+> and mocking out the parity harness are forbidden by the plan's
+> Rule 1 ("No Corners Cut").
+>
+> This investigation document is preserved as-is for historical
+> reference. Per-issue post-mortems will be added to
+> [docs/learning.md](learning.md) (L026-L035) as the plan executes.
+
 **Date:** 2026-04-10
 **Status:** Investigation complete; implementation attempted but reverted pending design discussion
 **Goal:** Run T4 Parity (`run_tests.py --parity`) which requires `fusec2` to exist
