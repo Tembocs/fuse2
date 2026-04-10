@@ -627,6 +627,32 @@ harmless before because the two symbols were different, but was redundant.
 
 ---
 
+### L027: Match-as-expression arm type inference was unreachable-first-arm
+
+**Group:** G5 (pattern matching)
+**Phase:** Wave B7 (docs/fuse-stage2-parity-plan.md)
+**Affected tests:** `stage2/src/codegen.fuse:332-337` canonical pattern + every fixture exercising a `val x = match y { ... }` binding where the first arm contained pattern-bound variables and later arms contained empty list literals / `None` / half-typed `Result` values.
+
+**What happened:** A `val x = match decl { Declaration.DataClass(dc) => dc.interfaces, _ => [] }` binding produced `x: List<Unknown>` at both check time and codegen time, and any subsequent `x.len()` / `x.map(...)` failed at codegen with "unknown extension `Unknown.len`". The `val x = when { ... }` form had an even sharper failure: `compile_when` hardcoded `ty: Some("Unit")` on its result, so every when-bound variable took type Unit regardless of the arms.
+
+**Root cause (three layers):**
+1. **codegen/object_backend.rs `compile_match` / `compile_two_arm_match`** computed the result type with `arms.iter().find_map(|arm| infer_expr_type(arm))` AFTER `self.locals` had been restored to `base_locals`. Pattern-bound names like `dc` were no longer in scope by the time `infer_expr_type` ran, so the first arm returned None and the second arm's `[]` → `List<Unknown>` dominated. Same mechanism in `compile_two_arm_match`.
+2. **codegen/object_backend.rs `infer_expr_type` for Match** used `match_expr.arms.first().and_then(...)`, which stops at the first arm. Nested `Match`-in-`Match` and When expressions returned None because `when` was hardcoded to `Some("Unit")` in the same function.
+3. **codegen/object_backend.rs `compile_when`** hardcoded its return `TypedValue.ty = Some("Unit".to_string())` regardless of the arms. This made the when-bound-variable case independently broken even after the inference fix.
+
+Plus the **checker**'s `infer_expr_type` had the same find_map-first-arm bug (line ~1926) and its `Match` statement handler didn't validate arm compatibility at all.
+
+**Fix (Wave B7):**
+1. **B7.3** — Added `unify_match_arm_types` in `codegen/type_names.rs` (pure, 8 unit tests covering rules U1-U6). Rewrote `compile_match` and `compile_two_arm_match` to collect each arm's compiled `TypedValue.ty` *during* arm compilation (while pattern bindings are live), then unify at the end.
+2. **B7.4** — Checker now imports `unify_match_arm_types` and runs it over every `Match` expression's arms in `check_expr`. Emits `match arms have incompatible types \`A\` and \`B\`` with a hint when unification fails (Rule U5). **Near-miss during B7.4:** an early draft hardcoded block-arm types to `Some("Unit")` and false-positive-flagged every fixture using `match x { Ok(p) => { ...; state.diagnostics }, Err(m) => [...] }` as "Unit vs List". Fixed in-phase (Rule 2) by reading the block's trailing expression type via the existing `infer_block_type` helper.
+3. **B7.5** — Both the codegen `infer_expr_type` and the checker `infer_expr_type` now unify across every arm (via a new depth-bounded `infer_match_expr_type` helper in the codegen; direct iteration in the checker). `compile_when` was fixed in the same commit to call `unify_match_arm_types` on its arm types instead of hardcoding Unit. The when-inference fix required BOTH the `infer_expr_type` fix AND the `compile_when` fix — either alone was insufficient because `compile_when` is the authoritative type source when invoked directly from `compile_expr`.
+
+**Lesson:** When a helper produces a "throwaway" type via post-hoc inference, ask whether the authoritative type exists *during* the operation being inferred. In this case the arm's `TypedValue.ty` existed at compile time in a local variable and was being discarded. The fix was to plumb it through, not to improve the post-hoc inference. Every type ingested from `infer_expr_type` where `compile_expr` already knew the answer is a bug waiting to bite.
+
+**Status:** Fixed — commits `b434a2a` (B7.1), `d78f122` (B7.2), `f3d86af` (B7.3), `af35565` (B7.4), `27bbc96` (B7.5).
+
+---
+
 ## Bug Entry Template
 
 ```markdown
