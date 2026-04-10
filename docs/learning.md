@@ -608,6 +608,25 @@ harmless before because the two symbols were different, but was redundant.
 
 ---
 
+### L026: fuse-lsp referenced removed `EnumVariant.arity` field
+
+**Group:** G7
+**Phase:** Discovered during B7 precondition regression run (docs/fuse-stage2-parity-plan.md Wave B7)
+**Affected tests:** `cargo test -p fuse-lsp` (compile failure, `error[E0609]: no field 'arity' on type '&EnumVariant'`)
+
+**What happened:** Wave B3 (commit `730d18e`) removed the `arity: usize` field from `ast::EnumVariant` and replaced it with `payload_types: Vec<String>` so that codegen could resolve concrete payload types in `bind_pattern`. The Stage 1 compiler crate was updated, but `stage1/fuse-lsp/src/symbols.rs` still referenced `v.arity` in two places — once in `def_span`/`type_info` construction (~line 107), once in `format_enum` (~line 490). The error only surfaced when someone ran `cargo test -p fuse-lsp`; the default workspace build tree (`cargo test -p fusec`) doesn't compile fuse-lsp, so B3's zero-regression check missed it.
+
+**Root cause:** Incomplete rename in B3. The Stage 2 parity plan's Rule 4 mandates running `cargo test -p fuse-lsp` as one of five required regression suites; this rule was satisfied in spirit but the result was either not checked or the failure was masked by the test target reporting `0 passed, 0 failed` (which happens when the crate has no tests *and* compiles — but cargo still exits non-zero when it fails to compile, so this must have been missed).
+
+**Fix plan (completed):**
+1. Replace `v.arity > 0` with `!v.payload_types.is_empty()`.
+2. Replace `v.arity` in format strings with `v.payload_types.join(", ")` so hover info shows actual type names, not counts (e.g., `Shape(Int, Int)` instead of `Shape(2 fields)`).
+3. Re-run `cargo test -p fuse-lsp --release` and confirm it compiles + passes.
+
+**Status:** Fixed — commit `8b93265`, landed as a Rule 2 fix during B7 execution.
+
+---
+
 ## Bug Entry Template
 
 ```markdown

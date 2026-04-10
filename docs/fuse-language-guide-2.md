@@ -570,6 +570,19 @@ val label = when {
 - A `match` on `Int` or `String` requires `_` because these types have unbounded values.
 - Nested patterns are supported: `Some(Ok(value))` destructures through both `Option` and `Result`.
 
+### Arm type unification (match / when as expression)
+
+When `match` or `when` is used in expression position, the result type is computed by unifying the types of every arm body. The rules are:
+
+- **U1 — Identity.** If every arm has the same concrete type `T`, the result type is `T`.
+- **U2 — Empty list promotion.** An arm whose body is an empty list literal `[]` has the unknown-element type `List`. If a sibling arm has a concrete list type `List<X>`, every `List` arm is promoted to `List<X>` and the result is `List<X>`.
+- **U3 — `None` promotion.** An arm whose body is `None` has pseudo-type `Option<Unknown>`. If a sibling arm has a concrete `Option<X>`, every `Option<Unknown>` arm is promoted to `Option<X>` and the result is `Option<X>`.
+- **U4 — Result<_> promotion.** An arm whose body is `Ok(x)` or `Err(x)` supplies one half of the `Result<T, E>` type. If one arm supplies `Result<T, Unknown>` and another supplies `Result<Unknown, E>`, the result is `Result<T, E>`. Arms that are the "unknown" side are promoted to the unified type.
+- **U5 — Incompatible concrete arms.** If two arms have concrete types that cannot be unified (for example `Int` and `String`), the checker emits `error: match arms have incompatible types \`A\` and \`B\`` with spans of both arms. Compilation fails.
+- **U6 — No information.** If no arm has a known type (every arm produces `None` as its inferred type), the result type is left unknown and downstream callers that need the type are responsible for supplying it.
+
+An empty list literal inside a match arm whose siblings are all `List` (no concrete element type) still counts as `List<Unknown>`. Use an explicit `val xs: List<T> = match ... { ... => [] }` annotation in that case; the annotation is propagated into the arm via contextual typing, producing `List<T>`.
+
 ---
 
 ## 1.9 Ownership

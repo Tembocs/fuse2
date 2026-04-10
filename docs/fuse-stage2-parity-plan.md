@@ -235,7 +235,7 @@ closed, so the checker — not a reviewer — drives the fix).
 | B4 | Codegen: Generic Type Substitution | 3 | 11 | B1 | **Done** (commits a088b10, 8007a41, 6e6802a) |
 | B5 | Codegen: Hardcoded Specialization Ordering | 2 | 9 | B4 | **Done** (commits 5c6a8e0, f0d594b) |
 | B6 | Codegen: User-Defined Enum Variant Binding | 3 | 12 | B3, B4 | **Done** (commits 5b7c30f, 893504a, 9b29660) |
-| B7 | Codegen: Match-as-Expression Type Unification | 5 | 22 | B4, B5 | Not started |
+| B7 | Codegen: Match-as-Expression Type Unification | 5 | 22 | B4, B5 | In progress |
 | B8 | Codegen: Namespace Static Method Calls | 3 | 11 | B5 | Not started |
 | B9 | Codegen: Tuple Field Access Type Propagation | 3 | 10 | B7 | Not started |
 | B10 | Lexer: F-String Brace Escaping | 3 | 9 | — | Not started |
@@ -957,9 +957,9 @@ every subsequent task.
 
 **Tasks:**
 
-- [ ] **B7.1.1** Write the unification rules (below).
-- [ ] **B7.1.2** Review against `docs/fuse-language-guide-2.md`. If the guide does not already specify match-as-expression typing, add a subsection there too.
-- [ ] **B7.1.3** Commit.
+- [x] **B7.1.1** Write the unification rules (below).
+- [x] **B7.1.2** Review against `docs/fuse-language-guide-2.md`. The guide at [section 1.8](fuse-language-guide-2.md) previously only said "all arms must produce the same type"; a new "Arm type unification (match / when as expression)" subsection spells out rules U1-U6 in user-facing language.
+- [x] **B7.1.3** Commit.
 
 **Unification rules (adopted):**
 
