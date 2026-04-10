@@ -228,7 +228,7 @@ closed, so the checker — not a reviewer — drives the fix).
 
 | Wave | Name | Phases | Tasks | Depends On | Status |
 |------|------|--------|-------|------------|--------|
-| B0 | Baseline & Verification Infrastructure | 3 | 10 | — | In progress |
+| B0 | Baseline & Verification Infrastructure | 3 | 10 | — | **Done** (commits 36a8e9c, 11ff7e7, B0.3 pending push) |
 | B1 | Determinism | 2 | 7 | B0 | Not started |
 | B2 | Checker: Extension Resolution Enforcement | 3 | 11 | B1 | Not started |
 | B3 | Parser & AST: Enum Variant Payload Types | 2 | 8 | B1 | Not started |
@@ -355,9 +355,9 @@ times.
 
 **Tasks:**
 
-- [ ] **B0.3.1** Pick a multi-module fixture (`tests/fuse/core/integration/stdlib_foundation.fuse` or similar — confirm it currently passes).
-- [ ] **B0.3.2** Write `determinism_suite.rs` that invokes `fusec` in-process and hashes the object bytes.
-- [ ] **B0.3.3** Run it once on the current tree. It may fail (the bug is real). Record the failure in the test as an `#[ignore]` with a link to this phase, then unignore it in B1.2.
+- [x] **B0.3.1** Pick a multi-module fixture (`tests/fuse/core/integration/stdlib_foundation.fuse` or similar — confirm it currently passes). **Used `tests/fuse/core/modules/import_multiple.fuse` instead:** the suggested `stdlib_foundation.fuse` is the pre-existing-broken fixture from the B0.1 baseline (its expected output disagrees with current compiler output), so it would not have been a clean baseline. `import_multiple.fuse` imports a helper module from `tests/fuse/core/modules/src/helpers/multi.fuse`, which is enough to put two modules in `BuildSession.modules` and surface the iteration-order bug.
+- [x] **B0.3.2** Write `determinism_suite.rs` that invokes `fusec` in-process and hashes the object bytes. **Implemented as 10 subprocess invocations of `fusec --emit ir` with byte-for-byte string comparison** (not hashing — keeping the raw text lets the failure message show the actual diff). The Cranelift IR text is a more direct probe of codegen determinism than linked binary bytes (which contain timestamps).
+- [x] **B0.3.3** Run it once on the current tree. It may fail (the bug is real). Record the failure in the test as an `#[ignore]` with a link to this phase, then unignore it in B1.2. **Verified locally:** with `--ignored`, the test reproducibly fails with two distinct module orderings across 10 trials (helper module emits first vs entry module emits first, with shifted Cranelift function IDs). Without `--ignored`, the default test run reports `1 ignored` and exits 0, so normal CI is unaffected. The `#[ignore]` message points at Phase B1.2 where the test gets unignored.
 
 **Deliverables:** `stage1/fusec/tests/determinism_suite.rs`.
 
