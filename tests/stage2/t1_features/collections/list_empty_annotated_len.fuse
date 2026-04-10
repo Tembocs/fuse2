@@ -1,0 +1,19 @@
+// EXPECTED OUTPUT:
+// len=0
+// total=0
+
+// B7.2 — `val xs: List<Int> = []` picks up the element type
+// from its annotation. `xs.len()` must resolve through the
+// binding's List<Int> type, and a sum loop must compile
+// even though the list is empty.
+
+@entrypoint
+fn main() {
+  val xs: List<Int> = []
+  println(f"len={xs.len()}")
+  var total: Int = 0
+  for x in xs {
+    total = total + x
+  }
+  println(f"total={total}")
+}

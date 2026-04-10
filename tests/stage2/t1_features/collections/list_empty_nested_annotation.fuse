@@ -1,0 +1,25 @@
+// EXPECTED OUTPUT:
+// outer=2
+// row0=0
+// row1=3
+
+// B7.2 — The contextual hint threads through nested list
+// literals so `val rows: List<List<Int>> = [[], [1, 2, 3]]`
+// assigns List<Int> (not List<Unknown>) to the empty inner
+// list. The test exercises both inner lists via len().
+
+import stdlib.core.list
+
+@entrypoint
+fn main() {
+  val rows: List<List<Int>> = [[], [1, 2, 3]]
+  println(f"outer={rows.len()}")
+  match rows.get(0) {
+    Some(row) => println(f"row0={row.len()}")
+    None => println("row0=missing")
+  }
+  match rows.get(1) {
+    Some(row) => println(f"row1={row.len()}")
+    None => println("row1=missing")
+  }
+}

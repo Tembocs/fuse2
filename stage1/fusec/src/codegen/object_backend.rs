@@ -18,7 +18,7 @@ use crate::parser::parse_source;
 
 use super::layout::{self, ProgramLayout};
 use super::type_names;
-use super::type_names::{chan_inner_type, option_inner_type, result_err_type, result_ok_type, shared_inner_type, split_tuple_types};
+use super::type_names::{chan_inner_type, list_inner_type, option_inner_type, result_err_type, result_ok_type, shared_inner_type, split_tuple_types};
 
 pub fn backend_name() -> &'static str {
     "cranelift-object"
@@ -1807,7 +1807,14 @@ impl<'a, 'b> LoweringState<'a, 'b> {
     ) -> Result<(), String> {
         match statement {
             fa::Statement::VarDecl(var_decl) => {
-                let value = self.compile_expr(builder, &var_decl.value)?;
+                // B7.2 — pass the declared type (if any) as a
+                // contextual hint. Only the list-literal path uses it,
+                // so behavior for every other RHS is unchanged.
+                let value = self.compile_expr_hinted(
+                    builder,
+                    &var_decl.value,
+                    var_decl.type_name.as_deref(),
+                )?;
                 let variable = self.new_var(builder, self.compiler.pointer_type);
                 builder.def_var(variable, value.value);
                 self.locals.insert(
@@ -2079,6 +2086,25 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         }
         builder.switch_to_block(exit_block);
         Ok(())
+    }
+
+    /// B7.2 — Compile an expression with an optional contextual type
+    /// hint. Only the list-literal path inspects the hint; every other
+    /// case delegates to `compile_expr` unchanged. This is how empty
+    /// list literals like `val xs: List<Int> = []` pick up the
+    /// element type from their annotation, and how list literals
+    /// inside match arms inherit the unified arm type computed by
+    /// B7.3.
+    fn compile_expr_hinted(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        expr: &fa::Expr,
+        expected_type: Option<&str>,
+    ) -> Result<TypedValue, String> {
+        if let fa::Expr::List(list) = expr {
+            return self.compile_list_hinted(builder, list, expected_type);
+        }
+        self.compile_expr(builder, expr)
     }
 
     fn compile_expr(
@@ -2497,21 +2523,40 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         builder: &mut FunctionBuilder,
         list: &fa::ListExpr,
     ) -> Result<TypedValue, String> {
+        self.compile_list_hinted(builder, list, None)
+    }
+
+    /// B7.2 — Compile a list literal with an optional contextual type
+    /// hint. When the hint is `Some("List<X>")`, the element type is
+    /// set to `X` even if the list is empty or the first element has
+    /// an unknown type. Non-empty literals still prefer the first
+    /// element's inferred type when it is known, matching the previous
+    /// behavior.
+    fn compile_list_hinted(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        list: &fa::ListExpr,
+        expected_type: Option<&str>,
+    ) -> Result<TypedValue, String> {
         let handle = self.runtime_nullary(builder, self.compiler.runtime.list_new);
-        let mut item_type = None;
+        let mut item_type: Option<String> = None;
+        let hint_elem = expected_type.and_then(list_inner_type);
         for item in &list.items {
-            let item_value = self.compile_expr(builder, item)?;
+            // Thread the element hint into nested list literals so
+            // `val xss: List<List<Int>> = [[], []]` picks up the inner
+            // element type on both empty inner lists.
+            let item_value = self.compile_expr_hinted(builder, item, hint_elem.as_deref())?;
             if item_type.is_none() {
                 item_type = item_value.ty.clone();
             }
             self.runtime_void(builder, self.compiler.runtime.list_push, &[handle, item_value.value]);
         }
+        let elem = item_type
+            .or_else(|| hint_elem.clone())
+            .unwrap_or_else(|| "Unknown".to_string());
         Ok(TypedValue {
             value: handle,
-            ty: Some(format!(
-                "List<{}>",
-                item_type.unwrap_or_else(|| "Unknown".to_string())
-            )),
+            ty: Some(format!("List<{elem}>")),
         })
     }
 

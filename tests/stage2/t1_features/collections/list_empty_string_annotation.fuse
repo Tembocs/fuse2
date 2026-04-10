@@ -1,0 +1,20 @@
+// EXPECTED OUTPUT:
+// true
+// empty
+
+// B7.2 — Round-trip check: `val xs: List<String> = []`
+// must flow the element type through so string-specific
+// methods are resolvable on the binding.
+
+import stdlib.core.list
+
+@entrypoint
+fn main() {
+  val xs: List<String> = []
+  println(xs.isEmpty())
+  if xs.isEmpty() {
+    println("empty")
+  } else {
+    println("not empty")
+  }
+}

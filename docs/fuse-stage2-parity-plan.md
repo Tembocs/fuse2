@@ -1012,11 +1012,11 @@ Implement both. They are complementary.
 
 **Tasks:**
 
-- [ ] **B7.2.1** Add an optional `expected_type: Option<&str>` parameter to `compile_expr`. Thread it through only the list-literal path.
-- [ ] **B7.2.2** In `VarDecl` compilation, pass `var_decl.type_name.as_deref()` as the hint.
-- [ ] **B7.2.3** In the list-literal case, if the hint is `"List<X>"`, set the result `TypedValue.ty = Some("List<X>")` even when the literal is empty.
-- [ ] **B7.2.4** Test: `val xs: List<Int> = []; println(xs.len())` — must compile and run.
-- [ ] **B7.2.5** Test: `val xs: List<String> = [];` round-trip type inspection.
+- [x] **B7.2.1** Implemented as a sibling `compile_expr_hinted(builder, expr, expected_type: Option<&str>)` rather than a new parameter on `compile_expr`, so every existing call site stays unchanged. Only the list-literal arm inspects the hint; everything else delegates to the stock `compile_expr`. Trade-off: no touching of dozens of `compile_expr` callers, but a reader has to know to use `compile_expr_hinted` when a hint is available. Documented inline in the new method's doc-comment.
+- [x] **B7.2.2** `VarDecl` in `compile_statement` now calls `compile_expr_hinted(builder, &var_decl.value, var_decl.type_name.as_deref())`.
+- [x] **B7.2.3** New `compile_list_hinted` extracts the element type via a new `list_inner_type` helper in `type_names.rs`, threads it into each item's compile (so nested empty lists pick up their element type), and falls back to it when no item supplied a concrete type. Empty lists with `Some("List<X>")` hints now get `TypedValue.ty = Some("List<X>")` instead of `List<Unknown>`.
+- [x] **B7.2.4** `tests/stage2/t1_features/collections/list_empty_annotated_len.fuse` — annotated empty list, `len()`, and a sum loop.
+- [x] **B7.2.5** `tests/stage2/t1_features/collections/list_empty_string_annotation.fuse` — round-trip `List<String>` via `isEmpty()`. Plus a bonus nested-hint fixture `list_empty_nested_annotation.fuse` that proves the hint propagates into nested list literals (`val rows: List<List<Int>> = [[], [1, 2, 3]]`).
 
 **Deliverables:** Contextual list-literal typing with two tests.
 

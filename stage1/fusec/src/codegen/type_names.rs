@@ -138,6 +138,12 @@ pub fn result_err_type(type_name: &str) -> Option<String> {
         .then(|| args[1].clone())
 }
 
+pub fn list_inner_type(type_name: &str) -> Option<String> {
+    let args = split_generic_args(type_name)?;
+    (type_name.trim().trim_end_matches('>').contains("List") && args.len() == 1)
+        .then(|| args[0].clone())
+}
+
 pub fn chan_inner_type(type_name: &str) -> Option<String> {
     let args = split_generic_args(type_name)?;
     (type_name.trim().trim_end_matches('>').contains("Chan") && args.len() == 1)
