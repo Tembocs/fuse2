@@ -189,6 +189,126 @@ pub fn split_tuple_types(type_name: &str) -> Option<Vec<String>> {
     Some(types)
 }
 
+/// B7.3 — Unify the types produced by each arm of a `match` (or
+/// `when`) expression used in expression position. The rules are
+/// enumerated in `docs/fuse-stage2-parity-plan.md` Wave B7 and
+/// mirrored in section 1.8 of `docs/fuse-language-guide-2.md`:
+///
+/// - **U1 — Identity.** All arms with the same concrete type → that
+///   type.
+/// - **U2 — Empty list promotion.** A mix of `List<Unknown>` / `List`
+///   and `List<X>` → `List<X>`.
+/// - **U3 — Option None promotion.** A mix of `Option<Unknown>` and
+///   `Option<X>` → `Option<X>`.
+/// - **U4 — Result half promotion.** A mix of `Result<T, Unknown>`
+///   and `Result<Unknown, E>` → `Result<T, E>`. Either "half-known"
+///   form may appear without the other; the known half is preserved.
+/// - **U5 — Incompatible concrete arms.** Returns `None`. The
+///   checker (B7.4) reports the diagnostic; codegen continues with
+///   a None type so later passes do not panic.
+/// - **U6 — No information.** Every arm reported `None` → `None`.
+///
+/// Arms whose body inference produced `None` (no type info) are
+/// ignored when computing the unified type — they neither contribute
+/// nor block unification. If *every* arm is `None`, the result is
+/// `None` (Rule U6).
+///
+/// The helper is pure and operates on surface type-name strings. It
+/// does not know anything about the checker's binding tables, the
+/// codegen's runtime values, or Cranelift IR. Both the checker and
+/// the codegen call it so they agree on arm unification semantics.
+pub fn unify_match_arm_types(arm_types: &[Option<String>]) -> Option<String> {
+    let knowns: Vec<&str> = arm_types
+        .iter()
+        .filter_map(|t| t.as_deref())
+        .collect();
+    if knowns.is_empty() {
+        return None; // U6
+    }
+
+    // Identity fast path (U1). If every known arm is the same
+    // string, we are done.
+    if knowns.iter().all(|t| *t == knowns[0]) {
+        return Some(knowns[0].to_string());
+    }
+
+    // U2 — Empty list promotion. Any arm whose type is bare `List`
+    // or `List<Unknown>` is promoted to a sibling's concrete
+    // `List<X>`. If no sibling is concrete, promotion fails.
+    if knowns.iter().all(|t| is_list_type(t)) {
+        let concrete_list = knowns
+            .iter()
+            .find(|t| {
+                let inner = list_inner_type(t);
+                inner.is_some() && inner.as_deref() != Some("Unknown")
+            })
+            .copied();
+        if let Some(c) = concrete_list {
+            return Some(c.to_string());
+        }
+        // All-unknown list arms — fall through to identity; if
+        // every arm was "List" or "List<Unknown>" the identity
+        // branch above already handled it, so this is a mix we
+        // cannot promote.
+        return Some("List<Unknown>".to_string());
+    }
+
+    // U3 — Option<None> promotion.
+    if knowns.iter().all(|t| is_option_type(t)) {
+        let concrete_opt = knowns
+            .iter()
+            .find(|t| {
+                let inner = option_inner_type(t);
+                inner.is_some() && inner.as_deref() != Some("Unknown")
+            })
+            .copied();
+        if let Some(c) = concrete_opt {
+            return Some(c.to_string());
+        }
+        return Some("Option<Unknown>".to_string());
+    }
+
+    // U4 — Result half promotion.
+    if knowns.iter().all(|t| is_result_type(t)) {
+        // Collect known T halves and known E halves.
+        let mut ok_ty: Option<String> = None;
+        let mut err_ty: Option<String> = None;
+        for t in &knowns {
+            if let Some(a) = result_ok_type(t) {
+                if a != "Unknown" && ok_ty.is_none() {
+                    ok_ty = Some(a);
+                }
+            }
+            if let Some(e) = result_err_type(t) {
+                if e != "Unknown" && err_ty.is_none() {
+                    err_ty = Some(e);
+                }
+            }
+        }
+        let t = ok_ty.unwrap_or_else(|| "Unknown".to_string());
+        let e = err_ty.unwrap_or_else(|| "Unknown".to_string());
+        return Some(format!("Result<{t}, {e}>"));
+    }
+
+    // U5 — Incompatible concrete arms.
+    None
+}
+
+fn is_list_type(t: &str) -> bool {
+    let canonical_head = t.trim().split('<').next().unwrap_or("").trim();
+    canonical_head == "List"
+}
+
+fn is_option_type(t: &str) -> bool {
+    let canonical_head = t.trim().split('<').next().unwrap_or("").trim();
+    canonical_head == "Option"
+}
+
+fn is_result_type(t: &str) -> bool {
+    let canonical_head = t.trim().split('<').next().unwrap_or("").trim();
+    canonical_head == "Result"
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -365,6 +485,127 @@ mod tests {
         assert_eq!(
             substitute_generics("Box<T_inner>", &map(&[("T", "Int")])),
             "Box<T_inner>"
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // unify_match_arm_types (B7.3)
+    // -----------------------------------------------------------------
+
+    fn types(values: &[&str]) -> Vec<Option<String>> {
+        values.iter().map(|v| Some(v.to_string())).collect()
+    }
+
+    #[test]
+    fn unify_u1_identity() {
+        // All arms produce the same concrete type.
+        assert_eq!(
+            unify_match_arm_types(&types(&["Int", "Int", "Int"])),
+            Some("Int".to_string())
+        );
+        assert_eq!(
+            unify_match_arm_types(&types(&["List<String>", "List<String>"])),
+            Some("List<String>".to_string())
+        );
+    }
+
+    #[test]
+    fn unify_u2_empty_list_promotion() {
+        // `[]` has `List<Unknown>`. A sibling `List<String>`
+        // promotes the unknowns to `List<String>`.
+        assert_eq!(
+            unify_match_arm_types(&types(&["List<String>", "List<Unknown>"])),
+            Some("List<String>".to_string())
+        );
+        assert_eq!(
+            unify_match_arm_types(&types(&["List<Unknown>", "List<Int>"])),
+            Some("List<Int>".to_string())
+        );
+        // Bare `List` (no angle brackets) is the canonical empty.
+        assert_eq!(
+            unify_match_arm_types(&types(&["List<Int>", "List"])),
+            Some("List<Int>".to_string())
+        );
+        // All unknown → stay unknown, but still resolved.
+        assert_eq!(
+            unify_match_arm_types(&types(&["List<Unknown>", "List<Unknown>"])),
+            Some("List<Unknown>".to_string())
+        );
+    }
+
+    #[test]
+    fn unify_u3_option_none_promotion() {
+        // `None` inferred as `Option<Unknown>`, promoted by
+        // sibling `Option<Int>`.
+        assert_eq!(
+            unify_match_arm_types(&types(&["Option<Int>", "Option<Unknown>"])),
+            Some("Option<Int>".to_string())
+        );
+        assert_eq!(
+            unify_match_arm_types(&types(&["Option<Unknown>", "Option<String>"])),
+            Some("Option<String>".to_string())
+        );
+    }
+
+    #[test]
+    fn unify_u4_result_half_promotion() {
+        // `Ok(x)` → `Result<Int, Unknown>`, `Err(s)` → `Result<Unknown, String>`.
+        assert_eq!(
+            unify_match_arm_types(&types(&["Result<Int, Unknown>", "Result<Unknown, String>"])),
+            Some("Result<Int, String>".to_string())
+        );
+        // Full symmetry.
+        assert_eq!(
+            unify_match_arm_types(&types(&["Result<Unknown, String>", "Result<Int, Unknown>"])),
+            Some("Result<Int, String>".to_string())
+        );
+        // Third arm with fully concrete Result<Int, String>
+        // should not displace the existing unification.
+        assert_eq!(
+            unify_match_arm_types(&types(&[
+                "Result<Int, Unknown>",
+                "Result<Unknown, String>",
+                "Result<Int, String>"
+            ])),
+            Some("Result<Int, String>".to_string())
+        );
+    }
+
+    #[test]
+    fn unify_u5_incompatible_arms_returns_none() {
+        // Mix of unrelated concrete types.
+        assert_eq!(unify_match_arm_types(&types(&["Int", "String"])), None);
+        // Mix of List and Option.
+        assert_eq!(unify_match_arm_types(&types(&["List<Int>", "Option<Int>"])), None);
+        // Mix of Result and Option.
+        assert_eq!(unify_match_arm_types(&types(&["Result<Int, String>", "Option<Int>"])), None);
+    }
+
+    #[test]
+    fn unify_u6_no_information() {
+        // Every arm reported None → None.
+        assert_eq!(unify_match_arm_types(&[None, None, None]), None);
+        assert_eq!(unify_match_arm_types(&[]), None);
+    }
+
+    #[test]
+    fn unify_ignores_unknown_arms_when_others_are_concrete() {
+        // Three arms: one concrete, two unknown. The concrete
+        // arm drives the unification; the None arms are ignored.
+        assert_eq!(
+            unify_match_arm_types(&[Some("Int".to_string()), None, None]),
+            Some("Int".to_string())
+        );
+    }
+
+    #[test]
+    fn unify_mixed_list_handles_whitespace() {
+        // Parser-emitted type strings sometimes have spaces
+        // inside angle brackets. The helper must still unify
+        // them correctly.
+        assert_eq!(
+            unify_match_arm_types(&types(&["List<String>", "List< Unknown >"])),
+            Some("List<String>".to_string())
         );
     }
 }

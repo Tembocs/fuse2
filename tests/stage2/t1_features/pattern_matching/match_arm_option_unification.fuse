@@ -1,0 +1,32 @@
+// EXPECTED OUTPUT:
+// flag=1 value=42
+// flag=0 none
+
+// B7.3 — U3: Option<Unknown> + Option<X> promotion. The
+// `None` arm originally gets `Option<Unknown>`; without
+// unification, `val maybe = match ...` takes that as the
+// unified type and `maybe.unwrapOr(0)` fails to resolve.
+
+import stdlib.core.option
+
+@entrypoint
+fn main() {
+  val flags = [1, 0]
+  var i = 0
+  while i < flags.len() {
+    match flags.get(i) {
+      Some(flag) => {
+        val maybe = match flag {
+          1 => Some(42)
+          _ => None
+        }
+        match maybe {
+          Some(v) => println(f"flag={flag} value={v}")
+          None => println(f"flag={flag} none")
+        }
+      }
+      None => println("missing")
+    }
+    i = i + 1
+  }
+}

@@ -18,7 +18,7 @@ use crate::parser::parse_source;
 
 use super::layout::{self, ProgramLayout};
 use super::type_names;
-use super::type_names::{chan_inner_type, list_inner_type, option_inner_type, result_err_type, result_ok_type, shared_inner_type, split_tuple_types};
+use super::type_names::{chan_inner_type, list_inner_type, option_inner_type, result_err_type, result_ok_type, shared_inner_type, split_tuple_types, unify_match_arm_types};
 
 pub fn backend_name() -> &'static str {
     "cranelift-object"
@@ -4569,6 +4569,11 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         builder.ins().jump(next, &[]);
         let base_locals = self.locals.clone();
 
+        // B7.3 — Collect each arm's compiled type for unification.
+        // A `None` entry means the arm body was a block (Unit) or
+        // its expression type could not be inferred by the codegen.
+        let mut arm_types: Vec<Option<String>> = Vec::with_capacity(match_expr.arms.len());
+
         for arm in &match_expr.arms {
             builder.switch_to_block(next);
             let body_block = builder.create_block();
@@ -4588,12 +4593,14 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             match &arm.body {
                 fa::ArmBody::Expr(expr) => {
                     let value = self.compile_expr(builder, expr)?;
+                    arm_types.push(value.ty.clone());
                     if !self.current_block_is_terminated(builder) {
                         self.jump_value(builder, done, value.value);
                     }
                 }
                 fa::ArmBody::Block(block) => {
                     self.compile_statements(builder, &block.statements)?;
+                    arm_types.push(Some("Unit".to_string()));
                     if !self.current_block_is_terminated(builder) {
                         let unit = self.runtime_nullary(builder, self.compiler.runtime.unit);
                         self.jump_value(builder, done, unit);
@@ -4610,10 +4617,17 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         self.locals = base_locals;
         Ok(TypedValue {
             value: builder.block_params(done)[0],
-            ty: match_expr.arms.iter().find_map(|arm| match &arm.body {
-                fa::ArmBody::Expr(expr) => self.infer_expr_type(expr),
-                fa::ArmBody::Block(_) => Some("Unit".to_string()),
-            }),
+            // B7.3 — Unify via rules U1-U6 instead of
+            // `arms.find_map(first_infer)`. The old `find_map`
+            // stopped at the first arm whose body type could be
+            // re-inferred after `self.locals` had been restored,
+            // which meant pattern-bound variables (`Some(x)`,
+            // `Result.Ok(v)`) never contributed because their
+            // bindings were already gone. Collecting
+            // each arm's compiled `TypedValue.ty` captures the
+            // type *at the time the arm was compiled*, preserving
+            // pattern binding types.
+            ty: unify_match_arm_types(&arm_types),
         })
     }
 
@@ -4632,6 +4646,9 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         builder.ins().brif(matched, first_block, &[], second_block, &[]);
 
         let base_locals = self.locals.clone();
+        // B7.3 — See compile_match for the rationale. Collect each
+        // arm's compiled type and unify at the end.
+        let mut arm_types: Vec<Option<String>> = Vec::with_capacity(2);
 
         builder.switch_to_block(first_block);
         self.locals = base_locals.clone();
@@ -4645,12 +4662,14 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         match &match_expr.arms[0].body {
             fa::ArmBody::Expr(expr) => {
                 let value = self.compile_expr(builder, expr)?;
+                arm_types.push(value.ty.clone());
                 if !self.current_block_is_terminated(builder) {
                     self.jump_value(builder, done, value.value);
                 }
             }
             fa::ArmBody::Block(block) => {
                 self.compile_statements(builder, &block.statements)?;
+                arm_types.push(Some("Unit".to_string()));
                 if !self.current_block_is_terminated(builder) {
                     let unit = self.runtime_nullary(builder, self.compiler.runtime.unit);
                     self.jump_value(builder, done, unit);
@@ -4670,12 +4689,14 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         match &match_expr.arms[1].body {
             fa::ArmBody::Expr(expr) => {
                 let value = self.compile_expr(builder, expr)?;
+                arm_types.push(value.ty.clone());
                 if !self.current_block_is_terminated(builder) {
                     self.jump_value(builder, done, value.value);
                 }
             }
             fa::ArmBody::Block(block) => {
                 self.compile_statements(builder, &block.statements)?;
+                arm_types.push(Some("Unit".to_string()));
                 if !self.current_block_is_terminated(builder) {
                     let unit = self.runtime_nullary(builder, self.compiler.runtime.unit);
                     self.jump_value(builder, done, unit);
@@ -4687,10 +4708,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         self.locals = base_locals;
         Ok(TypedValue {
             value: builder.block_params(done)[0],
-            ty: match_expr.arms.iter().find_map(|arm| match &arm.body {
-                fa::ArmBody::Expr(expr) => self.infer_expr_type(expr),
-                fa::ArmBody::Block(_) => Some("Unit".to_string()),
-            }),
+            ty: unify_match_arm_types(&arm_types),
         })
     }
 

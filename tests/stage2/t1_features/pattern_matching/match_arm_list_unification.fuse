@@ -1,0 +1,54 @@
+// EXPECTED OUTPUT:
+// decl 0: 2 interfaces
+// decl 1: 0 interfaces
+// decl 2: 1 interfaces
+
+// B7.3 — The canonical pattern from stage2/src/codegen.fuse:
+//   val implInterfaces = match decl {
+//     Declaration.DataClass(dc) => dc.interfaces,   // List<String>
+//     Declaration.Struct(sd)    => sd.interfaces,   // List<String>
+//     _                         => []               // List<Unknown>
+//   }
+//
+// Without arm unification (B7.3), the empty-list arm's type
+// dominates via find_map and `implInterfaces.len()` fails at
+// the codegen because `implInterfaces` has type
+// `List<Unknown>` instead of `List<String>`. With B7.3, U2
+// promotes `List<Unknown>` to `List<String>` and the member
+// call resolves.
+
+import stdlib.core.list
+
+enum Decl {
+  DC(List<String>),
+  SD(List<String>),
+  Other(String)
+}
+
+fn interfaces(decl: ref Decl) -> List<String> {
+  match decl {
+    Decl.DC(xs) => xs
+    Decl.SD(xs) => xs
+    _ => []
+  }
+}
+
+@entrypoint
+fn main() {
+  val decls = [
+    Decl.DC(["Iface1", "Iface2"]),
+    Decl.Other("nothing"),
+    Decl.SD(["OneIface"])
+  ]
+  var i = 0
+  while i < decls.len() {
+    match decls.get(i) {
+      Some(decl) => {
+        val ifaces = interfaces(ref decl)
+        println(f"decl {i}: {ifaces.len()} interfaces")
+      }
+      None => println("missing")
+    }
+    i = i + 1
+  }
+}

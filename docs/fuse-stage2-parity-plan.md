@@ -1048,11 +1048,11 @@ per rules U1-U6.
 
 **Tasks:**
 
-- [ ] **B7.3.1** Implement `unify_match_arm_types(types: &[Option<String>]) -> Option<String>` applying U1-U6.
-- [ ] **B7.3.2** Replace the `find_map` in `compile_match` (around line 4331) with a call to `unify_match_arm_types`.
-- [ ] **B7.3.3** Same in `compile_two_arm_match` (around line 4408).
-- [ ] **B7.3.4** Unit test `unify_match_arm_types` with each rule.
-- [ ] **B7.3.5** Integration test: the canonical `stage2/src/codegen.fuse:332-337` pattern as a standalone fixture.
+- [x] **B7.3.1** Implemented `unify_match_arm_types` in `stage1/fusec/src/codegen/type_names.rs`. The implementation ignores `None`-typed arms (they neither contribute nor block unification) so that e.g. a block arm whose type is "Unit" doesn't poison a sibling arm's concrete list type — though Unit-vs-List is still caught as U5 because both types are known and incompatible.
+- [x] **B7.3.2** Replaced `compile_match`'s `arms.iter().find_map(|arm| self.infer_expr_type(expr))` with collection of each compiled arm's `TypedValue.ty` into `arm_types: Vec<Option<String>>`, then `unify_match_arm_types(&arm_types)`. The critical insight: the old `find_map` ran *after* `self.locals` was restored to `base_locals`, so pattern-bound variables (`Some(x)`, `Result.Ok(v)`, `Decl.DC(xs)`) never contributed their concrete types — `infer_expr_type("dc.interfaces")` returned `None` because `dc` wasn't in scope anymore. The new approach captures each arm's compiled type *while* the pattern bindings are still live, which is how it correctly picks up `dc.interfaces: List<String>` in the canonical codegen.fuse pattern.
+- [x] **B7.3.3** Same change in `compile_two_arm_match`. Both arms now collect their types into a local `arm_types` and call `unify_match_arm_types` at the end.
+- [x] **B7.3.4** Unit tests in `stage1/fusec/src/codegen/type_names.rs` cover all six rules plus edge cases (bare `List`, whitespace in angle brackets, unknown arms mixed with concrete, empty input). 8 new unit tests, all green.
+- [x] **B7.3.5** `tests/stage2/t1_features/pattern_matching/match_arm_list_unification.fuse` reproduces the canonical stage2/src/codegen.fuse:332-337 pattern and passes. Bonus fixture `match_arm_option_unification.fuse` exercises Rule U3.
 
 **Deliverables:** Unification function and wired call sites.
 
