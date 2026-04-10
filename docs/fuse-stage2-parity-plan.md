@@ -399,10 +399,10 @@ none for this map in the current tree; both maps expose `insert`, `get`,
 
 **Tasks:**
 
-- [ ] **B1.1.1** Change `modules: HashMap<PathBuf, LoadedModule>` to `modules: BTreeMap<PathBuf, LoadedModule>`.
-- [ ] **B1.1.2** Fix the corresponding `use` import in `object_backend.rs`.
-- [ ] **B1.1.3** Verify `BuildSession::load` and every reader of `modules` still compiles.
-- [ ] **B1.1.4** `cargo build -p fusec --release` — must succeed.
+- [x] **B1.1.1** Change `modules: HashMap<PathBuf, LoadedModule>` to `modules: BTreeMap<PathBuf, LoadedModule>`.
+- [x] **B1.1.2** Fix the corresponding `use` import in `object_backend.rs`. Also updated `load_module_recursive`'s parameter type and `BuildSession::load`'s local variable from `HashMap::new()` to `BTreeMap::new()` so the entire loader pipeline is consistent.
+- [x] **B1.1.3** Verify `BuildSession::load` and every reader of `modules` still compiles. Confirmed: 12 readers across `entry_function`, `resolve_function`, `resolve_extension`, `resolve_static`, `resolve_module_function`, `resolve_const`, `resolve_extern`, `resolve_enum`, and three `emit_*` loops compile unchanged because `BTreeMap` exposes `get`, `values`, `contains_key`, `insert`, etc. with the same signatures.
+- [x] **B1.1.4** `cargo build -p fusec --release` — must succeed. Build clean in 14.89s. Smoke run of t0_smoke (8/8) and the cli/check/full_smoke/wasi targets (81 tests) all green. **Note:** the BTreeMap swap fixes module ordering but does NOT fully fix the determinism bug — `import_multiple.fuse` still drifts because `LoadedModule.functions` and several other per-module collections are also HashMaps. B1.2 closes the rest.
 
 **Deliverables:** Single-field type change with passing build.
 

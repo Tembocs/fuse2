@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -127,13 +127,18 @@ struct LoadedModule {
 
 struct BuildSession {
     root_path: PathBuf,
-    modules: HashMap<PathBuf, LoadedModule>,
+    // BTreeMap (not HashMap) so module iteration order is deterministic.
+    // Iteration reaches generated output (codegen iterates this map when
+    // emitting functions and data); HashMap's randomized order would
+    // produce different Cranelift function IDs and module orderings on
+    // every run. See docs/fuse-stage2-parity-plan.md Phase B1.1.
+    modules: BTreeMap<PathBuf, LoadedModule>,
     layout: ProgramLayout,
 }
 
 impl BuildSession {
     fn load(root_path: &Path) -> Result<Self, String> {
-        let mut modules = HashMap::new();
+        let mut modules = BTreeMap::new();
         load_module_recursive(root_path, &mut modules)?;
         let layout = ProgramLayout::new(
             modules
@@ -271,7 +276,7 @@ impl BuildSession {
 
 fn load_module_recursive(
     path: &Path,
-    modules: &mut HashMap<PathBuf, LoadedModule>,
+    modules: &mut BTreeMap<PathBuf, LoadedModule>,
 ) -> Result<(), String> {
     let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     if modules.contains_key(&path) {
