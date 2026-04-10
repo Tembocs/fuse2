@@ -478,9 +478,9 @@ similar from deep in `object_backend.rs`.
 
 **Tasks:**
 
-- [ ] **B2.1.1** Build the full list of builtin methods by reading `compile_member_call` in `object_backend.rs`.
-- [ ] **B2.1.2** Add `is_builtin_method(receiver_canonical_type, method_name) -> bool` in `checker/mod.rs` or a new `checker/builtins.rs`.
-- [ ] **B2.1.3** Unit test: every hardcoded method in the codegen is recognized by `is_builtin_method`.
+- [x] **B2.1.1** Build the full list of builtin methods by reading `compile_member_call` in `object_backend.rs`. Inventoried 27 hardcoded entries: List (3), Chan (7), Shared (5), Map (9), String (3).
+- [x] **B2.1.2** Add `is_builtin_method(receiver_canonical_type, method_name) -> bool` in `checker/mod.rs` or a new `checker/builtins.rs`. Created `stage1/fusec/src/checker/builtins.rs` with `is_builtin_method`, `canonical_receiver` (mirror of layout::canonical_type_name including ownership-prefix stripping), and `suggest_stdlib_import_for` (hint generator backed by per-type stdlib method tables).
+- [x] **B2.1.3** Unit test: every hardcoded method in the codegen is recognized by `is_builtin_method`. 7 unit tests in `checker::builtins::tests` cover the hardcoded set, the negative set (stdlib methods that are NOT hardcoded), generic stripping, ownership-prefix stripping, and the hint table.
 
 **Deliverables:** `is_builtin_method` function with unit tests.
 
