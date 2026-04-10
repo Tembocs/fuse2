@@ -229,7 +229,7 @@ closed, so the checker — not a reviewer — drives the fix).
 | Wave | Name | Phases | Tasks | Depends On | Status |
 |------|------|--------|-------|------------|--------|
 | B0 | Baseline & Verification Infrastructure | 3 | 10 | — | **Done** (commits 36a8e9c, 11ff7e7, c5fc4b6) |
-| B1 | Determinism | 2 | 7 | B0 | **Done** (commits 1ebbf1e, B1.2 pending push) |
+| B1 | Determinism | 2 | 7 | B0 | **Done** (commits 1ebbf1e, fb09dba) |
 | B2 | Checker: Extension Resolution Enforcement | 3 | 11 | B1 | Not started |
 | B3 | Parser & AST: Enum Variant Payload Types | 2 | 8 | B1 | Not started |
 | B4 | Codegen: Generic Type Substitution | 3 | 11 | B1 | Not started |
