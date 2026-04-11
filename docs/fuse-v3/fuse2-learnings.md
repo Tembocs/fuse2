@@ -22,6 +22,7 @@
 - 1.1 The three pillars
 - 1.2 Language DNA (what Fuse steals from production languages)
 - 1.3 Core vs Full tiering
+- 1.4 Fuse3 staging: Go → Fuse → Fuse (the two-stage contract)
 
 **Part 2 — Type system and memory model**
 - 2.1 Ownership: four keywords, no borrow checker
@@ -154,11 +155,121 @@ rule was the single most load-bearing phase decision in Fuse2. Stage 0
 (the Python interpreter) shipped before anyone wrote a Cranelift back
 end, and that sequencing paid dividends through phases 1–5.
 
-**Fuse3 implication.** Keep the tier. Go gives us a shortcut: `go/ssa`
-and `go/types` mean we can conceivably skip the Python stage and jump
-straight to a Go-hosted interpreter that also owns codegen. But the
-Core-first rule is orthogonal to the language stack — it's about
-validating semantics before touching machine code.
+**Fuse3 implication.** Keep the tier. The Core-first rule is
+orthogonal to the language stack — it's about validating semantics
+before touching machine code. Fuse3 inherits it unchanged: Stage 1
+(Go) implements Fuse Core first, Fuse Full lands on top. The
+sequence that worked for Fuse2 works for Fuse3.
+
+---
+
+## 1.4 Fuse3 staging: Go → Fuse → Fuse
+
+**Fuse2 was a three-stage project:**
+
+```
+Stage 0   Python tree-walking interpreter
+          Purpose:  validate language semantics before any codegen
+          Outcome:  proved ASAP destruction is tractable, proved the
+                    four-keyword ownership model works, proved
+                    exhaustive match + arm unification rules are
+                    implementable. Those answers are settled — they
+                    live in this learnings doc and in the Fuse2
+                    language guide.
+          Status:   retired. Its job is done.
+
+Stage 1   Rust compiler + Cranelift backend
+          Purpose:  produce native binaries
+          Status:   ~26K LOC of Rust, working, but heavy — three
+                    crates (fusec, fuse-runtime, cranelift-ffi) and
+                    a uniform FuseHandle ABI that produced the B12
+                    bug cascade (§4.2, §6.3).
+
+Stage 2   Self-hosted Fuse compiler (compiler written in Fuse)
+          Purpose:  prove the language is complete
+          Status:   in-flight; during the B12 triage session the
+                    first real self-compile of stage2/src/main.fuse
+                    succeeded end-to-end for a trivial Fuse program
+                    (`@entrypoint fn main() {}`). Non-trivial
+                    programs still hit one more ABI layer deeper.
+```
+
+**Fuse3 is a two-stage project.** There is no Fuse3 Stage 0. Fuse2's
+Stage 0 already answered the "is this implementable?" question. That
+experiment has been run, the answer is *yes*, and the results are
+captured here. Redoing it in Python for Fuse3 would burn time and
+teach nothing new.
+
+```
+Stage 1   Go compiler (replaces Fuse2's Stage 1 in Rust)
+          Lexer, parser, checker, type inference, codegen.
+          Uses Go's standard toolchain (go/ssa, go/types, go build,
+          the Go linker). There is no separate runtime crate and no
+          uniform-handle FFI — eliminating the single biggest source
+          of Fuse2's B12 bug cascade (§4.2).
+          One program. Multiple modes: `fuse run`, `fuse build`,
+          `fuse check`.
+
+Stage 2   Self-hosted Fuse compiler (same purpose as Fuse2's Stage 2)
+          Written in Fuse. Compiled first by Stage 1 in Go, then by
+          itself. Once Stage 2 is self-hosting, the canonical story
+          becomes "Fuse builds Fuse, end-to-end" — Stage 1 in Go
+          retires to a bootstrap-and-reproducibility tool.
+```
+
+**The bootstrap chain, post-self-host:**
+
+```
+Step 1:   Stage 1 (Go)     compiles stage2/src/main.fuse  →  fusec3-bootstrap
+Step 2:   fusec3-bootstrap  compiles stage2/src/main.fuse  →  fusec3-stage2
+Step 3:   fusec3-stage2     compiles stage2/src/main.fuse  →  fusec3-verified
+Step 4:   sha256(fusec3-stage2) == sha256(fusec3-verified)  ← reproducibility proof
+```
+
+Fuse3 inherits this chain verbatim. It was Fuse2's strongest
+correctness check and there's nothing to redesign.
+
+**What this staging means for every Fuse3 design decision:**
+
+- **"Should this feature exist now or wait?"** — the same question
+  Fuse2 asked via Core vs Full. Stage 1 (Go) implements Fuse Core
+  first — enough to write the self-hosted Stage 2 compiler. Fuse
+  Full (concurrency, SIMD, interfaces) lands on top.
+
+- **"Should this runtime type be Go-native or Fuse-native?"** — a
+  free win unique to Fuse3. A Fuse `Map[K, V]` can be *literally*
+  a Go `map[K]V` under the hood. `Chan[T]` can be a Go `chan T`.
+  `Shared[T]` can be a Go struct wrapping `sync.RWMutex`. There is
+  no FFI boundary to negotiate, no uniform pointer ABI, no opaque
+  runtime crate. This is the single biggest architectural
+  simplification Fuse3 gets by choosing Go.
+
+- **"Where do we write new stdlib modules?"** — in Fuse, as soon
+  as Stage 1 can compile them. Fuse2's Bug Policy (§5.3, §7.3)
+  applies verbatim: any bug found while writing the stdlib is a
+  compiler bug, fixed in the compiler, not worked around in the
+  library.
+
+- **"When does Stage 2 become the primary compiler?"** — the
+  moment three-generation reproducibility passes on real Fuse
+  programs. At that point Stage 1 in Go becomes a boot-and-recover
+  tool: used to seed a fresh environment from source, used to
+  recover from a self-hosting regression, but not the day-to-day
+  compiler anyone runs. Fuse builds Fuse. End-to-end.
+
+**One implication worth making explicit:** the B12 B-wave bug
+classes (§6.3) that took weeks to untangle in Fuse2 are, in Fuse3's
+two-stage model, either mechanically prevented by the choice of
+host language (the ABI cascade) or shifted earlier in the pipeline
+where they're cheaper to catch (the checker information-loss
+pattern, §4.4). Neither is automatic. Both require the Fuse3
+language guide to specify the right semantics and the Fuse3 Stage 1
+implementation to follow them. But the *cost* of getting them right
+in Fuse3 is a fraction of the cost in Fuse2, because the
+architectural headwind is gone.
+
+That's the Fuse3 staging contract. Every other design question in
+Part 10 is downstream of it.
 
 ---
 
@@ -714,17 +825,30 @@ tasks.
 
 **Fuse3 implication.**
 
-- **Skip Stage 0 entirely.** Go-hosted Fuse3 gets its "validation
-  interpreter" for free: the Go-hosted frontend can walk the AST and
-  produce output without any codegen. There is no Python stage, no
-  Rust stage. The whole thing is one Go program with multiple modes
-  (`fuse run`, `fuse build`, `fuse check`).
+- **Two stages, not three: Stage 1 (Go) → Stage 2 (self-hosted
+  Fuse).** See §1.4 for the full staging contract. Fuse3 has no
+  Python Stage 0 because Fuse2's Stage 0 already answered the
+  "is this implementable?" question — those answers are captured
+  in this learnings doc. Skipping Stage 0 is not a shortcut; it's
+  the correct response to "the experiment has already been run."
+
+- **Stage 1 in Go owns the full frontend + backend in one
+  program.** One binary, multiple modes (`fuse run`, `fuse build`,
+  `fuse check`). Go's standard toolchain (`go/ssa`, `go/types`,
+  `go build`, the Go linker) replaces Fuse2's Cranelift +
+  cranelift-ffi + fuse-runtime split, which is what eliminates
+  the subsystem-boundary class of bug that produced the entire
+  B12 ABI cascade (§4.2, §6.3).
 
 - **Keep the "guide precedes implementation" rule.** It scales.
 
-- **The self-host bootstrap test must compile the real compiler.**
-  Not a synthetic input. If that is expensive to run, it is expensive
-  to run, and CI handles it. Fuse2's lesson: any bootstrap test that
+- **The Stage 2 self-host bootstrap test must compile the real
+  `stage2/src/main.fuse`, not a synthetic input.** Fuse2's W7.5
+  test passed for months on a trivial program while the real
+  self-host was broken — an entire class of latent bugs hid
+  because the bootstrap lied. If the real compile is expensive
+  to run, it is expensive to run, and CI handles it. Any
+  bootstrap test that
   doesn't use the production source is a lie.
 
 ## 4.2 Uniform `FuseHandle` ABI — blessing and curse
@@ -1420,7 +1544,7 @@ this part and Part 1.
 
 | Fuse2 pain point | What hurt | Fuse3 design implication |
 |---|---|---|
-| **Three-stage bootstrap (Python → Rust → Fuse)** | 3 independent implementations of lexer/parser/checker to keep in sync. Stage 0 accreted features for Stage 2. Bootstrap test never exercised real stage 2 source. | **Single implementation in Go.** Go-hosted frontend is both the interpreter and the codegen driver. Bootstrap test always compiles the real compiler from day one. |
+| **Three-stage bootstrap (Python → Rust → Fuse)** | 3 independent implementations of lexer/parser/checker to keep in sync. Stage 0 accreted features for Stage 2. Bootstrap test never exercised real `stage2/src/main.fuse`. | **Two stages: Stage 1 (Go) → Stage 2 (self-hosted Fuse).** See §1.4. No Stage 0 — Fuse2's Python prototype already answered the implementability question. Stage 1 is one Go program (frontend + backend, `fuse run` / `fuse build` / `fuse check`). Stage 2 is Fuse compiled by Stage 1; once self-hosting passes 3-gen reproducibility, Stage 2 becomes the primary compiler and Stage 1 retires to a boot-and-recover tool. Fuse builds Fuse, end-to-end. Bootstrap test always compiles the real `stage2/src/main.fuse`, not a synthetic input. |
 | **Uniform FuseHandle ABI** | Elegant at the type system but brittle at the boundary: the smoke-test convention and the stage-2 convention disagreed silently, producing 8 different bug classes in B12. | **No FFI boundary.** Fuse3 values are Go values. Go's type system is the contract. `Map[K,V]` is literally `map[K]V`. `Chan[T]` is literally `chan T`. |
 | **Checker silently accepts unknowns** | `unresolved extension method` fell through to codegen in Fuse2, producing obscure downstream errors. B2 fixed it in the B-wave retrofit. | **Checker is a total function.** Every node is accepted or rejected. No silent pass-through. The compiler is **complete** — never tentative. |
 | **Post-hoc type inference in codegen** | Codegen re-computed types via `infer_expr_type` after pattern bindings had gone out of scope, producing L027, L028, L029 and half the B-waves. | **Typed AST (TAST).** Every node carries its type, value-context, and live-set *after* the checker pass. Codegen reads TAST; never infers. |
