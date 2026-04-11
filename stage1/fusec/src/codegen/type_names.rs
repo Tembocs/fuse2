@@ -277,13 +277,50 @@ pub fn split_tuple_types(type_name: &str) -> Option<Vec<String>> {
 /// codegen's runtime values, or Cranelift IR. Both the checker and
 /// the codegen call it so they agree on arm unification semantics.
 pub fn unify_match_arm_types(arm_types: &[Option<String>]) -> Option<String> {
-    let knowns: Vec<&str> = arm_types
+    let raw_knowns: Vec<&str> = arm_types
         .iter()
         .filter_map(|t| t.as_deref())
         .collect();
-    if knowns.is_empty() {
+    if raw_knowns.is_empty() {
         return None; // U6
     }
+
+    // Never (`!`) arms — added for the B12 triage. A `!` arm diverges
+    // before producing a value (the arm's block ended in `return`,
+    // `sys.exit`, a trap, or another control-flow exit), so it imposes
+    // no type constraint on the match's result. `[T, !]` unifies to
+    // `T`; `[!, !, ...]` unifies to `!`. This mirrors how `compile_match`
+    // in the object backend now tags terminated block arms with `!`
+    // instead of the previous hardcoded `Unit` (the old behavior
+    // poisoned every `val x = match y { Ok(v) => v, Err(_) => { return } }`
+    // binding in stage2/src/main.fuse and stage2/src/codegen.fuse).
+    //
+    // The all-Never fast path requires **every** arm to be known and
+    // `!`. A single `None` arm (type inference produced no info)
+    // means some other arm may resolve to a concrete type later, so
+    // we cannot collapse the match to `!` on incomplete info — that
+    // would poison `val x = match y { Ok(v) => v, Err(_) => { return } }`
+    // where arm 1's `modules` name had no lookup context and returned
+    // None, leaving arm 2's `!` to dominate and producing
+    // `no method \`len\` on type \`!\`` downstream.
+    let all_known = arm_types.iter().all(|t| t.is_some());
+    if all_known && raw_knowns.iter().all(|t| *t == "!") {
+        return Some("!".to_string());
+    }
+    let knowns: Vec<&str> = raw_knowns
+        .iter()
+        .copied()
+        .filter(|t| *t != "!")
+        .collect();
+    if knowns.is_empty() {
+        // Every known arm was `!` but at least one arm was `None`
+        // (unknown). We can't pick `!` confidently (see the comment
+        // above). Return None and let downstream infer from other
+        // context (the binding's declared type, later uses, etc.).
+        return None;
+    }
+    // At this point at least one non-`!` arm exists. Apply U1-U5 to
+    // the filtered set.
 
     // Identity fast path (U1). If every known arm is the same
     // string, we are done.

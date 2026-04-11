@@ -1007,10 +1007,41 @@ impl<'a> BackendCompiler<'a> {
                 }
             }
             for extern_fn in loaded.extern_fns.values() {
-                // Skip if already declared (runtime functions or another module).
-                // Cranelift rejects duplicate declarations with incompatible
-                // signatures, so we use try-declare-or-reuse.
-                if self.function_ids.contains_key(&extern_fn.name) {
+                // B12 — Duplicate extern declarations across modules MUST
+                // agree on param count. Before B12 the codegen silently
+                // skipped the later declaration if the name was already
+                // in `function_ids`, letting the first module's signature
+                // win by BTreeMap iteration order. stage2/src/codegen.fuse
+                // and stage2/src/runtime.fuse both declared
+                // `cranelift_ffi_signature_new`, one with 1 param and one
+                // with 2. codegen.fuse (alphabetically earlier) won. The
+                // call sites in runtime.fuse then emitted 2-arg Cranelift
+                // calls to a 1-arg declared function, and the verifier
+                // failed deep in the compile pipeline with no actionable
+                // message. Check param counts at declare time and error
+                // loudly. Runtime-declared functions (those already in
+                // function_ids when `loaded` is first processed) are
+                // trusted — the runtime registry is the source of truth
+                // for them — so the collision check only fires between
+                // user modules.
+                if let Some(existing_id) = self.function_ids.get(&extern_fn.name).copied() {
+                    let existing_decl = self
+                        .module
+                        .declarations()
+                        .get_function_decl(existing_id);
+                    let existing_params = existing_decl.signature.params.len();
+                    if existing_params != extern_fn.params.len() {
+                        return Err(format!(
+                            "duplicate extern declaration for `{}` disagrees on arity: \
+                             previously declared with {} param(s), now declared with {} \
+                             param(s) in `{}`. Align the declarations across all modules \
+                             that import this extern.",
+                            extern_fn.name,
+                            existing_params,
+                            extern_fn.params.len(),
+                            display_name(&loaded.path),
+                        ));
+                    }
                     continue;
                 }
                 let sig = self.handle_signature(extern_fn.params.len());
@@ -1349,10 +1380,19 @@ impl<'a> BackendCompiler<'a> {
         builder.finalize();
         let flags = settings::Flags::new(settings::builder());
         if let Err(err) = cranelift_codegen::verify_function(&ctx.func, &flags) {
-            return Err(cranelift_codegen::print_errors::pretty_verifier_error(
-                &ctx.func,
-                None,
-                err,
+            // B12 — tag every verifier error with the Fuse symbol name
+            // so triage can find the offending function by grep. Without
+            // this the user sees a raw Cranelift dump with nothing
+            // identifying which function failed to verify.
+            return Err(format!(
+                "Cranelift verifier failed while compiling `{}` (module `{}`):\n{}",
+                name,
+                display_name(module_path),
+                cranelift_codegen::print_errors::pretty_verifier_error(
+                    &ctx.func,
+                    None,
+                    err,
+                )
             ));
         }
         self.module
@@ -1460,10 +1500,19 @@ impl<'a> BackendCompiler<'a> {
         builder.finalize();
         let flags = settings::Flags::new(settings::builder());
         if let Err(err) = cranelift_codegen::verify_function(&ctx.func, &flags) {
-            return Err(cranelift_codegen::print_errors::pretty_verifier_error(
-                &ctx.func,
-                None,
-                err,
+            // B12 — tag every verifier error with the Fuse symbol name
+            // so triage can find the offending function by grep. Without
+            // this the user sees a raw Cranelift dump with nothing
+            // identifying which function failed to verify.
+            return Err(format!(
+                "Cranelift verifier failed while compiling `{}` (module `{}`):\n{}",
+                name,
+                display_name(module_path),
+                cranelift_codegen::print_errors::pretty_verifier_error(
+                    &ctx.func,
+                    None,
+                    err,
+                )
             ));
         }
         self.module
@@ -1793,9 +1842,18 @@ fn build_wrapper(_input: &Path, output: &Path, object: &[u8]) -> Result<(), Stri
     let target_dir = stage1_root.join("target").join("generated-target");
     fs::create_dir_all(&target_dir)
         .map_err(|error| format!("failed to create shared wrapper target dir: {error}"))?;
-    let status = Command::new("cargo")
-        .arg("build")
-        .arg("--release")
+    // B12 debugging — build wrapper in debug mode when
+    // FUSE_WRAPPER_DEBUG is set so panics inside fusec2/the generated
+    // binary carry symbolicated backtraces. Release builds strip
+    // debug info and render the self-hosted binary's panics
+    // effectively untriageable.
+    let release = std::env::var("FUSE_WRAPPER_DEBUG").is_err();
+    let mut cmd = Command::new("cargo");
+    cmd.arg("build");
+    if release {
+        cmd.arg("--release");
+    }
+    let status = cmd
         .arg("--target-dir")
         .arg(&target_dir)
         .current_dir(&workdir)
@@ -1804,8 +1862,9 @@ fn build_wrapper(_input: &Path, output: &Path, object: &[u8]) -> Result<(), Stri
     if !status.success() {
         return Err("generated wrapper build failed".to_string());
     }
+    let profile_dir = if release { "release" } else { "debug" };
     let built = target_dir
-        .join("release")
+        .join(profile_dir)
         .join(format!("fuse_generated_wrapper{}", std::env::consts::EXE_SUFFIX));
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent)
@@ -1833,6 +1892,26 @@ struct LoweringState<'a, 'b> {
 }
 
 impl<'a, 'b> LoweringState<'a, 'b> {
+    /// Format a codegen error string with the current module's
+    /// display name and the given span. Codegen errors have no
+    /// structured diagnostic yet — they are bubbled up as `String`
+    /// through `Result<_, String>` — so we embed the location
+    /// directly in the message. Every codegen error that references
+    /// a source construct should route through this helper so that
+    /// `fusec foo.fuse` failures point the user at the failing line
+    /// rather than printing a bare sentence. Without location info,
+    /// diagnosing a codegen bug requires binary search over the
+    /// compiled source (see the B12 triage for the cost).
+    fn err_at(&self, span: crate::error::Span, msg: impl Into<String>) -> String {
+        format!(
+            "{}:{}:{}: {}",
+            display_name(self.module_path),
+            span.line,
+            span.column,
+            msg.into()
+        )
+    }
+
     fn new(
         compiler: &'a mut BackendCompiler<'b>,
         module_path: &'a Path,
@@ -3651,10 +3730,15 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             }
         }
         let receiver = self.compile_expr(builder, &member.object)?;
-        let receiver_type = receiver
-            .ty
-            .clone()
-            .ok_or_else(|| format!("cannot infer receiver type for `{}`", member.name))?;
+        let receiver_type = match receiver.ty.clone() {
+            Some(ty) => ty,
+            None => {
+                return Err(self.err_at(
+                    member.span,
+                    format!("cannot infer receiver type for `{}`", member.name),
+                ));
+            }
+        };
 
         // Optional chaining: receiver?.method() — unwrap Option, call on inner, rewrap.
         if member.optional {
@@ -4710,15 +4794,32 @@ impl<'a, 'b> LoweringState<'a, 'b> {
             match &arm.body {
                 fa::ArmBody::Expr(expr) => {
                     let value = self.compile_expr(builder, expr)?;
-                    arm_types.push(value.ty.clone());
-                    if !self.current_block_is_terminated(builder) {
+                    if self.current_block_is_terminated(builder) {
+                        // Expression body diverged (e.g., a `return`
+                        // expression wrapped in an arm body). The arm
+                        // contributes `!`, not its inferred type.
+                        arm_types.push(Some("!".to_string()));
+                    } else {
+                        arm_types.push(value.ty.clone());
                         self.jump_value(builder, done, value.value);
                     }
                 }
                 fa::ArmBody::Block(block) => {
                     self.compile_statements(builder, &block.statements)?;
-                    arm_types.push(Some("Unit".to_string()));
-                    if !self.current_block_is_terminated(builder) {
+                    if self.current_block_is_terminated(builder) {
+                        // The block diverges (return/sys.exit/trap).
+                        // Contributes `!` — unify_match_arm_types
+                        // filters Never arms and promotes siblings.
+                        // Pre-B12, this arm pushed `Unit`, which
+                        // poisoned bindings like `val x = match y {
+                        // Ok(v) => v, Err(_) => { return } }` with a
+                        // `[T, Unit]` unification failure (U5, None)
+                        // — x lost its type and any downstream `.len()`
+                        // or other member call surfaced as
+                        // `cannot infer receiver type`.
+                        arm_types.push(Some("!".to_string()));
+                    } else {
+                        arm_types.push(Some("Unit".to_string()));
                         let unit = self.runtime_nullary(builder, self.compiler.runtime.unit);
                         self.jump_value(builder, done, unit);
                     }
@@ -4776,18 +4877,23 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                 binding.destroy = false;
             }
         }
+        // See compile_match for the divergence-vs-Unit rationale.
         match &match_expr.arms[0].body {
             fa::ArmBody::Expr(expr) => {
                 let value = self.compile_expr(builder, expr)?;
-                arm_types.push(value.ty.clone());
-                if !self.current_block_is_terminated(builder) {
+                if self.current_block_is_terminated(builder) {
+                    arm_types.push(Some("!".to_string()));
+                } else {
+                    arm_types.push(value.ty.clone());
                     self.jump_value(builder, done, value.value);
                 }
             }
             fa::ArmBody::Block(block) => {
                 self.compile_statements(builder, &block.statements)?;
-                arm_types.push(Some("Unit".to_string()));
-                if !self.current_block_is_terminated(builder) {
+                if self.current_block_is_terminated(builder) {
+                    arm_types.push(Some("!".to_string()));
+                } else {
+                    arm_types.push(Some("Unit".to_string()));
                     let unit = self.runtime_nullary(builder, self.compiler.runtime.unit);
                     self.jump_value(builder, done, unit);
                 }
@@ -4806,15 +4912,19 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         match &match_expr.arms[1].body {
             fa::ArmBody::Expr(expr) => {
                 let value = self.compile_expr(builder, expr)?;
-                arm_types.push(value.ty.clone());
-                if !self.current_block_is_terminated(builder) {
+                if self.current_block_is_terminated(builder) {
+                    arm_types.push(Some("!".to_string()));
+                } else {
+                    arm_types.push(value.ty.clone());
                     self.jump_value(builder, done, value.value);
                 }
             }
             fa::ArmBody::Block(block) => {
                 self.compile_statements(builder, &block.statements)?;
-                arm_types.push(Some("Unit".to_string()));
-                if !self.current_block_is_terminated(builder) {
+                if self.current_block_is_terminated(builder) {
+                    arm_types.push(Some("!".to_string()));
+                } else {
+                    arm_types.push(Some("Unit".to_string()));
                     let unit = self.runtime_nullary(builder, self.compiler.runtime.unit);
                     self.jump_value(builder, done, unit);
                 }
@@ -4866,8 +4976,13 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                     }
                 }
             };
-            arm_types.push(value.ty.clone());
-            if !self.current_block_is_terminated(builder) {
+            if self.current_block_is_terminated(builder) {
+                // Arm diverged (return/sys.exit/trap) before reaching
+                // the jump — contributes `!` to unification. See
+                // compile_match for the matching rationale.
+                arm_types.push(Some("!".to_string()));
+            } else {
+                arm_types.push(value.ty.clone());
                 self.jump_value(builder, done, value.value);
             }
             next = miss_block;

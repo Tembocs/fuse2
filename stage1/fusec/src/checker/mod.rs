@@ -681,6 +681,46 @@ impl Checker {
         }
     }
 
+    /// Compute the type a `match` / `when` arm body contributes to
+    /// arm unification. This is NOT the same as `infer_block_type`:
+    /// `infer_block_type` is used for function-body return
+    /// verification, where `{ return foo }` means "the function
+    /// returns `foo`'s type" and should contribute that type. For
+    /// arm unification, `{ return foo }` means "this arm diverges
+    /// before producing a value" — it contributes `!` (Never),
+    /// which the unifier filters and allows siblings to dominate.
+    /// Similarly for `{ break }`, `{ continue }`, and any block
+    /// whose last statement is `Loop(_)` (infinite loops).
+    ///
+    /// Added in B12 triage because `val x = match y { Ok(v) => v,
+    /// Err(_) => { sys.exit(1); return } }` in stage2/src/main.fuse
+    /// produced arm types `[List<CachedLoad>, Unit]`, U5-failed the
+    /// unifier, and left `x` typeless. The codegen mirror lives in
+    /// `compile_match`'s Block-arm branch.
+    fn arm_body_type_for_unify(
+        &self,
+        module: &ModuleInfo,
+        body: &hir::ArmBody,
+        scope: &HashMap<String, BindingInfo>,
+        owner_name: Option<&str>,
+    ) -> Option<String> {
+        match body {
+            hir::ArmBody::Expr(expr) => self.infer_expr_type(module, expr, scope, owner_name),
+            hir::ArmBody::Block(block) => {
+                if let Some(last) = block.statements.last() {
+                    match last {
+                        hir::Statement::Return(_)
+                        | hir::Statement::Break(_)
+                        | hir::Statement::Continue(_)
+                        | hir::Statement::Loop(_) => return Some("!".to_string()),
+                        _ => {}
+                    }
+                }
+                self.infer_block_type(module, block, scope, owner_name)
+            }
+        }
+    }
+
     fn check_statement(
         &mut self,
         module: &ModuleInfo,
@@ -1325,23 +1365,15 @@ impl Checker {
                 for arm in &match_expr.arms {
                     let mut local = scope.clone();
                     self.check_arm_body(module, &arm.body, &mut local, owner_name, loop_depth);
-                    // B7.4 — Infer the arm's output type. For a
-                    // block body, the type comes from the block's
-                    // trailing expression (via `infer_block_type`),
-                    // NOT from a hardcoded "Unit". Many existing
-                    // fixtures use `Ok(p) => { ...; state.diagnostics }`
-                    // where the block evaluates to a non-Unit type;
-                    // marking those as Unit would false-positive a
-                    // "Unit vs List" diagnostic against a sibling
-                    // list arm.
-                    let ty = match &arm.body {
-                        hir::ArmBody::Expr(expr) => {
-                            self.infer_expr_type(module, expr, &local, owner_name)
-                        }
-                        hir::ArmBody::Block(block) => {
-                            self.infer_block_type(module, block, &local, owner_name)
-                        }
-                    };
+                    // B7.4 / B12 — Use the divergence-aware
+                    // `arm_body_type_for_unify` helper so that a
+                    // block ending in `return` / `break` / `continue`
+                    // contributes `!` (Never) to unification rather
+                    // than its trailing-expression type or a hardcoded
+                    // Unit. Both false assignments previously led to
+                    // U5 failures on valid statement-position matches
+                    // like the one in stage2/src/main.fuse:265.
+                    let ty = self.arm_body_type_for_unify(module, &arm.body, &local, owner_name);
                     arm_types.push((ty, arm.span));
                     arm_scopes.push(local);
                 }
@@ -2273,18 +2305,22 @@ impl Checker {
             // mirror; the checker's recursion is naturally bounded
             // by the AST depth and the `infer_expr_type` chain, so
             // an explicit depth limit is unnecessary here.
+            //
+            // B12 — A block arm that ends in `return`, `break`, or
+            // `continue` diverges before producing a value; it
+            // contributes `!` (Never) to unification. Without this,
+            // `val x = match y { Ok(v) => v, Err(_) => { return } }`
+            // produced arm types `[T, Unit]`, U5-failed the unifier,
+            // and left `x` typeless — `x.len()` downstream surfaced
+            // as `cannot infer receiver type`. The codegen mirror
+            // lives in `compile_match`'s block-arm handler, which
+            // pushes `!` whenever `current_block_is_terminated`
+            // reports true after compiling the block's statements.
             hir::Expr::Match(match_expr) => {
                 let arm_types: Vec<Option<String>> = match_expr
                     .arms
                     .iter()
-                    .map(|arm| match &arm.body {
-                        hir::ArmBody::Expr(expr) => {
-                            self.infer_expr_type(module, expr, scope, owner_name)
-                        }
-                        hir::ArmBody::Block(block) => {
-                            self.infer_block_type(module, block, scope, owner_name)
-                        }
-                    })
+                    .map(|arm| self.arm_body_type_for_unify(module, &arm.body, scope, owner_name))
                     .collect();
                 unify_match_arm_types(&arm_types)
             }
@@ -2297,14 +2333,7 @@ impl Checker {
                 let arm_types: Vec<Option<String>> = when_expr
                     .arms
                     .iter()
-                    .map(|arm| match &arm.body {
-                        hir::ArmBody::Expr(expr) => {
-                            self.infer_expr_type(module, expr, scope, owner_name)
-                        }
-                        hir::ArmBody::Block(block) => {
-                            self.infer_block_type(module, block, scope, owner_name)
-                        }
-                    })
+                    .map(|arm| self.arm_body_type_for_unify(module, &arm.body, scope, owner_name))
                     .collect();
                 unify_match_arm_types(&arm_types)
             }
