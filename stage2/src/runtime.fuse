@@ -11,6 +11,7 @@
 //   Special params (I64, F64, I8) are noted but all treated as single-slot
 //   in the uniform ABI where everything passes as pointer-sized.
 
+import stdlib.core.list
 import stdlib.core.string
 
 // ---------------------------------------------------------------------------

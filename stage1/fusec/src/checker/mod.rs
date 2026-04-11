@@ -1426,12 +1426,26 @@ impl Checker {
         module: &ModuleInfo,
         arm_types: &[(Option<String>, Span)],
     ) {
-        // Collect only arms whose type is known. Arms with
-        // unknown types are ignored (Rule U6 — insufficient info,
-        // not an error).
+        // Collect only arms whose type is known AND is not `Unit` or
+        // `!`. A `Unit`-typed arm is almost always a block used for
+        // side effects (`{ s = foo(...) }`, `{ println(...) }`) whose
+        // value is not meant to be observed; treating it the same as
+        // an unknown arm (Rule U6) is how statement-position matches
+        // coexist with value-position matches in a checker that
+        // cannot yet distinguish them. `!` (Never) arms similarly
+        // contribute no concrete type — a Never arm diverges before
+        // producing a value. Pre-B11, this filter was missing, so any
+        // `match x { A => list_value, B => { s = foo() } }` used as a
+        // statement (result discarded) was rejected — see
+        // stage2/src/checker.fuse checkExpr's Expr.If arm for the
+        // canonical case.
         let knowns: Vec<&(Option<String>, Span)> = arm_types
             .iter()
-            .filter(|(ty, _)| ty.is_some())
+            .filter(|(ty, _)| {
+                ty.as_deref()
+                    .map(|t| t != "Unit" && t != "!")
+                    .unwrap_or(false)
+            })
             .collect();
         if knowns.len() < 2 {
             return;

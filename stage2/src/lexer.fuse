@@ -3,6 +3,7 @@
 // Matches Stage 1 (stage1/fusec/src/lexer/lexer.rs) exactly.
 // Byte-level ASCII scanning via String.byteAt(i).
 
+import stdlib.core.list
 import stdlib.core.string
 import token
 

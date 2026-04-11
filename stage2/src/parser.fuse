@@ -3,6 +3,7 @@
 // Matches Stage 1 (stage1/fusec/src/parser/parser.rs) structure.
 // Recursive descent with precedence climbing.
 
+import stdlib.core.list
 import stdlib.core.string
 import token
 import ast

@@ -7,6 +7,9 @@
 //   fusec2 --help                 Print usage
 //   fusec2 --version              Print version
 
+import stdlib.core.list
+import stdlib.core.option
+import stdlib.core.result
 import stdlib.core.string
 import stdlib.full.sys
 import stdlib.full.os

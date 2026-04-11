@@ -2,6 +2,7 @@
 //
 // Matches Stage 1 (stage1/fusec/src/codegen/layout.rs).
 
+import stdlib.core.list
 import stdlib.core.string
 import token
 import ast

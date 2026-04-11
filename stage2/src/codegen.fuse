@@ -3,6 +3,8 @@
 // Matches Stage 1 (stage1/fusec/src/codegen/object_backend.rs) loading logic.
 // Uses List-based symbol tables (evaluator cannot mutate maps).
 
+import stdlib.core.list
+import stdlib.core.option
 import stdlib.core.string
 import stdlib.full.io
 import token

@@ -3,6 +3,7 @@
 // Matches Stage 1 (stage1/fusec/src/checker/mod.rs) core logic.
 // Uses List-based scopes (evaluator cannot mutate maps).
 
+import stdlib.core.list
 import stdlib.core.string
 import token
 import ast
