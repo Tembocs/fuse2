@@ -16,7 +16,7 @@ use std::slice;
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{self, types, AbiParam, Block, BlockArg, FuncRef, InstBuilder, TrapCode, Value};
 use cranelift_codegen::settings;
-use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
+use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{default_libcall_names, DataDescription, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 
@@ -622,6 +622,138 @@ pub unsafe extern "C" fn cranelift_ffi_builder_inst_results(
         unsafe { *out_ptr.add(i) = results[i].as_u32() as i64 };
     }
     from_i64(count as i64)
+}
+
+// =========================================================================
+// B12 — Singular-result and Variable helpers
+//
+// The existing `_block_params` / `_inst_results` wrappers take a caller
+// allocated array and fill it. Stage 2 code is cleaner if it can index
+// a single element directly, so these wrappers expose scalar accessors
+// that delegate to the plural forms internally. The `Variable` helpers
+// (`declare_var` / `def_var` / `use_var`) expose Cranelift's SSA
+// variable machinery — the Fuse self-hosted compiler uses them to
+// model Fuse-level mutable locals through Cranelift's `FunctionBuilder`,
+// matching how `stage1/fusec/src/codegen/object_backend.rs` uses the
+// same API directly.
+// =========================================================================
+
+/// Get the `index`-th parameter of a block. Returns Value id.
+/// Panics (via bounds check) if `index` is out of range — this matches
+/// the existing `_block_params` helper's implicit contract.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_builder_block_param(
+    bld: FuseHandle,
+    block: FuseHandle,
+    index: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &*ffi_bld.builder };
+    let block = Block::from_u32(to_i64(block) as u32);
+    let params = builder.block_params(block);
+    let idx = to_i64(index) as usize;
+    from_i64(params[idx].as_u32() as i64)
+}
+
+/// Get the `index`-th result of a call/instruction. Returns Value id.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_builder_inst_result(
+    bld: FuseHandle,
+    inst: FuseHandle,
+    index: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &*ffi_bld.builder };
+    let inst_id = ir::Inst::from_u32(to_i64(inst) as u32);
+    let results = builder.inst_results(inst_id);
+    let idx = to_i64(index) as usize;
+    from_i64(results[idx].as_u32() as i64)
+}
+
+/// Declare a Cranelift SSA variable with the given integer index and
+/// type id. Cranelift's `FunctionBuilder::declare_var(ty)` returns a
+/// fresh `Variable` assigned from its internal monotonic counter, so
+/// the caller's `var_idx` must match Cranelift's returned index —
+/// i.e. the caller must declare variables in the same order, starting
+/// from 0, that Cranelift's counter advances. The stage 2 self-hosted
+/// compiler maintains its own `nextVar: Int` counter starting at 0,
+/// incremented once per declaration, which is definitionally aligned
+/// with Cranelift's push-based scheme.
+///
+/// We `debug_assert!` the alignment so any future divergence fails
+/// loudly in debug builds; in release builds, a divergence would
+/// silently produce wrong IR (variables bound to the wrong types).
+///
+/// `type_id` — 0=I8, 1=I32, 2=I64, 3=F64, 4=pointer. The pointer
+/// type is hardcoded to I64, matching every native target the stage 2
+/// self-hosted compiler currently supports. wasm32-wasi support for
+/// the self-hosted compiler would need to thread an `FfiModule`
+/// handle so the pointer type comes from `FfiModule::pointer_type`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_builder_declare_var(
+    bld: FuseHandle,
+    var_idx: FuseHandle,
+    type_id: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let ty = type_from_id(to_i64(type_id), types::I64);
+    let expected_idx = to_i64(var_idx) as u32;
+    let var = builder.declare_var(ty);
+    debug_assert_eq!(
+        var.as_u32(),
+        expected_idx,
+        "stage 2 passed var_idx {} but Cranelift assigned Variable {}. \
+         The caller's monotonic counter has drifted from Cranelift's — \
+         check that every variable is declared exactly once, in order, \
+         before its first def_var/use_var.",
+        expected_idx,
+        var.as_u32(),
+    );
+    fuse_unit()
+}
+
+/// Assign a Value to a previously-declared Variable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_builder_def_var(
+    bld: FuseHandle,
+    var_idx: FuseHandle,
+    value: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let var = Variable::from_u32(to_i64(var_idx) as u32);
+    let val = Value::from_u32(to_i64(value) as u32);
+    builder.def_var(var, val);
+    fuse_unit()
+}
+
+/// Read a Variable's current value at this program point. Returns
+/// the Value id Cranelift assigned via SSA construction.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_builder_use_var(
+    bld: FuseHandle,
+    var_idx: FuseHandle,
+) -> FuseHandle {
+    let ffi_bld = unsafe { &*to_ptr::<FfiBuilder>(bld) };
+    let builder = unsafe { &mut *ffi_bld.builder };
+    let var = Variable::from_u32(to_i64(var_idx) as u32);
+    let val = builder.use_var(var);
+    from_i64(val.as_u32() as i64)
+}
+
+/// Alias for `cranelift_ffi_ins_call` — Stage 2 uses the `_n` suffix
+/// to mean "arbitrary argument count", which is what `ins_call` already
+/// does. Both names resolve to the same implementation so either Fuse
+/// extern declaration spelling is accepted.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cranelift_ffi_ins_call_n(
+    bld: FuseHandle,
+    func_ref: FuseHandle,
+    args: FuseHandle,
+    arg_count: FuseHandle,
+) -> FuseHandle {
+    unsafe { cranelift_ffi_ins_call(bld, func_ref, args, arg_count) }
 }
 
 // =========================================================================
