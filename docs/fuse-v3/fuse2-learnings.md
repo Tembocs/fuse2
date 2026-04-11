@@ -24,6 +24,8 @@
 - 1.3 Core vs Full tiering
 - 1.4 Fuse3 staging: Go → Fuse → Fuse (the two-stage contract)
 - 1.5 Module system decisions (locked for Fuse3)
+- 1.6 Fuse3 C runtime surface (the ~40-entry platform layer)
+- 1.7 C FFI: `extern fn` and `@export` (five robustness rules)
 
 **Part 2 — Type system and memory model**
 - 2.1 Ownership: four keywords, no borrow checker
@@ -209,11 +211,13 @@ Stage 1   Fuse compiler hosted in Go (replaces Fuse2's Rust Stage 1)
           Written in Go for host-language leverage: strong standard
           library, fast iteration, stable tooling.
 
-          Codegen path: emit portable C99 source + a small Fuse
-          runtime (also C, ~500 LOC target) and invoke the system
+          Codegen path: emit portable C11 source + a small Fuse
+          runtime (also C11, ~500 LOC target) and invoke the system
           C compiler (cc / gcc / clang / msvc) with cross-target
           flags to produce native binaries for Windows, Linux,
-          macOS on amd64 and arm64.
+          macOS on amd64 and arm64. C11 is the floor, not C99 —
+          see the "Why C11" note below for the specific features
+          Fuse3 depends on.
 
           No Go runtime linked into emitted binaries. No Go GC.
           No goroutine scheduler under the hood. No bundled
@@ -324,6 +328,53 @@ headwind that produced the B12 cascade is gone.
 That's the Fuse3 staging contract. Every other design question
 in Part 10 is downstream of it.
 
+**Why C11, not C99.** Fuse3 mandates C11 as the floor for emitted
+code and the runtime. The upgrade is strictly better with no
+downside at Fuse3's shipping horizon (2026). The load-bearing C11
+features:
+
+- **`<stdatomic.h>`.** Portable atomics with documented memory
+  orderings. Under C99 every atomic would have to be `__atomic_*`
+  (GCC/clang) / `_Interlocked*` (MSVC) conditionals — exactly the
+  platform-specific code that hurt Fuse2's cranelift-ffi crate.
+  C11 gives us `atomic_load_explicit` / `atomic_store_explicit` /
+  `atomic_compare_exchange_strong` directly. `Shared[T]` refcount
+  operations, `Chan[T]` signalling, and any lock-free fast path
+  depend on these.
+
+- **C11 memory model.** Fuse3's Q19 decision ("sequentially
+  consistent across `Shared[T]` lock acquisitions and `Chan[T]`
+  send/recv edges") is only meaningful in C11 terms. Rust's
+  memory model is defined *relative to* C11's. Under C99 we'd be
+  hand-waving about ordering guarantees that the standard does
+  not give us.
+
+- **`_Static_assert`.** Compile-time assertions on sizes,
+  alignments, and ABI invariants. Every Fuse runtime header emits
+  `_Static_assert(sizeof(fuse_string_t) == 32, "ABI mismatch")`
+  and similar. This is Rule 5 (invariant walkers, §4.7) applied
+  to the C boundary: ABI drift becomes a C compile error, not a
+  runtime mystery.
+
+- **`_Thread_local`.** Portable TLS. Task-local arenas (Part 8.3)
+  need this, and the alternative was `__thread` (GCC) /
+  `__declspec(thread)` (MSVC) conditionals.
+
+- **`_Alignas` / `_Alignof`.** Portable alignment specifiers.
+  `_Alignas(64)` on `fuse_rt_rwlock_t` prevents false sharing on
+  SMP systems without `#ifdef`-spaghetti across compilers.
+
+- **`aligned_alloc`.** C11 standardized aligned allocation.
+  Fuse3's arena allocators need this.
+
+- **`_Bool`, anonymous structs/unions.** Minor but cleaner emitted
+  code for tagged enums and Option/Result lowering.
+
+**Cost of requiring C11.** Zero. Every C99 program is valid C11.
+The only implication is requiring a post-2011 C compiler: GCC 4.9+,
+clang 3.1+, MSVC 2019+. For a language shipping in 2026, that is
+current, not exotic. It is not a portability concern.
+
 ---
 
 ## 1.5 Module system decisions (locked for Fuse3)
@@ -391,6 +442,233 @@ two small additions:
 **Explicitly rejected:** trailing commas in import lists
 (`import a.b.{X, Y,}`). Cosmetic, not worth the parser special
 case.
+
+---
+
+## 1.6 Fuse3 C runtime surface (Q15)
+
+The runtime is the *platform abstraction layer only*: everything
+that cannot be written in Fuse because it needs the C standard
+library or OS syscalls. Strings, lists, maps, channels, formatter,
+even the panic message printer — all written in Fuse on top of the
+runtime, not runtime functions themselves. This is the Rust model
+scaled down: `std::sync::Mutex` is Rust code wrapping a tiny
+`sys::Mutex` platform trait.
+
+The runtime target is ~500–700 LOC of C11 across ~40 entry points,
+all prefixed `fuse_rt_*` so a search of emitted C tells you
+immediately which calls cross the Fuse/platform boundary.
+
+**Fuse3 runtime surface (`fuse_rt.h`):**
+
+| Category        | Entry points                                                                | Notes |
+|-----------------|-----------------------------------------------------------------------------|-------|
+| **Memory**      | `fuse_rt_alloc(size, align)`, `fuse_rt_realloc(ptr, old, new, align)`, `fuse_rt_free(ptr, size, align)` | Size+align passed to free so the allocator can be arena-aware. Wraps `aligned_alloc` on POSIX, `_aligned_malloc` on MSVC. |
+| **Panic**       | `_Noreturn fuse_rt_panic(msg, file, line)`, `_Noreturn fuse_rt_abort()`     | Single crash point. Flushes stderr, prints span, calls `abort()`. |
+| **Raw I/O**     | `fuse_rt_write_stdout(bytes, len)`, `fuse_rt_write_stderr(bytes, len)`, `fuse_rt_flush_stdout()`, `fuse_rt_flush_stderr()` | Raw byte writes. Formatting, f-strings, and `println` are Fuse code on top. |
+| **Process**     | `_Noreturn fuse_rt_exit(code)`, `fuse_rt_argc()`, `fuse_rt_argv(i)`, `fuse_rt_env_get(name)` | `argv` indexed per-call to avoid copying the array at startup. |
+| **Raw file I/O**| `fuse_rt_fs_open(path, mode)`, `fuse_rt_fs_read(fd, buf, len)`, `fuse_rt_fs_write(fd, buf, len)`, `fuse_rt_fs_close(fd)` | POSIX-style `fd`. `stdlib.full.fs` is the Fuse wrapper. |
+| **Threads**     | `fuse_rt_thread_spawn(out, fn, arg)`, `fuse_rt_thread_join(t)`              | Wraps `pthread_create` / `CreateThread`. Opaque `fuse_rt_thread_t`. |
+| **Mutex**       | `fuse_rt_mutex_init/lock/unlock/destroy`                                    | Wraps `pthread_mutex_t` / `SRWLOCK` (used exclusively). |
+| **RWlock**      | `fuse_rt_rwlock_init/rlock/wlock/runlock/wunlock/destroy`                   | Backs `Shared[T]`. `_Alignas(64)` on the struct to avoid false sharing. |
+| **Condvar**     | `fuse_rt_cond_init/wait/signal/broadcast/destroy`                           | Backs `Chan[T]` signalling. |
+| **TLS**         | `fuse_rt_tls_create(key_out, dtor)`, `fuse_rt_tls_get(key)`, `fuse_rt_tls_set(key, value)` | Task-local arenas (Part 8.3). Uses `_Thread_local` under the hood where possible. |
+| **Time**        | `fuse_rt_time_monotonic_ns()`, `fuse_rt_time_realtime_ns()`, `fuse_rt_sleep_ns(ns)` | Monotonic for timeouts, realtime for timestamps. |
+| **Atomics**     | *(none — emit C11 `<stdatomic.h>` directly)*                                | No runtime wrapper. Emitted Fuse code uses `atomic_int`, `atomic_load_explicit`, etc. directly — C11 makes this portable. |
+
+**What is deliberately NOT in the runtime:**
+
+- **String operations.** `stdlib.core.string` is Fuse code that
+  calls `fuse_rt_alloc` for the backing bytes and `fuse_rt_write_stdout`
+  for printing. No `fuse_rt_string_*` entry points exist.
+- **List / Map / Set operations.** Monomorphized per instantiation
+  (Q13). `List[Int]` and `List[String]` emit different C functions
+  that each call `fuse_rt_alloc` directly. The runtime has zero
+  generic list operations — which eliminates the "wrong element
+  size" bug class that bites generic-on-void* runtimes.
+- **Formatter / `println` / `fmt`.** Fuse code on top of
+  `fuse_rt_write_stdout`. The formatter is the single largest
+  stdlib module and it is pure Fuse.
+- **Hashing.** `stdlib.core.hashable` is Fuse code. The runtime
+  exposes no hash primitives.
+- **Networking, epoll, async I/O.** Wave 2. Not in the day-one
+  runtime.
+- **Regex, JSON, HTTP.** Ext tier. Never in the runtime.
+
+**Total runtime surface: ~40 entry points, ~500–700 LOC of C11.**
+Every entry point is auditable in a single reading. Every Fuse
+program's "platform dependency" is literally the union of calls
+into this header — `grep fuse_rt_ out.c` prints the complete list.
+
+**Fuse2 contrast.** Fuse2's `fuse-runtime` crate was Rust's
+`std::collections` + `std::sync` imported wholesale, plus a
+`FuseValue` tagged union wrapping everything. The runtime surface
+was effectively "all of Rust's standard library, filtered through
+a tagged pointer convention." That implicit surface was a major
+contributor to the B12 ABI cascade because every new stage2 call
+could silently depend on a Rust-side function with a different
+signature than expected. Fuse3's explicit 40-entry-point ceiling
+makes drift physically impossible: if an emitted C call references
+a `fuse_rt_*` function that isn't in the header, the C compiler
+rejects it at link time.
+
+**Runtime evolution.** The initial runtime is written in C11 for
+Stage 1 bootstrap. Once Stage 2 is self-hosting, the runtime can
+be rewritten *in Fuse*, compiled to C by Stage 2, and dropped in
+place of the hand-written C — same ABI, same entry points. At that
+point the only non-Fuse code in the shipped toolchain is libc plus
+the system C compiler, both present on every developer machine.
+
+---
+
+## 1.7 C FFI: `extern fn` and `@export` (Q25)
+
+Because Fuse3 emits C, the *call* side of FFI is zero-cost: an
+`extern fn` declaration becomes an `extern` forward declaration in
+the emitted C, and the call site is a plain C function call. All
+the engineering work is in the checker, where a set of strict
+rules prevents the type-drift bug class that bites every FFI
+codebase.
+
+### The five rules
+
+**Rule 1 — Primitive types only at the FFI boundary.**
+
+Only these Fuse types may appear in `extern fn` parameters or
+return types:
+
+| Fuse type     | C type    |
+|---------------|-----------|
+| `Int`         | `int64_t` |
+| `UInt`        | `uint64_t`|
+| `Int32`       | `int32_t` |
+| `UInt32`      | `uint32_t`|
+| `Int8`        | `int8_t`  |
+| `UInt8`       | `uint8_t` |
+| `F64`         | `double`  |
+| `F32`         | `float`   |
+| `Bool`        | `_Bool`   |
+| `Ptr[T]`      | `T*`      |
+| `extern struct { … }` | matching C struct with explicit field layout |
+
+**Rejected at the checker:** `String`, `List[T]`, `Map[K,V]`,
+`Set[T]`, `Option[T]`, `Result[T,E]`, `Tuple`, plain `struct`,
+`@value struct`, `data class`, owned user types. Anything with a
+Fuse-managed layout. String data crosses as `Ptr[UInt8] + UInt len`;
+list data crosses as `Ptr[T] + UInt len`; the Fuse wrapper code
+converts on each side. This single rule eliminates the entire
+"Fuse struct layout vs C struct layout" drift class.
+
+**Rule 2 — `unsafe { }` required at every call site.**
+
+```fuse
+extern fn cc_encrypt(key: Ptr[UInt8], key_len: UInt,
+                     out: Ptr[UInt8]) -> Int
+
+fn encrypt_block(bytes: owned List[UInt8]) -> Int {
+    unsafe {
+        cc_encrypt(bytes.data_ptr(), bytes.len(), scratch.data_ptr())
+    }
+}
+```
+
+Non-negotiable. `grep -rn 'unsafe {' src/` is the complete list of
+FFI risk surface in any Fuse3 codebase. Modules can declare
+`#![forbid(unsafe)]` to mechanically reject `unsafe` blocks at
+compile time (§2.6.3 rule 3).
+
+**Rule 3 — Fuse generates the matching C header.**
+
+When Fuse declares `extern fn cc_encrypt(…)`, `fuse build` writes
+the matching C declaration to a generated header:
+
+```c
+// generated by fuse build — do not edit
+extern int64_t cc_encrypt(uint8_t* key, uint64_t key_len, uint8_t* out);
+```
+
+The user's C library either includes that header directly, or
+their own header must match it (verified by
+`_Static_assert(sizeof(…) == …)` in the generated C). **There is
+no second source of truth for the ABI.** This kills the
+bindgen-drift bug class that bites every Rust FFI codebase: in
+Rust, the `extern` declaration in `.rs` and the C header in the
+library are two independent statements that can silently disagree.
+In Fuse3 they are one statement with one author.
+
+**Rule 4 — Static assertions on primitive sizes.**
+
+Every file that declares an `extern fn` emits, at the top of the
+generated C:
+
+```c
+_Static_assert(sizeof(int64_t) == 8, "Fuse Int ABI: int64_t must be 8 bytes");
+_Static_assert(sizeof(int32_t) == 4, "Fuse Int32 ABI: int32_t must be 4 bytes");
+_Static_assert(sizeof(double) == 8,  "Fuse F64 ABI: double must be 8 bytes");
+_Static_assert(_Alignof(int64_t) == 8, "Fuse Int alignment");
+// ... one per primitive used in the file
+```
+
+This catches the "wrong int width on this platform" and the
+"unexpected alignment" bug classes at C compile time, not runtime.
+An exotic target where `int32_t` is secretly 64-bit aligned fails
+to build and produces an explicit error naming the rule.
+
+**Rule 5 — Ownership does not cross the FFI boundary.**
+
+- If an `extern fn` takes a pointer, the Fuse side is responsible
+  for keeping the backing storage alive across the call. The
+  checker enforces this: the source binding for the pointer must
+  still be live after the `unsafe` block. ASAP destruction cannot
+  drop a value whose address has been passed to a C function
+  before the call returns.
+- If an `extern fn` returns a pointer, Fuse wraps it in `Ptr[T]`
+  — an unsafe pointer with no automatic destruction. The user is
+  responsible for calling the matching `extern fn free_it(p: Ptr[T])`
+  before the `Ptr[T]` goes out of scope (or the value leaks — no
+  silent double-free, no silent use-after-free, just a leak that
+  shows up under valgrind/ASan).
+- **No implicit ownership transfer across FFI, ever.** Fuse owns
+  what Fuse allocated; C owns what C allocated. The `Ptr[T]` type
+  exists precisely to mark "the ownership story for this pointer
+  is manual — you must track it yourself".
+
+### The inverse direction: `@export`
+
+Fuse3 functions marked `@export` are visible to C callers. Same
+type rules as `extern fn` (primitive types only, no Fuse-managed
+layouts). `fuse build --headers` emits a `.h` file exposing every
+`@export` function, which C programs can include to link against a
+Fuse library.
+
+```fuse
+@export
+fn fuse_add(a: Int, b: Int) -> Int {
+    return a + b
+}
+```
+
+Generated header:
+
+```c
+extern int64_t fuse_add(int64_t a, int64_t b);
+```
+
+This is day-one, not deferred. Being able to ship a Fuse library
+that a C program can call means Fuse3 can start paying down the
+"write this in C for speed" instinct from its first release — the
+answer becomes "write it in Fuse, mark it `@export`".
+
+### Why this is robust
+
+Every FFI bug class Fuse2 encountered (and every class Rust
+encounters with `bindgen`) was a form of **disagreement between
+two independent declarations**: the Fuse declaration said `Int`,
+the C side said `int`, and on some platform `int` was 32 bits.
+Fuse3 collapses the two declarations into one authored source
+(Fuse), auto-generates the other (C header), and static-asserts
+the ABI invariants at C compile time. The drift class disappears
+because there is only one document.
 
 ---
 
@@ -2183,7 +2461,7 @@ this part and Part 1.
 
 | Fuse2 pain point | What hurt | Fuse3 design implication |
 |---|---|---|
-| **Three-stage bootstrap (Python → Rust → Fuse)** | 3 independent implementations of lexer/parser/checker to keep in sync. Stage 0 accreted features for Stage 2. Bootstrap test never exercised real `stage2/src/main.fuse`. | **Two stages: Stage 1 (Go-hosted) → Stage 2 (self-hosted Fuse).** See §1.4. No Stage 0 — Fuse2's Python prototype already answered the implementability question. Stage 1 is one Go program that emits portable C99 and invokes the system C compiler (cc/gcc/clang/msvc); no Go runtime links into emitted binaries. Stage 2 is Fuse compiled by Stage 1; once self-hosting passes 3-gen reproducibility, Stage 2 becomes the primary compiler and Stage 1 retires to a boot-and-recover tool. Fuse builds Fuse, end-to-end. Bootstrap test always compiles the real `stage2/src/main.fuse`, not a synthetic input. |
+| **Three-stage bootstrap (Python → Rust → Fuse)** | 3 independent implementations of lexer/parser/checker to keep in sync. Stage 0 accreted features for Stage 2. Bootstrap test never exercised real `stage2/src/main.fuse`. | **Two stages: Stage 1 (Go-hosted) → Stage 2 (self-hosted Fuse).** See §1.4. No Stage 0 — Fuse2's Python prototype already answered the implementability question. Stage 1 is one Go program that emits portable C11 and invokes the system C compiler (cc/gcc/clang/msvc); no Go runtime links into emitted binaries. Stage 2 is Fuse compiled by Stage 1; once self-hosting passes 3-gen reproducibility, Stage 2 becomes the primary compiler and Stage 1 retires to a boot-and-recover tool. Fuse builds Fuse, end-to-end. Bootstrap test always compiles the real `stage2/src/main.fuse`, not a synthetic input. |
 | **Uniform FuseHandle ABI** | Elegant at the type system but brittle at the boundary: the smoke-test convention and the stage-2 convention disagreed silently, producing 8 different bug classes in B12. | **Single runtime boundary, under Fuse3's sole control.** No bundled Rust crate, no Cranelift/LLVM, no external convention. Emitted C talks to a Fuse3-owned C runtime (~500 LOC) through a contract specified in the Fuse3 guide and verified by an oracle test. No FuseHandle — emitted C uses direct C types (`int64_t`, `struct { items, len, cap }`, etc.) with type information erased at compile time. The B12 cascade pattern — an untyped bridge between independently-versioned modules — is structurally impossible. |
 | **Checker silently accepts unknowns** | `unresolved extension method` fell through to codegen in Fuse2, producing obscure downstream errors. B2 fixed it in the B-wave retrofit. | **Checker is a total function.** Every node is accepted or rejected. No silent pass-through. The compiler is **complete** — never tentative. |
 | **Post-hoc type inference in codegen** | Codegen re-computed types via `infer_expr_type` after pattern bindings had gone out of scope, producing L027, L028, L029 and half the B-waves. | **Typed AST (TAST).** Every node carries its type, value-context, and live-set *after* the checker pass. Codegen reads TAST; never infers. |
@@ -2217,15 +2495,19 @@ questions are listed in rough dependency order.
    or codegen — Fuse3 does not emit Go source and does not link
    against the Go runtime. See §1.4.
 
-2. **Codegen path.** **[DECIDED]** Emit portable C99 source plus
-   a small Fuse-owned C runtime (~500 LOC target), invoke the
-   system C compiler (cc / gcc / clang / msvc) to produce native
-   binaries. `cc` is treated as an ambient OS tool, not a bundled
-   dependency. Cross-compilation works via cross-cc toolchains.
-   Options (emit Go + disable GC) and (custom backend) both
-   rejected — see §1.4 for the reasoning. The specific question
-   "what primitives does the C runtime expose?" is still open —
-   see Q14 below.
+2. **Codegen path.** **[DECIDED]** Emit portable **C11** source
+   plus a small Fuse-owned C11 runtime (~500–700 LOC target),
+   invoke the system C compiler (cc / gcc / clang / msvc) to
+   produce native binaries. `cc` is treated as an ambient OS tool,
+   not a bundled dependency. Cross-compilation works via cross-cc
+   toolchains. C11 (not C99) is the floor: we need `<stdatomic.h>`
+   for portable atomics, the C11 memory model for Q19's ordering
+   guarantees, `_Static_assert` for ABI invariants, `_Thread_local`
+   for TLS, `_Alignas` for false-sharing avoidance, and
+   `aligned_alloc` for arena allocators. Cost of requiring C11 is
+   zero at Fuse3's shipping horizon (GCC 4.9+, clang 3.1+, MSVC
+   2019+). Options (emit Go + disable GC) and (custom backend)
+   both rejected — see §1.4 for the reasoning.
 
 3. **Module system.** **[DECIDED]** Inherit Fuse2's `import a.b.c`
    → `src/a/b/c.fuse` one-file-per-module model. Add `pub import`
@@ -2344,15 +2626,21 @@ questions are listed in rough dependency order.
     `for i in 0..s.len() { s.charAt(i) }` was both slow AND
     incorrect for multi-byte UTF-8 sequences. See §2.4.
 
-## Runtime and concurrency (mostly decided)
+## Runtime and concurrency (decided)
 
-15. **What primitives does the Fuse3 C runtime expose, minimum
-    viable?** The ~500 LOC target from §1.4 includes: malloc/free,
-    stdin/stdout/stderr via libc, file I/O, process exit,
-    OS-thread spawn (pthread_create / CreateThread), atomics
-    (C11 `<stdatomic.h>`), mutexes and rwlocks, thread-local
-    storage. The exact list of entry points is still to be
-    enumerated in the Fuse3 guide alongside the emitted-C format.
+15. **C runtime primitives (minimum viable surface).**
+    **[DECIDED]** ~40 entry points, ~500–700 LOC of C11, all
+    prefixed `fuse_rt_*`. Categories: memory (alloc/realloc/free
+    with explicit align), panic (single crash point), raw I/O
+    (byte writes to stdout/stderr), process (exit/argc/argv/env),
+    raw file I/O (POSIX-style fd), threads (spawn/join), mutex,
+    rwlock, condvar, TLS, time. Atomics are emitted inline using
+    C11 `<stdatomic.h>`, no runtime wrapper. Strings, lists,
+    maps, sets, formatter, hashing, and all higher-level data
+    structures are Fuse code on top of the runtime, not runtime
+    entry points. Full table in §1.6. The explicit surface
+    ceiling eliminates the Fuse2 B12 bug class where runtime
+    signatures could silently drift from caller expectations.
 
 16. **Scheduling.** **[DECIDED: OS threads first.]** §3.5
     recommends starting with OS threads via the C runtime and
@@ -2404,13 +2692,20 @@ questions are listed in rough dependency order.
     explicit `sortedKeys()` / `unorderedKeys()` opt-outs. Prevents
     the Wave B1 HashMap→BTreeMap bug class entirely.
 
-25. **C runtime interop.** Fuse3 needs an FFI mechanism for
-    calling C functions (the runtime itself uses this heavily,
-    and stdlib modules for `net`, `http`, `process` etc. will
-    too). Design question: what does `extern fn` mean in Fuse3,
-    given that emitted Fuse is *already* C? Probably trivial
-    (emit the call verbatim), but the type checker needs a rule.
-    Fuse2's `extern fn` mechanism is a good starting point.
+25. **C FFI: `extern fn` and `@export`.** **[DECIDED]** Because
+    Fuse3 emits C, the call side is zero-cost. The robustness
+    work is in the checker, enforced by five strict rules:
+    (1) primitive types only at the boundary — no `String`,
+    `List`, `Option`, or Fuse-managed layouts cross; (2) `unsafe { }`
+    required at every call site; (3) Fuse generates the matching
+    C header so there is no second source of truth for the ABI;
+    (4) `_Static_assert` on primitive sizes and alignments emitted
+    at the top of every FFI-using file; (5) no implicit ownership
+    transfer — `Ptr[T]` marks manually-tracked pointers, and
+    Fuse-allocated values never cross uncopied. The inverse
+    direction (`@export` functions visible to C callers via
+    `fuse build --headers`) is day-one, not deferred. Full
+    specification in §1.7.
 
 26. **Testing.** **[DECIDED]** `@test` decorator. Fuse3 test
     runner invoked via `fuse test`. Cross-runner story (can Go's
