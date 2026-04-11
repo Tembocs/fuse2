@@ -118,6 +118,7 @@ pub fn buildRegistry() -> RuntimeRegistry {
 
   // --- Enum ---
   fns = fns.concat([RuntimeFn("fuse_enum_new", 6, 1)])
+  fns = fns.concat([RuntimeFn("fuse_enum_add_payload", 2, 0)])
   fns = fns.concat([RuntimeFn("fuse_enum_tag", 1, 1)])
   fns = fns.concat([RuntimeFn("fuse_enum_payload", 2, 1)])
 

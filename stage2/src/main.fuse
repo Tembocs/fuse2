@@ -106,7 +106,7 @@ fn parseArgs(args: List<String>) -> Result<Mode, String> {
           Mode.Compile(inputFile, defaultOut)
         }
       }
-      Ok(compileMode)
+      return Ok(compileMode)
     },
     None => Ok(Mode.Help)
   }
@@ -122,7 +122,17 @@ fn parseOutputFlag(args: List<String>) -> Option<String> {
       if argVal == "-o" {
         val next = args.get(i + 1)
         if next != None {
-          return next.unwrap()
+          // B12: was `return next.unwrap()` — a raw String where this
+          // function's signature promises Option<String>. The type
+          // error was latent because the stage1 checker does not
+          // verify that explicit `return` expressions match the
+          // declared return type. The broken return handed a String
+          // handle to the caller, which then matched it against
+          // Some/None via fuse_option_is_some (returns false for
+          // non-Option kinds) and always took the None arm — so
+          // `-o <path>` was silently dropped and the default output
+          // path was used. Wrap in Some explicitly.
+          return Some(next.unwrap())
         }
       }
     }

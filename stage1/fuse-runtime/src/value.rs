@@ -3568,8 +3568,63 @@ pub fn extract_int(handle: FuseHandle) -> i64 {
     unsafe { match &(*handle).kind { ValueKind::Int(n) => *n, _ => 0 } }
 }
 
+/// Extract a `Vec<i64>` from a Fuse `List<Int>` handle. Returns an
+/// empty vector if the handle is null, not a list, or contains
+/// non-Int elements. Used by the Cranelift FFI wrappers (`ins_call`,
+/// `ins_jump`, etc.) to marshal Value-id arrays from Fuse callers:
+/// stage 2 compiles list-literal arguments like `[v1, v2]` to Fuse
+/// `List<Int>` handles where each element is a boxed Int holding a
+/// Cranelift Value id, so the FFI layer needs to walk the list and
+/// extract the ids rather than dereferencing a raw pointer. The
+/// cranelift-ffi smoke test's raw-pointer convention predates stage
+/// 2 and is no longer supported for array arguments — call sites
+/// that want to pass a primitive array must first wrap it in a
+/// `fuse_list` / `fuse_list_push` chain.
+pub fn extract_int_list(handle: FuseHandle) -> Vec<i64> {
+    if handle.is_null() {
+        return Vec::new();
+    }
+    unsafe {
+        match &(*handle).kind {
+            ValueKind::List(items) => items
+                .iter()
+                .map(|h| {
+                    if h.is_null() {
+                        0
+                    } else {
+                        match &(**h).kind {
+                            ValueKind::Int(n) => *n,
+                            _ => 0,
+                        }
+                    }
+                })
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+}
+
 fn extract_string(handle: FuseHandle) -> &'static str {
     unsafe { match &(*handle).kind { ValueKind::String(s) => s.as_str(), _ => "" } }
+}
+
+/// Extract a `&str` from a Fuse `String` handle. Returns an empty
+/// string for null handles or non-string values. Public so
+/// cranelift-ffi's `str_from_raw` helper can route Fuse `String`
+/// handles through here instead of treating its pointer argument as
+/// a raw `*const u8` — stage 2 call sites always pass `String`
+/// handles because the self-hosted compiler has no way to produce a
+/// raw byte pointer.
+pub fn extract_string_pub(handle: FuseHandle) -> &'static str {
+    if handle.is_null() {
+        return "";
+    }
+    unsafe {
+        match &(*handle).kind {
+            ValueKind::String(s) => s.as_str(),
+            _ => "",
+        }
+    }
 }
 
 #[unsafe(no_mangle)]

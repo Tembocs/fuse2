@@ -1259,9 +1259,18 @@ fn compileMember(mutref ctx: CompileCtx, member: MemberExpr) -> Result<TypedValu
 }
 
 fn compileMemberCall(mutref ctx: CompileCtx, member: MemberExpr, args: List<Expr>) -> Result<TypedValue, String> {
-  // Compile receiver.
+  // B12 note — this function is still a stub for extension/method
+  // dispatch. Stage 2's own source exercises it only for patterns
+  // that aren't on the critical path of the self-compile bootstrap
+  // (all user-enum construction at fusec2 runtime is performed by
+  // stage1's codegen of stage2/src, not by this stage2-level routine).
+  // A proper implementation would need to resolve extension methods
+  // by type and handle user enum variant construction via raw-pointer
+  // string data (not Fuse String handles, since fuse_enum_new's
+  // runtime signature expects `*const u8` for the type/variant name
+  // pointers). Captured as a B12 follow-up once fusec2 can compile
+  // user programs end-to-end.
   val receiver = compileExpr(mutref ctx, member.object)?
-  // Compile args.
   var argVals: List<Int> = [receiver.value]
   var i = 0
   while i < args.len() {
@@ -1274,9 +1283,6 @@ fn compileMemberCall(mutref ctx: CompileCtx, member: MemberExpr, args: List<Expr
     }
     i = i + 1
   }
-  // Try to resolve extension function.
-  // For now, use a simple lookup by "Type::method" convention.
-  // The full resolution needs type inference on receiver.
   Ok(TypedValue(emitCall(mutref ctx, "fuse_unit", []), None))
 }
 

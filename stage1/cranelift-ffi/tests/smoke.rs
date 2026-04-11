@@ -1,4 +1,4 @@
-use fuse_runtime::{extract_int, fuse_int};
+use fuse_runtime::{extract_int, fuse_int, fuse_list_new, fuse_list_push};
 
 use cranelift_ffi::{
     cranelift_ffi_builder_block_params, cranelift_ffi_builder_create_block,
@@ -23,6 +23,20 @@ fn h(v: i64) -> fuse_runtime::FuseHandle {
 /// Helper: extract i64 from a FuseHandle returned by FFI.
 fn v(handle: fuse_runtime::FuseHandle) -> i64 {
     extract_int(handle)
+}
+
+/// Helper: build a Fuse `List<Int>` handle from an i64 slice. The
+/// cranelift-ffi call/jump/return helpers unmarshal arguments via
+/// `extract_int_list`, so array inputs must be Fuse lists (not raw
+/// pointers — stage 2 can't produce raw pointers).
+fn list_h(values: &[i64]) -> fuse_runtime::FuseHandle {
+    unsafe {
+        let list = fuse_list_new();
+        for &val in values {
+            fuse_list_push(list, fuse_int(val));
+        }
+        list
+    }
 }
 
 #[test]
@@ -184,13 +198,12 @@ fn w0_4_instructions_build_and_verify() {
     });
     assert!(forty_two >= 0);
 
-    // call fuse_int(42)
-    let mut args: [i64; 1] = [forty_two];
+    // call fuse_int(42) — post-B12 ABI: args must be a Fuse List<Int>.
     let call_inst = v(unsafe {
         cranelift_ffi_ins_call(
             bld,
             h(fuse_int_ref),
-            h(args.as_mut_ptr() as i64),
+            list_h(&[forty_two]),
             h(1),
         )
     });
@@ -210,11 +223,10 @@ fn w0_4_instructions_build_and_verify() {
     let result_val = result_buf[0];
 
     // return result
-    let mut ret_vals: [i64; 1] = [result_val];
     unsafe {
         cranelift_ffi_ins_return(
             bld,
-            h(ret_vals.as_mut_ptr() as i64),
+            list_h(&[result_val]),
             h(1),
         )
     };

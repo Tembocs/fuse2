@@ -20,7 +20,7 @@ use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{default_libcall_names, DataDescription, FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 
-use fuse_runtime::{FuseHandle, fuse_int, fuse_unit};
+use fuse_runtime::{extract_int_list, extract_string_pub, fuse_int, fuse_unit, FuseHandle};
 
 // ---------------------------------------------------------------------------
 // Opaque handle types
@@ -131,9 +131,28 @@ fn intcc_from_id(id: i64) -> IntCC {
 // ---------------------------------------------------------------------------
 
 unsafe fn str_from_raw<'a>(ptr: FuseHandle, len: FuseHandle) -> &'a str {
-    // ptr is a FuseHandle wrapping the raw pointer address as Int
+    // B12 — Accept both conventions:
+    //   * Fuse `String` handle: the common case from stage 2, which
+    //     has no way to produce a raw pointer from user code.
+    //   * Raw pointer wrapped as an Int handle: the pre-B12
+    //     smoke-test convention, still used by `cranelift-ffi`'s
+    //     own tests for compatibility.
+    // The String path takes priority: if `ptr` is a Fuse handle
+    // whose kind is `String`, we use its internal UTF-8 buffer. If
+    // extract_string_pub returns an empty slice for any other handle
+    // kind we fall back to the raw-pointer interpretation so the
+    // smoke test keeps working.
+    if !ptr.is_null() {
+        let s = extract_string_pub(ptr);
+        if !s.is_empty() {
+            return s;
+        }
+    }
     let p = to_i64(ptr) as *const u8;
     let n = to_i64(len) as usize;
+    if p.is_null() || n == 0 {
+        return "";
+    }
     let bytes = unsafe { slice::from_raw_parts(p, n) };
     std::str::from_utf8(bytes).unwrap_or("<invalid-utf8>")
 }
@@ -760,13 +779,31 @@ pub unsafe extern "C" fn cranelift_ffi_ins_call_n(
 // Phase W0.4 — Instructions
 // =========================================================================
 
-/// Read an array of Value ids from a raw pointer.
+/// Read an array of Value ids from a Fuse `List<Int>` handle.
+///
+/// Stage 2 call sites build argument arrays as Fuse list literals
+/// (`[v1, v2, ...]`), which compile to a `ValueKind::List(Vec<FuseHandle>)`
+/// where each element is a boxed Int holding a Cranelift Value id.
+/// This helper walks the list via `fuse_runtime::extract_int_list`,
+/// truncating or zero-padding to the caller-provided `count` so that
+/// a mismatch between the declared arg count and the list length
+/// produces a predictable (wrong) IR rather than a segfault.
+///
+/// Pre-B12 this function dereferenced a raw `*const i64` pointer —
+/// a convention the smoke test still uses via `args.as_mut_ptr() as
+/// i64` wrapped in a `fuse_int` handle. That convention is no longer
+/// supported for array arguments: the Fuse self-hosted compiler has
+/// no way to produce a raw-pointer-wrapped-in-Int because it can't
+/// allocate a `[i64]` buffer without going through the list runtime
+/// in the first place. The smoke test has been updated to use the
+/// list convention alongside this change.
 unsafe fn read_values(ptr: FuseHandle, count: FuseHandle) -> Vec<Value> {
     let n = to_i64(count) as usize;
-    let p = to_i64(ptr) as *const i64;
+    let ids = extract_int_list(ptr);
     let mut vals = Vec::with_capacity(n);
     for i in 0..n {
-        vals.push(Value::from_u32(unsafe { *p.add(i) } as u32));
+        let id = ids.get(i).copied().unwrap_or(0);
+        vals.push(Value::from_u32(id as u32));
     }
     vals
 }

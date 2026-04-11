@@ -24,6 +24,6 @@ pub use value::{
     fuse_map_new, fuse_map_set, fuse_map_get, fuse_map_remove,
     fuse_map_len, fuse_map_contains, fuse_map_keys, fuse_map_values,
     fuse_map_entries,
-    extract_int,
+    extract_int, extract_int_list, extract_string_pub,
     FuseHandle, FuseValue,
 };
