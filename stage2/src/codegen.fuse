@@ -437,7 +437,7 @@ pub fn compileFunction(ffiModule: Int, declaredFns: List<DeclaredFn>, userFnIds:
   val ffiCtx = cranelift_ffi_context_new()
 
   // 2. Build a signature: all params are Ptr (type_id=4), one Ptr return.
-  val sig = cranelift_ffi_signature_new(ffiModule)
+  val sig = cranelift_ffi_signature_new(ffiModule, 0)
   var pi = 0
   while pi < func.params.len() {
     cranelift_ffi_signature_add_param(sig, 4, ffiModule)
@@ -544,7 +544,7 @@ pub fn compileFunction(ffiModule: Int, declaredFns: List<DeclaredFn>, userFnIds:
 pub fn compileEntry(ffiModule: Int, declaredFns: List<DeclaredFn>, entryFuncId: Int) -> Result<Int, String> {
   // Declare `fuse_user_entry` as an exported function with entry signature (no params, returns I32).
   val entrySym = layout.entrySymbol()
-  val sig = cranelift_ffi_signature_new(ffiModule)
+  val sig = cranelift_ffi_signature_new(ffiModule, 0)
   cranelift_ffi_signature_add_return(sig, 1, ffiModule)  // type_id=1 → I32
   val entryId = cranelift_ffi_module_declare_function(ffiModule, entrySym, entrySym.len(), sig, 2)  // linkage=2 → Export
 
@@ -668,7 +668,7 @@ pub fn declareAllUserFunctions(ffiModule: Int, loadedModules: List<CachedLoad>, 
 
 // Helper: declare a single function with N Ptr params and 1 Ptr return.
 fn declareOneFunction(ffiModule: Int, name: String, paramCount: Int, linkage: Int) -> Int {
-  val sig = cranelift_ffi_signature_new(ffiModule)
+  val sig = cranelift_ffi_signature_new(ffiModule, 0)
   var pi = 0
   while pi < paramCount {
     cranelift_ffi_signature_add_param(sig, 4, ffiModule)
@@ -2063,7 +2063,7 @@ extern fn cranelift_ffi_context_free(ctx: Int) -> Int
 extern fn cranelift_ffi_context_verify(ctx: Int, ffiModule: Int) -> Int
 
 // Signature
-extern fn cranelift_ffi_signature_new(ffiModule: Int) -> Int
+extern fn cranelift_ffi_signature_new(ffiModule: Int, callConv: Int) -> Int
 extern fn cranelift_ffi_signature_add_param(sig: Int, typeId: Int, ffiModule: Int)
 extern fn cranelift_ffi_signature_add_return(sig: Int, typeId: Int, ffiModule: Int)
 extern fn cranelift_ffi_signature_free(sig: Int) -> Int

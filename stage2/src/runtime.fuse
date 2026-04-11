@@ -222,22 +222,68 @@ fn addSizedIntFns(fns: List<RuntimeFn>, prefix: String) -> List<RuntimeFn> {
 
 pub data class DeclaredFn(val name: String, val funcId: Int)
 
+// B12 — Non-uniform runtime functions whose Cranelift signature takes or
+// returns a non-pointer scalar. The uniform ABI used elsewhere treats every
+// value as a pointer-sized FuseHandle, so signatures default to
+// `(ptr, ptr, ...) -> ptr`, but these eleven functions in stage1's runtime
+// table (stage1/fusec/src/codegen/object_backend.rs around lines 1673-1763)
+// declare explicit I8/I32/F64 types and the self-hosted compiler must match
+// or the resulting IR is wrong — the critical case is `fuse_result_is_ok`,
+// which returns an I8 bool; stage2 was declaring it as a pointer return,
+// receiving garbage upper bits from the return register, and brif-ing on
+// the garbage — so every `match result { Ok(_) => ..., Err(_) => ... }` in
+// fusec2 was picking arms essentially randomly. Keep this list aligned with
+// stage1's `declare(module, ...)` calls in `runtime_fns`.
+
+// Type ID convention (matches cranelift-ffi::type_from_id):
+//   0 = I8, 1 = I32, 2 = I64, 3 = F64, 4 = pointer
+fn runtimeParamTypeId(name: String, paramIndex: Int, defaultId: Int) -> Int {
+  // fuse_float(value: F64) -> FuseHandle
+  if name == "fuse_float" and paramIndex == 0 { return 3 }
+  // fuse_bool(value: I8) -> FuseHandle
+  if name == "fuse_bool" and paramIndex == 0 { return 0 }
+  // fuse_rt_f32_new(value: F64) -> FuseHandle
+  if name == "fuse_rt_f32_new" and paramIndex == 0 { return 3 }
+  defaultId
+}
+
+fn runtimeReturnTypeId(name: String, returnIndex: Int, defaultId: Int) -> Int {
+  // fuse_is_truthy(ptr) -> I8
+  if name == "fuse_is_truthy" and returnIndex == 0 { return 0 }
+  // fuse_option_is_some(ptr) -> I8
+  if name == "fuse_option_is_some" and returnIndex == 0 { return 0 }
+  // fuse_result_is_ok(ptr) -> I8
+  if name == "fuse_result_is_ok" and returnIndex == 0 { return 0 }
+  // fuse_chan_runtime_is_closed(ptr) -> I8
+  if name == "fuse_chan_runtime_is_closed" and returnIndex == 0 { return 0 }
+  // fuse_map_contains(ptr, ptr) -> I8
+  if name == "fuse_map_contains" and returnIndex == 0 { return 0 }
+  // fuse_simd_extract_raw_f64(ptr) -> F64
+  if name == "fuse_simd_extract_raw_f64" and returnIndex == 0 { return 3 }
+  // fuse_simd_extract_raw_i32(ptr) -> I32
+  if name == "fuse_simd_extract_raw_i32" and returnIndex == 0 { return 1 }
+  defaultId
+}
+
 pub fn declareAllRuntime(ffiModule: Int, registry: RuntimeRegistry) -> Result<List<DeclaredFn>, String> {
   var declared: List<DeclaredFn> = []
   var i = 0
   while i < registry.functions.len() {
     match registry.functions.get(i) {
       Some(rf) => {
-        // Build signature: all params and returns are Ptr (type_id=4).
+        // Build signature: pointer (type_id=4) by default, overridden
+        // per-function for the non-uniform cases documented above.
         val sig = cranelift_ffi_signature_new(ffiModule, 0)
         var pi = 0
         while pi < rf.paramCount {
-          cranelift_ffi_signature_add_param(sig, 4, ffiModule)
+          val paramType = runtimeParamTypeId(rf.name, pi, 4)
+          cranelift_ffi_signature_add_param(sig, paramType, ffiModule)
           pi = pi + 1
         }
         var ri = 0
         while ri < rf.returnCount {
-          cranelift_ffi_signature_add_return(sig, 4, ffiModule)
+          val returnType = runtimeReturnTypeId(rf.name, ri, 4)
+          cranelift_ffi_signature_add_return(sig, returnType, ffiModule)
           ri = ri + 1
         }
         // Declare with Import linkage (linkage=1).
