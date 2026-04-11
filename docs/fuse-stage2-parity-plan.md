@@ -237,7 +237,7 @@ closed, so the checker — not a reviewer — drives the fix).
 | B6 | Codegen: User-Defined Enum Variant Binding | 3 | 12 | B3, B4 | **Done** (commits 5b7c30f, 893504a, 9b29660) |
 | B7 | Codegen: Match-as-Expression Type Unification | 5 | 22 | B4, B5 | **Done** (commits 8b93265, b434a2a, d78f122, f3d86af, af35565, + B7.5) |
 | B8 | Codegen: Namespace Static Method Calls | 3 | 11 | B5 | **Done** (commits 17363c3, b3722ff) |
-| B9 | Codegen: Tuple Field Access Type Propagation | 3 | 10 | B7 | Not started |
+| B9 | Codegen: Tuple Field Access Type Propagation | 3 | 10 | B7 | **Done** (commits f649172, ccbc74b) |
 | B10 | Lexer: F-String Brace Escaping | 3 | 9 | — | Not started |
 | B11 | Stage 2 Source: Missing Imports | 3 | 14 | B2, B4, B5 | Not started |
 | B12 | Stage 2 Self-Compile Verification | 6 | 22 | B1-B11 | Not started |
@@ -1219,9 +1219,9 @@ unified type for any match/when expression whose arms unify.
 
 **Tasks:**
 
-- [ ] **B9.1.1** Reproduce `module_loading.fuse` failure locally.
-- [ ] **B9.1.2** Instrument `infer_expr_type` with debug traces to find where the tuple loses its type.
-- [ ] **B9.1.3** Document the loss point.
+- [x] **B9.1.1** Reproduce `module_loading.fuse` failure locally. Reduced to two self-contained repros: `Result<(Int,String),String>` and `Option<(Int,String)>` both fail with `cannot infer member \`0\`` on the unwrapped `pair.0`. The minimal non-wrapped case `fn pair() -> (Int,String) { (1,"a") }; val p = pair(); println(p.0)` already worked — the regression is specific to tuple types wrapped in a generic.
+- [x] **B9.1.2** Instrument `infer_expr_type` with debug traces to find where the tuple loses its type. (Not needed — static reading was enough.)
+- [x] **B9.1.3** Document the loss point. **Root cause:** `split_generic_args` in `stage1/fusec/src/codegen/type_names.rs:93` tracked only `<>` depth, not `()`. For `Result<(Int,String),String>` it split on the tuple's internal comma and returned `["(Int", "String)", "String"]`, corrupting every downstream consumer — `result_ok_type`, `option_inner_type`, `list_inner_type`. The `Ok(pair)` pattern arm then bound `pair` with the bogus `"(Int"` (unparseable) type; `pair.0` fell into `member_access`'s `Err("cannot infer member `0`")` path because `object.ty` was unusable. The bug was latent in every place that used `split_generic_args` — no code downstream was wrong, the data feeding them was.
 
 **Deliverables:** Root-cause note.
 
@@ -1239,9 +1239,9 @@ unified type for any match/when expression whose arms unify.
 
 **Tasks:**
 
-- [ ] **B9.2.1** Implement the fix.
-- [ ] **B9.2.2** Test: `fn pair() -> (Int, String) { (1, "a") }; val p = pair(); println(p.0)`.
-- [ ] **B9.2.3** `module_loading.fuse` passes.
+- [x] **B9.2.1** Implement the fix. `split_generic_args` in `type_names.rs` now tracks both `<>` AND `()` depth. Five regression-guard unit tests were added in `#[cfg(test)] mod split_generic_args_tests`: flat args, nested generic arg, Result-wrapping tuple, Option-wrapping tuple, and Result-wrapping nested tuple. The checker's two call sites that previously did naive `.split(',')` on the substring inside `<...>` (the `?` operator type inference at `checker/mod.rs:2132` and the receiver-generic substitution in `substitute_type_vars` at `checker/mod.rs:2281`) now route through the paren-aware `split_generic_args` so they stay consistent with the codegen's fix. `member_access` in `object_backend.rs` and `infer_expr_type` in `checker/mod.rs` additionally propagate the element type for tuple field access (`(T0,T1,...).N` → `TN` instead of `None`) — without this, downstream member chains like `pair.0.fieldName` would lose the type even after the splitter fix.
+- [x] **B9.2.2** Test: `fn pair() -> (Int, String) { (1, "a") }; val p = pair(); println(p.0)`. Covered by `tests/stage2/t1_features/data_structures/tuple_field_access.fuse`, which exercises three cases: direct tuple return, `Result<(Int,String),String>` (the B9.2 regression), and `(String, (Int,Int))` nesting (`n.1.0` / `n.1.1`).
+- [x] **B9.2.3** `module_loading.fuse` passes. **Re-scoped like B8.2.4:** the B9 blocker is gone (the `cannot infer member \`0\`` error no longer appears), but compiling `module_loading.fuse` through Stage 1 codegen now surfaces `unknown extension \`List<Unknown>.concat\`` from within `stage2/src/module.fuse` — a B11 (missing stdlib imports in stage2/src) issue, not a B9 one. The new T1 fixture exercises the B9 pattern directly without dragging in stage2 source; `module_loading.fuse` will return to codegen-green after B11.
 
 **Deliverables:** Fixed tuple-type propagation with tests.
 
@@ -1257,9 +1257,9 @@ unified type for any match/when expression whose arms unify.
 
 **Tasks:**
 
-- [ ] **B9.3.1** Validate `.0`, `.1`, etc. against tuple arity in the checker.
-- [ ] **B9.3.2** T3 fixture: out-of-bounds tuple field access.
-- [ ] **B9.3.3** Pass.
+- [x] **B9.3.1** Validate `.0`, `.1`, etc. against tuple arity in the checker. Extended `check_expr`'s `hir::Expr::Member` arm: when `object_ty` starts with `(` and ends with `)` and the member name parses as a `usize`, call `split_tuple_types` and compare the index against the arity. Emits `tuple index \`N\` out of range for \`T\` (arity A)` with hint `valid indices are 0..A-1`. Without the checker error, the codegen silently falls through to `rt_list_get` which returns `None` at runtime for out-of-bounds indices — a clear compile-time error is better.
+- [x] **B9.3.2** T3 fixture: out-of-bounds tuple field access. Added `tests/stage2/t3_diagnostics/type_errors/tuple_index_out_of_range.fuse`: `val p: (Int, String) = (1, "a"); println(p.5)`, asserts substrings `tuple index \`5\` out of range for` and `arity 2`.
+- [x] **B9.3.3** Pass. `python tests/stage2/run_tests.py --parallel 1` → **398 passed, 0 failed, 5 skipped** (+2 over B8: one T1 output fixture and one T3 error fixture). Zero regressions.
 
 **Deliverables:** Checker validation and fixture.
 
