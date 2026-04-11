@@ -1,0 +1,1570 @@
+# Fuse2 Learnings — Source Material for the Fuse3 Language Guide
+
+> **Purpose.** One document that carries everything worth learning from the
+> Fuse2 journey into the Fuse3 design conversation. Read this before writing
+> the Fuse3 language guide. Every claim here is cited back to a Fuse2 doc,
+> ADR, learning entry, or bug log so you can dig deeper on demand.
+>
+> **Scope.** Philosophy, language design, compiler architecture, concurrency
+> model, stdlib structure, bug taxonomy, process rules, and — most
+> importantly — *what hurt and why*. This is not a Fuse3 plan. It is the
+> raw material a plan will be built on.
+>
+> **How to read.** Skim Part 1 (philosophy) and Part 9 (crosswalk) first.
+> Then jump to whichever part informs the next Fuse3 design decision you
+> need to make.
+
+---
+
+## Table of Contents
+
+**Part 1 — Non-negotiable foundation (what MUST carry over)**
+- 1.1 The three pillars
+- 1.2 Language DNA (what Fuse steals from production languages)
+- 1.3 Core vs Full tiering
+
+**Part 2 — Type system and memory model**
+- 2.1 Ownership: four keywords, no borrow checker
+- 2.2 ASAP destruction
+- 2.3 Result/Option/? — error handling without null or exceptions
+- 2.4 The type catalogue (primitives, compound, user-defined)
+- 2.5 Pattern matching and arm unification
+
+**Part 3 — Concurrency (user flagged for from-scratch redesign)**
+- 3.1 The three-tier model
+- 3.2 `@rank` compile-time deadlock prevention
+- 3.3 Scheduling model: single-thread → OS threads → green threads
+- 3.4 What got rejected: async/await, actors, select, SpawnHandle
+- 3.5 Open questions for Fuse3
+
+**Part 4 — Compiler architecture (what worked, what broke)**
+- 4.1 Three-stage bootstrap: rationale and cost
+- 4.2 Uniform `FuseHandle` ABI — blessing and curse
+- 4.3 ASAP analysis, future uses, dead binding release
+- 4.4 Checker → codegen information loss (the recurring disease)
+- 4.5 Determinism: the HashMap lesson
+- 4.6 Diagnostics as a first-class concern
+
+**Part 5 — Stdlib design**
+- 5.1 Core / Full / Ext tiers
+- 5.2 Auto-generation from field metadata (ADR-013)
+- 5.3 The stdlib-first test strategy and its yield
+- 5.4 Maps (user flagged for from-scratch redesign)
+
+**Part 6 — Bug taxonomy (what actually broke)**
+- 6.1 L001–L029: codegen fundamentals, control flow, lambdas, patterns, generics, ASAP
+- 6.2 B-wave taxonomy: determinism, silent checker, generic substitution, enum payloads, match unification, tuple propagation, f-strings
+- 6.3 B12 session (new): the 8 ABI-mismatch cascade that finally built fusec2
+- 6.4 Pattern analysis: what classes of bug bit the most
+
+**Part 7 — Process learnings**
+- 7.1 The "plan doc, execute strictly" pattern
+- 7.2 The "no corners cut" rules
+- 7.3 Bug Policy (stdlib as stress test)
+- 7.4 Rules that worked, rules that didn't
+
+**Part 8 — Items flagged for fresh design in Fuse3**
+- 8.1 Concurrency — user directive
+- 8.2 Maps — user directive
+- 8.3 Thread memory management — user directive
+- 8.4 Other candidates surfaced by the learnings
+
+**Part 9 — Crosswalk: Fuse2 pain → Fuse3 design implications**
+
+**Part 10 — Open design questions for the Fuse3 language guide**
+
+---
+
+# Part 1 — Non-negotiable foundation
+
+## 1.1 The three pillars
+
+These are the contract. They appear verbatim in
+[`docs/fuse-language-guide-2.md §1.1`](../fuse-language-guide-2.md) and are
+restated at the top of every plan doc
+([`fuse-pre-stage2.md`](../fuse-pre-stage2.md),
+[`fuse-stage2-plan.md`](../fuse-stage2-plan.md),
+[`fuse-stage2-parity-plan.md`](../fuse-stage2-parity-plan.md),
+[`fuse-post-stage2.md`](../fuse-post-stage2.md)). Every Fuse3 design
+decision must serve all three:
+
+1. **Memory safety without garbage collection.** Deterministic, not
+   tracing. No GC pauses, no manual free. Values are destroyed at their
+   last use point. Implementation: **ASAP destruction** (§2.2).
+
+2. **Concurrency safety without a borrow checker.** No lifetime
+   annotations. No borrow wars. Four keywords
+   (`ref` / `mutref` / `owned` / `move`) carry the complete ownership
+   picture, and `Shared<T>` + `@rank(N)` proves the absence of deadlock
+   *at compile time* (§2.1, §3.2).
+
+3. **Developer experience as a first-class concern.** Clean syntax;
+   helpful error messages; fast compilation. Specifically: *"every
+   keyword, annotation, and error message is chosen so that reading code
+   aloud produces a correct description of what it does."*
+
+The pillars are non-negotiable. The pre-Stage 2 plan put it bluntly:
+
+> If a change undermines memory safety, concurrency safety, or
+> developer experience, it is wrong — regardless of how clever or
+> expedient it may be.
+> — [`docs/fuse-pre-stage2.md`](../fuse-pre-stage2.md)
+
+**Fuse3 implication.** These pillars survive verbatim. The implementation
+language changes (Go instead of Python+Rust), not the semantic contract.
+
+## 1.2 Language DNA
+
+Fuse is explicitly *not* a research language.
+
+| Source | What Fuse takes |
+|---|---|
+| **Mojo** | `owned`/`mutref`/`ref` argument conventions, ASAP destruction, `@value` auto-lifecycle, `SIMD<T,N>` primitives |
+| **Rust** | `Result<T,E>`, `Option<T>`, `?` error propagation, exhaustive `match` |
+| **Kotlin** | `val`/`var` type inference, Elvis `?:`, optional chaining `?.`, `data class`, scope functions (`let`, `also`, `takeIf`) |
+| **C#** | LINQ-style method chains (`.map`, `.filter`, `.sorted`) |
+| **Python** | `f"..."` interpolation, `@decorator` syntax |
+| **Go** | `spawn` (goroutines), `defer`, typed channels (`Chan<T>`) |
+| **TypeScript** | Union types (`A \| B \| C`), optional chaining `?.`, `interface` constraints |
+
+**Fuse3 implication.** Keep the source table. Reading a Fuse feature and
+being able to point at the origin language is a sanity check: it
+prevents designers from drifting into novel territory that hasn't been
+validated elsewhere. When the answer to "why this?" is "because Rust
+did it and it worked" or "because Go did it and it worked", you're on
+safe ground.
+
+## 1.3 Core vs Full tiering
+
+From [`fuse-language-guide-2.md §1.3`](../fuse-language-guide-2.md#L77):
+
+**Fuse Core** — minimum sufficient to write a compiler. `fn`, `struct`,
+`data class`, `enum`, `@value`, `@entrypoint`; `val`/`var`/type
+inference; `ref`/`mutref`/`owned`/`move`; `Result`/`Option`/`match`;
+control flow (`if`/`for`/`while`/`loop`/`break`/`continue`/`return`);
+`List<T>`/`Map<K,V>`/`String`/`Int`/`Float`/`Bool`; f-strings; `defer`;
+extension functions; modules.
+
+**Fuse Full** — added on top: `spawn`, `Chan<T>`, `Shared<T>`, `@rank`;
+`SIMD<T,N>`; `interface`, `implements`, generic bounds.
+
+**The rule:** implement Core first. A working Core interpreter validates
+the language design before concurrency complexity is introduced. This
+rule was the single most load-bearing phase decision in Fuse2. Stage 0
+(the Python interpreter) shipped before anyone wrote a Cranelift back
+end, and that sequencing paid dividends through phases 1–5.
+
+**Fuse3 implication.** Keep the tier. Go gives us a shortcut: `go/ssa`
+and `go/types` mean we can conceivably skip the Python stage and jump
+straight to a Go-hosted interpreter that also owns codegen. But the
+Core-first rule is orthogonal to the language stack — it's about
+validating semantics before touching machine code.
+
+---
+
+# Part 2 — Type system and memory model
+
+## 2.1 Ownership: four keywords, no borrow checker
+
+The heart of Fuse's memory/concurrency story
+([`fuse-language-guide-2.md §1.9`](../fuse-language-guide-2.md#L588)):
+
+```
+ref  ->  mutref  ->  owned  ->  move
+read it    change it    own it     transfer it
+```
+
+| Convention | Where written | Mutates caller | Transfers | Runtime cost |
+|---|---|---|---|---|
+| `ref` | parameter | no | no | zero (pointer) |
+| `mutref` | parameter + call site | yes | no | zero (pointer) |
+| `owned` | parameter | n/a | callee decides | move or copy |
+| `move` | call site only | n/a | yes, enforced | zero |
+
+**Key design principle: call-site annotations.** `mutref` must appear at
+both the signature *and* the call. Reading the call site tells you
+which arguments will be modified without looking up the function
+signature. From the ADR set (5.2, `mutref` not `inout`):
+
+> `mutref` is self-documenting — mutable reference. `inout` is audio
+> engineering jargon.
+
+**What worked.** The four-keyword model survived five full stages of
+implementation, a complete rewrite from Python→Rust, and the start of a
+self-host. No user ever asked for a fifth keyword. No one ever asked for
+lifetimes. The checker rules that enforce it are ~50 lines of code per
+rule. This is the purest success story in the entire Fuse2 project.
+
+**What rough-edged.** Two specific gaps surfaced during Stage 2 self-host
+(L022, L029 in [`learning.md`](../learning.md)):
+
+- **L022** — The checker forgot to block `var` mutation inside
+  `spawn { }` bodies unless the mutation went through `mutref`. An
+  assignment like `count = count + 1` inside a spawn silently compiled,
+  which is a data race. Fixed by adding an `assign_target_root` check
+  in `check_spawn_statement`.
+
+- **L029** — Statement-position matches with mixed arm types (`Ok(v)` arm
+  returns `List<T>`, `Err(_) => { return }` arm returns `Unit`) were
+  false-positive rejected by the B7.4 `check_match_arm_compatibility`
+  because the checker has no `in_value_context: bool` flag. The
+  Rule 2 fix was to filter `Unit`/`!` arms out of unification and
+  defer the real fix (threading `value_context` through `check_expr`'s
+  ~27 call sites) as a B12 follow-up. **This gap is still open as of
+  the B12 triage session.**
+
+**Fuse3 implication.** Keep the four keywords *and* their semantics
+unchanged. But: design the checker's internal `value_context` tracking
+into the type system *from day one*, not as a B-wave retrofit. Every
+expression has a value-used-by-caller bit. Every statement has the same
+information on the way in. The checker should never be in the position
+of having to decide "is this match being used as an expression?" at
+unification time — the answer should already be in the HIR node's
+context.
+
+## 2.2 ASAP destruction
+
+From [`fuse-language-guide-2.md §1.10`](../fuse-language-guide-2.md#L717):
+
+> Values are destroyed at their last use, not at the end of their
+> lexical scope.
+
+Implementation in Fuse2:
+
+1. The checker tracks future uses of every binding statement-by-statement
+   (`compute_future_uses`).
+2. After each statement, `release_dead` walks locals and releases any
+   binding whose name does not appear in any following statement.
+3. At function exit, `release_remaining` drops everything still live.
+4. `defer` statements fire *after* ASAP release, in LIFO order.
+
+**What worked.** The semantic is loud in output. Reading a program's
+stdout and seeing `[del] X` exactly at the last use of `X` is a
+debuggability superpower. Users write destructors and immediately know
+if their code is correct. The ADR for ASAP
+([`ADR-010` via §5.10 of guide](../fuse-language-guide-2.md#L2048)) is
+short and clear.
+
+**What hurt.**
+
+- **Pattern-binding lifetimes.** When a match binds `Ok(m)`, the bound
+  `m` is a copy of the inner pointer, not a clone. `fuse_result_unwrap`
+  returns the inner value's raw handle. If the Result is released
+  between bind time and use time, `m` dangles. Stage 1 fixed this
+  by restoring `base_locals` after each arm and marking outer locals
+  `destroy = false` inside the arm — see
+  [`object_backend.rs:4693`](../../stage1/fusec/src/codegen/object_backend.rs#L4693).
+  But it took two bug-fix rounds to get right, and the B7 match-arm
+  unification work touched the same code path again.
+
+- **ASAP crossed with loop frames.** Loop scopes must snapshot/restore
+  locals to prevent premature ASAP of the enclosing scope. This was
+  discovered the hard way around Stage 1 Phase 7 — listed as a known
+  pitfall in the language guide
+  ([§3.7 Phase 7](../fuse-language-guide-2.md#L1820)).
+
+- **Defer capture.** `defer` captures names by name. If the defer body
+  mentions a local, that local is kept alive past ASAP — but only the
+  names explicitly mentioned. This is correct but subtle and needed
+  regression tests for every edge case.
+
+- **F-string dead-binding analysis.** Four different `collect_expr_names`
+  call sites had to re-scan the f-string template to know which bindings
+  the `f"..."` referenced, and any one of them could get out of sync.
+  This was the final straw that motivated the shared
+  `fstring::parse_fstring_template` helper in
+  Wave B10 (L028 in [`learning.md`](../learning.md)).
+
+**Fuse3 implication.** ASAP stays. But the analysis infrastructure
+should be a single pass that produces a per-statement "names used in
+all later statements" set, consumed by every release site and every
+destructor site — not four separate walkers that have to agree. In Go,
+this maps naturally to a `releaseSet map[*ast.Node]StringSet` computed
+once during IR lowering.
+
+## 2.3 Result/Option/? — error handling without null or exceptions
+
+From [`fuse-language-guide-2.md §1.11`](../fuse-language-guide-2.md#L814):
+
+- Every fallible operation returns `Result<T, E>`.
+- Every nullable value is `Option<T>`. There is no `null`.
+- `?` unwraps `Ok(v)` / `Some(v)` or propagates `Err(e)` / `None` from
+  the function.
+- `?.` chains through optional values (short-circuits to `None`).
+- `?:` (Elvis) provides a fallback for `None`.
+- `match` is exhaustive on `Result` and `Option`.
+
+**What worked.** The three operators (`?`, `?.`, `?:`) cover the
+100% of common error-handling boilerplate. Users do not write
+`if result.is_err() { return }` by hand. The spec got this exactly
+right on the first try.
+
+**What rough-edged.**
+
+- **Checker does not verify `return <expr>` against the function's
+  declared return type.** Discovered in B12: stage2's `parseOutputFlag`
+  had `return next.unwrap()` (returning a `String`) inside a function
+  declared `Option<String>`. The stage 1 checker silently accepted it.
+  At runtime, `fuse_option_is_some` returned false on the mis-typed
+  handle, the match always took `None`, and `-o <path>` was silently
+  dropped. **Still open.** See [`learning.md L029`](../learning.md)
+  follow-up notes and the B12 commit `9126baf`.
+
+- **Match-as-expression arm unification** got an entire B-wave
+  (B7, L027) because the Stage 1 codegen hardcoded block arms as
+  `Some("Unit")` even when the block actually diverged. The fix was
+  to collect each arm's compiled `TypedValue.ty` *during* arm
+  compilation (while pattern bindings are live), then unify via rules
+  U1–U6 — and mirror the same analysis in the checker. The B12 triage
+  round discovered the same mistake for Never-typed arms and added
+  a Never-filtering rule to `unify_match_arm_types`.
+
+**Fuse3 implication.** Carry the syntax verbatim. But:
+
+1. The checker must verify `return <expr>` against the declared return
+   type from day one. There should be exactly one code path for
+   "returning a value", not separate logic for trailing expressions
+   vs explicit returns.
+2. Match-arm type unification must be a single, well-documented
+   algorithm in the checker, not a helper shared-but-not-quite between
+   the checker and the codegen. Fuse2 had the rules U1–U6 written down
+   in the parity plan but they still took three commits to get right
+   in each side.
+3. `!` (Never) must be a real type in the type system, not a
+   post-hoc filter. See §2.5 for more.
+
+## 2.4 The type catalogue
+
+**Primitives.** `Int` (64-bit signed), `Float` (64-bit IEEE 754),
+`Float32` (32-bit IEEE 754), `Bool`, `String` (UTF-8), `Unit`. Sized
+integers added in Wave 2: `Int8`, `UInt8`, `Int32`, `UInt32`, `UInt64`.
+Deferred: `Int16`, `UInt16`, `Float16`/`BFloat16`.
+
+**Compound.** `List<T>`, `Map<K,V>`, `Option<T>`, `Result<T,E>`,
+tuples `(T, U, ...)`.
+
+**User-defined.** `struct` (opaque fields, manual methods), `@value
+struct` (auto lifecycle), `data class` (positional constructor,
+structural equality, auto `toString`), `enum` (tagged unions with
+multi-payload variants).
+
+**No nulls, no exceptions, no implicit numeric coercion.** All
+conversions are explicit. `Bool` is not convertible from `Int`.
+
+**What worked.** The primitive set is right-sized. `Int` at 64 bits is
+the right default for a systems language. `String` as UTF-8 with an O(1)
+`len()` (byte length) and an O(n) `charCount()` — and both documented —
+avoids the JS/Go footgun where iterating a string iterates bytes by
+default.
+
+**What hurt.**
+
+- **String indexing.** `charAt(i)` is O(n). `byteAt(i)` is O(1).
+  Users who write `for i in 0..s.len()` get the wrong semantics.
+  Documented as a guide rule, but still costs lexers and parsers real
+  performance.
+
+- **Map as a first-class primitive.** `Map<K,V>` was built with
+  requires-`Hashable` semantics but the Wave 0 Stage 0 interpreter
+  shipped without `Hashable` in stdlib. This led to two kinds of bug:
+  maps that "worked" for `Int` and `String` keys only (because those
+  types had special-case hash handling in the runtime), and maps that
+  crashed or misbehaved for user types. The stdlib-interface plan
+  (Phases 0–5 in [`stdlib-interfaces-plan.md`](../stdlib-interfaces-plan.md))
+  fixed this, but not before the bug pattern recurred several times.
+
+- **Primitive types that should have been data classes.** `File`,
+  `TcpStream`, `Duration`, `Instant`, `DateTime` — all of these had to
+  become `struct`s in stdlib because the compiler did not have a clean
+  "opaque but with methods" type. `data class` was for structural
+  equality; plain `struct` had no auto-generation. The gap was filled
+  post-hoc.
+
+**Fuse3 implication.**
+
+- Maps and the whole `Hashable`-dependent cluster of stdlib types
+  should be designed *with the interface system already decided*.
+  Fuse2's Wave 5 interface system landed after maps were in use,
+  which meant retrofitting. Fuse3 flips the order: interfaces first,
+  then maps on top of `Hashable`.
+
+- The user has explicitly flagged **maps and memory management for
+  threads** for from-scratch design (from
+  [`fusev3-meta-plan.md`](fusev3-meta-plan.md)). Good — these are the
+  two areas where Fuse2 accumulated the most debt.
+
+- String indexing is worth reconsidering. Consider giving users a
+  single `chars()` iterator (explicit, O(n) upfront cost) and reserving
+  `len()` for "length in the unit you asked for" without ever making
+  `s[i]` look cheap.
+
+## 2.5 Pattern matching and arm unification
+
+Pattern shapes supported: literal, variable binding, enum constructor,
+qualified enum constructor, tuple, wildcard `_`. Nested patterns work:
+`Some(Ok(value))` destructures through both wrappers.
+
+`match` is exhaustive (the compiler rejects incomplete matches on
+enums, Result, Option, Bool). `when` is the condition-based variant —
+each arm is a boolean, an `else` arm is required unless the conditions
+are provably exhaustive.
+
+**Arm unification rules (U1–U6)** were formalised during Wave B7:
+
+- **U1 — Identity.** All arms same concrete type → that type.
+- **U2 — Empty list promotion.** Mix of `List`/`List<Unknown>` and
+  `List<X>` → `List<X>`.
+- **U3 — Option `None` promotion.** `Option<Unknown>` + `Option<X>`
+  → `Option<X>`.
+- **U4 — Result half promotion.** `Result<T, Unknown>` +
+  `Result<Unknown, E>` → `Result<T, E>`.
+- **U5 — Incompatible concrete arms** → diagnostic.
+- **U6 — No information** → result type is `None`, let downstream
+  callers supply it.
+
+Later added (during B12 triage): **U7 — Never promotion.** A `!`
+(Never) arm imposes no type constraint. `[T, !]` → `T`. All arms `!`
+→ `!`.
+
+**What worked.** Once U1–U6 were written down, there was a single
+reference for checker and codegen to agree on. Eight unit tests in
+[`stage1/fusec/src/codegen/type_names.rs`](../../stage1/fusec/src/codegen/type_names.rs)
+pinned the behaviour.
+
+**What hurt.**
+
+- **Two subsystems, one rule, separate implementations.** The checker
+  and the codegen both called `unify_match_arm_types`, but collecting
+  arm types required different orchestration. The checker gathered
+  types post-hoc via `infer_expr_type`, which lost pattern bindings.
+  The codegen collected types during arm compilation while bindings
+  were still live. Both had to be rewritten.
+
+- **`check_match_arm_compatibility` rejected statement-position
+  matches.** B11 discovery: `match mode { Ok(m) => dispatch(m),
+  Err(msg) => { sys.exit } }` where the result was discarded. The
+  checker flagged "incompatible arms" when the arms' value types
+  never needed to unify. L029.
+
+- **Divergent block arms.** `compile_match` hardcoded block arms as
+  `Unit`, even when they ended in `return`. Any
+  `val x = match y { Ok(v) => v, Err(_) => { return } }` got
+  arm types `[T, Unit]`, U5-failed, `x` lost its type. B12.
+
+**Fuse3 implication.**
+
+- **`!` (Never) is a real type.** In Go terms, a function returning
+  `Never` cannot return normally. Go's type system doesn't have this,
+  so Fuse3-on-Go will have to synthesize it. Every diverging
+  statement (`return`, `panic`, unreachable loop) must be analysed
+  to produce Never at the type level during AST→TypedAST lowering.
+
+- **Arm unification must be one algorithm, called once.** The checker
+  and codegen must share not only the rules but the *collection
+  logic*. Fuse3 should centralise arm type discovery into the HIR
+  lowering so neither pass does post-hoc inference.
+
+- **Statement vs expression context is a property of the surrounding
+  expression, not a flag threaded through check_expr.** The HIR
+  should mark each subexpression with its context at lowering time.
+
+---
+
+# Part 3 — Concurrency (user flagged for from-scratch redesign)
+
+## 3.1 The three-tier model
+
+From [`fuse-language-guide-2.md §1.17`](../fuse-language-guide-2.md#L1160):
+
+- **Tier 1 — Channels.** `Chan<T>.bounded(n)` or unbounded; `send`,
+  `recv`, `tryRecv`, `close`. The preferred communication primitive.
+  Zero locks, zero shared state.
+
+- **Tier 2 — `Shared<T>` + `@rank(N)`.** When multiple tasks must
+  share a live mutable value. `config.read()` / `config.write()` acquire
+  locks. `@rank(N)` is mandatory.
+
+- **Tier 3 — `try_write(timeout)`.** When the lock order is genuinely
+  dynamic (locking items from a list in arbitrary order).
+
+Decision hierarchy:
+
+```
+Does data flow between tasks?          → Tier 1 (Chan<T>)
+Must tasks share live mutable state?   → Tier 2 (Shared<T> + @rank)
+Is the lock order dynamic?             → Tier 3 (try_write)
+```
+
+**What worked.** The hierarchy matches how real concurrent code is
+written. Almost everything is channels. The minority that genuinely
+needs shared state gets @rank. The minority of *that* that needs
+dynamic locking gets timeouts with explicit error handling. There is
+no "default path" that leads to deadlock.
+
+## 3.2 `@rank` compile-time deadlock prevention
+
+`Shared<T>` without `@rank(N)` is a compile error (not a warning).
+The compiler tracks the maximum rank held in scope; acquiring a
+lower rank is a compile error. From
+[`ADR-004` via §5.4](../fuse-language-guide-2.md#L2004):
+
+> Optional safety annotations get skipped under pressure. Compile
+> error = never unguarded.
+
+Example:
+
+```fuse
+@rank(1) val config  = Shared::new(Config.load())
+@rank(2) val db      = Shared::new(Db.open("localhost"))
+@rank(3) val metrics = Shared::new(Vec::<Metric>.new())
+
+fn ok() {
+  val ref    cfg  = config.read()    // rank 1
+  val mutref conn = db.write()       // rank 2 > 1 — ok
+}
+
+fn broken() {
+  val mutref m    = metrics.write()  // rank 3
+  val mutref conn = db.write()       // rank 2 < 3 — COMPILE ERROR
+}
+```
+
+**Same rank** means independent — safe to acquire in any order.
+**Guards release via ASAP destruction** — no forgotten unlocks.
+
+**What worked.** The compile-time proof is complete. It's the only
+feature in the language that makes compile-time deadlock prevention
+accessible to end users without requiring them to understand lock
+ordering theory.
+
+**What hurt.** Almost nothing — but only because Stage 1 was
+single-threaded and we never actually exercised deadlocks. The
+checker tests use fixtures that declare ranks and verify the
+rejection messages; no real lock ever held in anger. ADR-014
+acknowledges this explicitly.
+
+## 3.3 Scheduling model: single-thread → OS threads → green threads
+
+From [`ADR-014`](../adr/ADR-014-threading-model.md):
+
+| Phase | What runs | `Shared<T>` | `Chan<T>` | `spawn` |
+|---|---|---|---|---|
+| **Stage 1** (current) | Everything sequential in the evaluator | `RwLock` replaced by clone-on-read, live handle on write | Plain `VecDeque` | Parsed and checked, executed inline |
+| **Stage 2** (planned) | OS threads | Real `RwLock` | `Mutex` + `Condvar` / lock-free queue | `std::thread::spawn` |
+| **Post-Stage 2** | M:N green threads | Same API | Can suspend | Same API |
+
+The **FFI surface stays stable** across all three:
+`fuse_shared_read`, `fuse_shared_write`, `fuse_chan_send`,
+`fuse_chan_recv`, etc. No ABI break when the runtime swaps.
+
+**What worked.** Stage 1's "concurrency correctness without
+real concurrency" stance let the team validate the compile-time
+rank check and the ownership rules *without* fighting data races
+in the runtime. Fuse caught spawn-capture bugs (L022) at the
+checker level because the checker was the only place that mattered.
+
+**What hurt.**
+
+- **Stage 2 self-host hit the ABI surface before OS threads
+  were wired up.** The Cranelift FFI crate was the only place where
+  "stage 2 compiler runtime meets the Fuse runtime" happened, and
+  every shortcut taken there (raw-pointer conventions where stage 2
+  could only produce Fuse handles) surfaced as segfaults or silent
+  wrong output in the B12 triage. See §6.3.
+
+- **`spawn move { body }` syntax was not parsed until L021** (W-wave
+  bug). The syntactic shape was documented in the guide but the
+  parser skipped the modifier check.
+
+## 3.4 What was rejected
+
+From [`ADR-014`](../adr/ADR-014-threading-model.md) and
+[`fuse-post-stage2.md`](../fuse-post-stage2.md):
+
+- **`async`/`await` — rejected.** Function coloring splits the
+  ecosystem, viral propagation forces callers to be async, hidden
+  state machines are hard to debug. Fuse's model is simpler: every
+  function is synchronous; concurrency is a call-site decision via
+  `spawn`. Removed from the language in Wave W0.6.
+
+- **Actor model — rejected.** Channels are more flexible. Users
+  can build actors from channels if they want.
+
+- **`select` expression — deferred to post-Stage 2.** Needs runtime
+  scheduler integration that doesn't exist yet. Workaround: one
+  `spawn` per channel, or poll with `try_recv`.
+
+- **`SpawnHandle<T>` (joinable) — deferred.** Requires runtime task
+  tracking and result storage. Fire-and-forget + channels is
+  equivalent in capability.
+
+- **Green threads in Stage 2 — deferred.** Premature without
+  profiling data. OS threads are simple, correct, proven.
+
+## 3.5 Open questions for Fuse3 concurrency
+
+The user's meta-plan explicitly flags **concurrency** and **memory
+management for threads** for from-scratch redesign. Starting from a
+blank page in Fuse3, the questions are:
+
+1. **Go goroutines or Fuse green threads?** Fuse3 is written in Go.
+   The temptation is to expose `go` (the keyword) directly as Fuse's
+   `spawn`. This gives free M:N scheduling, work-stealing, stack
+   growth, and network I/O integration. Question: does mapping
+   `spawn` → `goroutine` preserve the compile-time `@rank` guarantee?
+   The Go runtime has its own scheduler — `@rank` still works at the
+   Fuse checker level because it's a compile-time check that doesn't
+   care how the resulting machine code is scheduled. But see the
+   next question.
+
+2. **Can `Shared<T>` use Go's `sync.RWMutex`?** Yes, at the
+   implementation level. The ABI mismatch Fuse2 hit in Stage 2 was
+   because the Fuse runtime wanted raw-pointer conventions and
+   stage 2 couldn't produce them. In Fuse3-on-Go, there *is* no
+   separate runtime C ABI — Go types are Fuse types and vice versa.
+   `Shared[T]` in Fuse3 can literally be a Go struct wrapping a
+   `sync.RWMutex`.
+
+3. **What's the memory model for thread-shared data?** Fuse2
+   dodged this question by being single-threaded. Go has a published
+   memory model based on happens-before edges. Fuse3 should either
+   (a) adopt Go's memory model verbatim and document it, or
+   (b) define a stricter memory model that compiles down to a
+   subset of Go's. Option (a) is simpler; option (b) gives Fuse a
+   stronger correctness story.
+
+4. **Does `Chan<T>` just become Go's `chan T`?** Type-wise, yes.
+   Semantically, yes. The only difference is Fuse3's `Chan<T>`
+   must honor Fuse's ownership rules — sending a `move`-only value
+   through a channel transfers ownership, and the sender must
+   not use it after. Go channels don't enforce this; the Fuse
+   checker must.
+
+5. **What about `select`?** If we map to Go, `select` is free —
+   Go's `select` statement is exactly what Fuse wanted. The deferred
+   decision in Fuse2 can be un-deferred in Fuse3 as a day-one
+   feature. The only question is syntax: match Go's `case <-ch:` or
+   invent something more Fuse-like (`case val n from rx:`).
+
+6. **`@rank` — keep it, or let Go's `-race` detector handle it?**
+   Go's race detector is runtime. `@rank` is compile-time. They are
+   complementary, not replacements. Fuse3 should keep `@rank` because
+   it satisfies pillar 2 (concurrency safety *without* a borrow
+   checker) at compile time — the very thing that distinguishes Fuse
+   from "just write Go carefully".
+
+---
+
+# Part 4 — Compiler architecture (what worked, what broke)
+
+## 4.1 Three-stage bootstrap: rationale and cost
+
+The bootstrap chain:
+
+- **Stage 0** — Python interpreter. Validates semantics.
+- **Stage 1** — Rust + Cranelift. Produces native binaries.
+- **Stage 2** — Fuse compiler written in Fuse. Proves self-hosting.
+
+Ground rules
+([`fuse-repository-layout-2.md`](../fuse-repository-layout-2.md)):
+
+- Nothing in `stage1/` depends on `stage0/`.
+- Nothing in `stage2/` depends on `stage0/` or `stage1/` *source*
+  (only on compiled binaries).
+- **A test passing in Stage 0 must produce identical output in
+  Stage 1 and Stage 2.**
+- The guide precedes implementation. If behavior is not in the
+  guide, it does not exist.
+
+**What worked — ground rule 3 is load-bearing.** Stage 0's existence
+meant that every Wave in Stage 1 had an oracle: if the new Cranelift
+output didn't match what Stage 0 printed, the new code was wrong. This
+trivially caught hundreds of codegen bugs during Phase 7.
+
+**What worked — guide precedes implementation.** Every new feature
+went into the guide first. This sounds bureaucratic but it was the
+reason the language stayed coherent across 9 waves, 43 phases, ~300
+tasks.
+
+**What hurt.**
+
+- **Stage 0's Python interpreter accreted Stage 2 features.** L001
+  was the first lesson: when `stage2/src/token.fuse` couldn't be run
+  through Stage 0, the fix was to teach Stage 0 about enum runtime,
+  module constructors, and module path resolution — *except that was
+  backwards*. Stage 0 is a completed prototype; Stage 2 is validated
+  by Stage 1. ADR-012 codified this and added Rule 8 to the
+  implementation plan ("Fixes Go Forward, Not Backward").
+
+- **Stage 2 wrote large amounts of code before it could be run.**
+  The W7.5 three-generation bootstrap test passed *on synthetic
+  input* months before anyone tried to compile `stage2/src/main.fuse`
+  end-to-end. When the real build was attempted, six cascading codegen
+  gaps surfaced, which the T4 parity investigation catalogued
+  ([`t4-parity-investigation.md`](../t4-parity-investigation.md))
+  and the B-wave remediation plan fixed one at a time.
+
+- **The bootstrap test as written did not exercise the real stage2
+  compiler.** This is the big one. Three generations of "compile stage2
+  with X, then compile stage2 with the resulting binary, then compare"
+  passed green for months. But the bootstrap's input was a trivial
+  Fuse program, not `stage2/src/main.fuse`. When B12 finally tried to
+  compile the real stage 2 source, the test surface exposed 8 distinct
+  bug classes.
+
+**Fuse3 implication.**
+
+- **Skip Stage 0 entirely.** Go-hosted Fuse3 gets its "validation
+  interpreter" for free: the Go-hosted frontend can walk the AST and
+  produce output without any codegen. There is no Python stage, no
+  Rust stage. The whole thing is one Go program with multiple modes
+  (`fuse run`, `fuse build`, `fuse check`).
+
+- **Keep the "guide precedes implementation" rule.** It scales.
+
+- **The self-host bootstrap test must compile the real compiler.**
+  Not a synthetic input. If that is expensive to run, it is expensive
+  to run, and CI handles it. Fuse2's lesson: any bootstrap test that
+  doesn't use the production source is a lie.
+
+## 4.2 Uniform `FuseHandle` ABI — blessing and curse
+
+Fuse2's runtime represents every value as `FuseHandle = *mut FuseValue`
+(an i64 pointer). Stage 1's codegen passes every value as
+pointer-typed Cranelift values; type dispatch happens at construction
+and destruction time via tag fields inside the `FuseValue` struct.
+
+**Blessing.** Polymorphism without monomorphization. Generics erase at
+the IR level. `List<Int>` and `List<String>` call the same IR
+functions. Signatures stay fixed at `(ptr, ptr, ...) -> ptr`.
+
+**Curse — the B12 cascade.** The uniform ABI created a *protocol
+mismatch class* that is very hard to catch statically. Several
+cranelift-ffi functions accepted "a raw pointer to something, wrapped
+as an Int-typed FuseHandle" for convenience — that was the smoke test
+convention. Stage 2 could only produce actual `FuseHandle` values
+(real Fuse strings, real Fuse lists). The two conventions were never
+unified. Symptoms:
+
+- `read_values(ptr, count)` dereferenced the "pointer" as a raw
+  `*const i64`. Stage 2 passed a `ValueKind::List` FuseHandle. Result:
+  null deref or garbage.
+- `str_from_raw(ptr, len)` did the same for strings.
+- `module_define_data(bytes, byte_len)` did the same for byte
+  buffers.
+- `fuse_result_is_ok` returned `bool` (i8), but stage 2 registered
+  it as returning pointer (i64). Result: garbage in upper bits of the
+  return register, brif on garbage, every `Ok(_)` match branch taken
+  wrong.
+
+Each of these was fixed during the B12 triage session, but each had
+been latent *since W0.4 when the cranelift-ffi crate was introduced*.
+They never manifested until someone actually ran the self-hosted
+compiler end-to-end.
+
+**Root cause.** The ABI was written from two ends (Rust side and Fuse
+side) that never had a formal contract to meet in the middle. The
+smoke test exercised the Rust-side convention. The stage2 code used
+the Fuse-handle convention. No test exercised the interaction.
+
+**Fuse3 implication.**
+
+- **Go eliminates this problem entirely.** Fuse3 values are Go values.
+  Go's type system is the contract. There is no uniform pointer ABI,
+  no FuseHandle, no cranelift-ffi. When Fuse code calls into a Go
+  function, the Go compiler checks the types.
+
+- **The general lesson transcends the specific bug.** Any time a
+  value crosses a language or subsystem boundary, the boundary needs
+  a typed contract, a test that exercises *both* sides of the
+  contract simultaneously, and a failure mode when the contract is
+  violated (not silent wrong output). Fuse3 should codify this rule.
+
+## 4.3 ASAP analysis, future uses, dead binding release
+
+Fuse2's Stage 1 implementation:
+[`stage1/fusec/src/codegen/object_backend.rs`](../../stage1/fusec/src/codegen/object_backend.rs)
+lines around `compile_statements`,
+`compute_future_uses`, `release_dead`, `release_remaining`.
+
+The algorithm:
+
+1. For each block of statements, compute future uses: for every
+   position `i`, the set of names used in statements `i+1..end`.
+2. Walk statements forward. After each statement, release bindings
+   that are *not* in the future set and have `destroy = true`.
+3. At block exit, release remaining live bindings.
+4. Loop scopes snapshot/restore locals so ASAP inside the loop doesn't
+   leak outward.
+
+**What worked.** The algorithm itself is correct. When it ran, it
+produced the right output.
+
+**What hurt.** The scanner was duplicated across multiple users
+(f-string names, match-arm types, ASAP sites). Every time one of
+them needed to be updated, all of them needed to be updated, and
+the "did I update them all?" question didn't have a mechanical
+answer. L027 (match-arm type inference) and L028 (f-string
+re-scanners) both hit this pattern.
+
+**Fuse3 implication.** Make "the set of names used after this AST
+node" a single computed property on the AST, exposed as
+`node.LiveAfter()` or similar. Every consumer reads from the same
+source. Updating the logic updates all consumers.
+
+## 4.4 Checker → codegen information loss (the recurring disease)
+
+A pattern that shows up in L005, L020, L027, L029, and half of the
+B-wave bugs: the *checker* knows something about a program (the type
+of an expression, the payload types of an enum variant, whether a
+pattern binding is in scope), but the information is *recomputed*
+post-hoc in the *codegen* via `infer_expr_type`, *after* the
+authoritative source has gone out of scope.
+
+Concrete instances:
+
+- **L027 (match-as-expression arm types).** Codegen's
+  `compile_match` computed the result type by calling
+  `arms.iter().find_map(|arm| infer_expr_type(arm))` *after*
+  `self.locals` had been restored to `base_locals`. Pattern-bound
+  names (`dc` in `Ok(dc) => dc.interfaces`) were no longer in scope,
+  so the first arm returned `None`, and the second arm's `[]`
+  dominated via `List<Unknown>`. Fix: collect each arm's
+  `TypedValue.ty` during arm compilation while the bindings are
+  still live.
+
+- **L028 (f-string templates).** The lexer stored the raw f-string
+  template as a `String` with `{{...}}` embedded. Four downstream
+  consumers (compile_fstring, render_fstring, two
+  collect_expr_names) independently re-parsed the template,
+  sometimes disagreeing about how to handle escapes. Fix: produce a
+  typed `Vec<FStringPart>` at lexing time, consumed by all sites.
+
+- **L029 (statement-position match compat).** The checker needed to
+  know "is this match being used as a value?" when deciding whether
+  to run arm unification. That information existed at the call site
+  (the parent statement) but was not passed to `check_expr`.
+
+**Principle.** *When a helper produces a "throwaway" type via
+post-hoc inference, ask whether the authoritative type exists
+during the operation being inferred.* Quote from L027:
+
+> The fix was to plumb it through, not to improve the post-hoc
+> inference. Every type ingested from `infer_expr_type` where
+> `compile_expr` already knew the answer is a bug waiting to bite.
+
+**Fuse3 implication.** Use a **typed AST** (let's call it TAST)
+produced by a single checker pass. Every node carries its inferred
+type, context (statement vs value), and liveness (future uses) as
+attached data. Codegen reads from TAST without doing any type
+inference. "Type inference in the backend" is an anti-pattern.
+
+## 4.5 Determinism: the HashMap lesson
+
+B1 of the parity plan replaced `HashMap<PathBuf, LoadedModule>` with
+`BTreeMap`. Before: errors were reproduction-resistant because
+different runs processed modules in different order. Failures
+appeared at random across `unsupported List member call concat`,
+`cannot infer member`, `missing layout for T`, etc.
+
+**Principle.** Any data structure iterated during codegen or
+error reporting must be deterministic. `HashMap` is not, unless
+seeded.
+
+**Fuse3 implication.** Go's `map` is also non-deterministic by
+design. Any code path that iterates a map and produces output must
+sort the keys first, or use a deterministic container. Fuse3
+should have a lint that flags `for k := range mapvar` inside
+codegen/diagnostic paths.
+
+## 4.6 Diagnostics as a first-class concern
+
+Pillar 3 says developer experience matters. In practice:
+
+**Worked.**
+
+- Rich diagnostics with source snippets and color in Stage 1's
+  `render_long()` path.
+- The "hint" field in every diagnostic (e.g., `did you forget
+  import stdlib.core.list?`).
+- The "expected output" / "expected error" test format is the
+  simplest possible fail-fast mechanism.
+
+**Hurt.**
+
+- **Codegen errors had no source spans until B12.** Every `format!`
+  in `compile_member_call`, `compile_call`, `compile_match`, etc.
+  returned a bare `String`. When the user saw `cannot infer receiver
+  type for \`len\``, they had no way to find which line. B12 added
+  `LoweringState::err_at(span, msg)` as the retrofit, but only
+  touched the one site that was causing blocking problems.
+
+- **Cranelift verifier errors printed raw IR with no Fuse symbol
+  name.** B12 also tagged these. Before: the user saw 50 lines of
+  `sig0 = () -> i64 windows_fastcall` with a single error message
+  buried 40 lines down and no indication of which Fuse function
+  failed. After: `Cranelift verifier failed while compiling <name>
+  (module <file>)`.
+
+- **`unresolved method` was silently allowed by the checker.**
+  Issue 1 of the T4 parity investigation: checker let `scope.concat(...)`
+  through even when `stdlib.core.list` wasn't imported. B2 fixed
+  this by enforcing extension resolution. But the gap had existed
+  for the entire Stage 2 development period.
+
+**Fuse3 implication.**
+
+- Every error carries a span from day one. `Error` is a struct with
+  `message`, `span`, `hint`, `severity`, `code` fields. No
+  `fmt.Errorf`-style bare strings in the compiler.
+- The checker must be complete. A checker that silently accepts
+  something it cannot handle produces downstream codegen errors that
+  are much more expensive to triage. **Silent failure is the single
+  biggest class of bug in the Fuse2 backlog.**
+
+---
+
+# Part 5 — Stdlib design
+
+## 5.1 Core / Full / Ext tiers
+
+From [`fuse-stdlib-spec.md`](../fuse-stdlib-spec.md):
+
+- **`stdlib/core/`** — pure computation, no OS interaction, no
+  FFI to external systems. Must work in a Core interpreter. 22
+  modules in Fuse2: `result`, `option`, `list`, `map`, `set`,
+  `string`, `int`, `int8`, `int32`, `uint8`, `uint32`, `uint64`,
+  `float`, `float32`, `bool`, `math`, `fmt`, plus the interfaces
+  `equatable`, `hashable`, `comparable`, `printable`, `debuggable`.
+  ~2,499 LOC.
+
+- **`stdlib/full/`** — OS syscalls, FFI, concurrency. 14 modules:
+  `io`, `path`, `os`, `env`, `sys`, `time`, `random`, `process`,
+  `net`, `json`, `http`, `chan`, `shared`, `simd`. ~1,981 LOC.
+
+- **`stdlib/ext/`** — optional, heavyweight, not bundled.
+  11 modules: `argparse`, `crypto`, `http_server`, `json_schema`,
+  `jsonrpc`, `log`, `regex`, `test`, `toml`, `uri`, `yaml`.
+  ~1,900 LOC.
+
+Pattern: **extension functions on built-in types.** `fn String.scream(ref self) -> String { self.toUpper() + "!" }`. Reads clean.
+Resolves at compile time.
+
+**What worked.** The tiering is correct. Users opt into `full`
+(gets OS, threads, FFI) or `ext` (gets heavier dependencies) by
+importing. `core` is always available.
+
+**What hurt.** Missing imports silently compiled wrong. See §4.6
+above (checker gap) and Wave B11 (where it took adding missing
+`import stdlib.core.list` to 8 files to unblock stage 2 self-host).
+
+## 5.2 Auto-generation from field metadata (ADR-013)
+
+The big win of Wave 5:
+[`ADR-013`](../adr/ADR-013-compile-time-reflection.md).
+
+- **Interfaces define behavior.** `Equatable`, `Hashable`, `Comparable`,
+  `Printable`, `Debuggable`, `Serializable`, `Encodable`, `Decodable`.
+- **`implements` triggers auto-generation.** The compiler sees the
+  field list and generates the required methods.
+- **Decorators are compiler directives, not behavior.** `@value`,
+  `@entrypoint`, `@export`, `@rank`, `@test`, `@inline`, `@builder`,
+  `@deprecated`, `@ignore`.
+
+The distinction is **load-bearing for the language's aesthetic**: the
+user never writes `@hashable data class Key(...) implements Hashable`
+— the `implements` clause is the single signal.
+
+**What worked.**
+
+- `data class Point(x: Int, y: Int) implements Hashable, Comparable,
+  Debuggable` gets 6 methods for free, all zero-runtime-cost,
+  specialised per-type.
+- Users can override any auto-generated method by writing it
+  manually. The compiler picks the manual version.
+- Runtime reflection is rejected in favour of this system. No
+  metadata in the binary.
+
+**What hurt.** Auto-generation is only available for `data class` and
+`@value struct` — the types whose fields the compiler fully knows.
+Plain `struct` without `@value` must implement manually. This is
+correct, but users wanted to use plain structs for encapsulation and
+still get free equality. Compromise: the checker's error message is
+explicit — *"either add @value to enable auto-generation, or
+implement the method manually"*.
+
+**Fuse3 implication.** Keep ADR-013 exactly. It's the most elegant
+piece of Fuse design. Go's equivalent (generate code at build time
+via `go generate`) is klugy; Fuse3's compile-time autogen should be
+built-in, reading directly from the typed AST.
+
+## 5.3 The stdlib-first test strategy and its yield
+
+Quote from the Compiler Bug Policy in
+[`fuse-stdlib-spec.md`](../fuse-stdlib-spec.md):
+
+> The standard library is not a workaround surface. It is a stress
+> test. When a library implementation triggers a compiler bug [...]
+> Stop. Reproduce it minimally. Fix the compiler. Verify. Resume.
+>
+> Cutting corners in the library to avoid a compiler bug is not a
+> solution. It is a debt that will be collected during Stage 2, with
+> interest.
+
+During Wave 1 of stdlib implementation (11 modules), the team found
+and fixed **10 compiler/evaluator bugs** (Bugs #1–#10 in
+[`stdlib_implementation_learning.md`](../stdlib_implementation_learning.md)).
+Patterns:
+
+- Extension function resolution dispatch didn't match between
+  zero-arg and multi-arg paths (#1)
+- Cranelift "block already filled" after return in match arm (#2)
+- Spec conformance: concrete types shipped where generics were
+  required (#3)
+- Missing language primitive: `!` (Never) via trap (#4)
+- Evaluator f-string interpolation silently dropped method calls (#5)
+- Parser rejected keywords as member/method names (#6)
+- Float display, float arithmetic, float comparison (#7–#9)
+- ASAP name extraction missed f-string references (#10)
+
+**Yield per bug.** Every bug produced a regression test. Every bug
+went into the bug log. Every bug was fixed in the compiler, not
+worked around in the library.
+
+**Fuse3 implication.** This is a *strategy*, not a feature. Fuse3
+should adopt it verbatim: write the stdlib in Fuse3 itself as the
+first real stress test of the compiler. Any bug found there goes
+into a learning log identical to
+[`stdlib_implementation_learning.md`](../stdlib_implementation_learning.md).
+
+## 5.4 Maps (user flagged for from-scratch redesign)
+
+Fuse2's `Map<K,V>`:
+
+- Created with `Map::<K, V>.new()`.
+- Key must support equality (and eventually `Hashable`).
+- `.get(key) -> Option<V>` (no null, no panic).
+- `.set(key, value)`, `.contains(key)`, `.remove(key)`, `.len()`,
+  `.isEmpty()`, `.keys()`, `.values()`, `.entries()`.
+- Runtime-backed by Rust `std::collections::HashMap` behind a
+  `FuseHandle` wrapper.
+
+**What worked.** The API is right. The `Option<V>` return on `get`
+eliminates the null/panic/sentinel footgun. The `.keys()`, `.values()`,
+`.entries()` separation is clean.
+
+**What hurt.**
+
+- **Map had to exist before `Hashable` did.** This pushed the
+  runtime into supporting `Int`/`String` keys via special cases,
+  and other types via string-formatted hashes. The
+  [`stdlib-interfaces-plan.md`](../stdlib-interfaces-plan.md)
+  explicitly calls out "Stage 2 relevance: Equatable and Hashable
+  are blockers — the self-hosted compiler needs HashMap with
+  custom-type keys and real `==` dispatch."
+
+- **Map iteration order is non-deterministic.** Rust's HashMap
+  (like Go's) iterates in random order. This bit the codegen
+  when it iterated over the program's modules (fixed in Wave B1
+  by switching to `BTreeMap`). It will bite anyone who tries to
+  use `Map` to produce deterministic output.
+
+- **Runtime FFI is 30 functions** (`fuse_map_new`, `fuse_map_set`,
+  `fuse_map_get`, `fuse_map_remove`, `fuse_map_contains`,
+  `fuse_map_len`, `fuse_map_keys`, `fuse_map_values`,
+  `fuse_map_entries`, plus specialisations). Each one crosses the
+  FuseHandle ABI boundary. See §4.2.
+
+**Fuse3 implication — why the user flagged this.**
+
+- In Go, Fuse3's `Map[K, V]` can literally be a Go generic map
+  `map[K]V` for types where `K` is Go-comparable. For user types
+  with custom `Hashable`, it can be a Go map over a shim key type.
+  There is no runtime FFI.
+
+- The interface system (`Hashable`, `Equatable`) must exist *before*
+  Map is designed. This is the opposite order from Fuse2.
+
+- Deterministic iteration: either (a) make Fuse3's Map iterate in
+  insertion order (like modern Python dicts, Go's iteration via
+  slice of keys), or (b) document that iteration order is
+  unspecified and provide a `sortedKeys()` helper. The former is
+  friendlier. The latter is faster.
+
+---
+
+# Part 6 — Bug taxonomy (what actually broke)
+
+## 6.1 L001–L029 summary
+
+The [`learning.md`](../learning.md) file groups bugs into 8 triage
+groups (G1–G8). Every L-entry has a reproduction, root cause, fix
+plan, and status. As of the B12 session, L001–L029 are all fixed
+(or deferred to B12 follow-up with documented trade-offs). Summary
+of what bit:
+
+| Group | Area | Representative bugs |
+|---|---|---|
+| **G1 — Codegen fundamentals** | IR value correctness | L006 (map import → Cranelift verifier errors), L010 (Comparable `<`/`>` → bad IR), L011 (`.get()` None path → null handle crash) |
+| **G2 — Control flow** | Loops, break/continue, divergence | L002 (`continue` in `for` → infinite loop), L003 (`loop { return }` → type mismatch because loop is Unit not Never) |
+| **G3 — Lambdas & closures** | Higher-order function dispatch | L007 (lambda fn pointer boxed as FuseHandle passed to `call_indirect`) |
+| **G4 — Parser gaps** | Missing syntax | L008 (`struct<T>`), L009 (`implements<T>`), L018 (`enum<T>`), L021 (`spawn move { }`) |
+| **G5 — Pattern matching & chaining** | Destructuring, optional chains | L005 (enum multi-payload binding), L016 (`?.` into method call), L027 (match-as-expression arm unification), L029 (statement-position match compat) |
+| **G6 — Generics codegen** | Type-param substitution | L019 (`<T: Printable>` bound parsing), L020 (generic `List<T>.push()` in user fn) |
+| **G7 — Stdlib, tests, tooling** | Missing imports, missing helpers | L004 (struct field privacy), L012 (`Int.toFloat()` missing import), L014 (parallel test runner hash collisions), L015 (`Int.hash()` missing) |
+| **G8 — Concurrency safety** | Checker gaps | L022 (var mutation inside spawn), L023 (multiple `__del__` duplicate symbols) |
+
+**Newest entries (from B10–B12):** L026 (fuse-lsp referenced removed
+field after B3 rename), L027 (match-as-expression inference),
+L028 (f-string `{{`/`}}`), L029 (statement-position match).
+
+## 6.2 B-wave taxonomy
+
+The B-wave plan ([`fuse-stage2-parity-plan.md`](../fuse-stage2-parity-plan.md))
+organized the Stage 2 parity work into 13 waves:
+
+- **B0** — Baseline & verification
+- **B1** — Determinism (HashMap → BTreeMap)
+- **B2** — Checker extension resolution enforcement (silent drops)
+- **B3** — Parser & AST enum variant payload types
+- **B4** — Codegen generic substitution at extension call sites
+- **B5** — Codegen hardcoded specialization ordering
+- **B6** — Codegen user-defined enum variant binding
+- **B7** — Codegen match-as-expression type unification (rules U1–U6)
+- **B8** — Codegen namespace static method calls
+- **B9** — Codegen tuple field access type propagation
+- **B10** — Lexer f-string brace escaping
+- **B11** — Stage 2 source missing imports
+- **B12** — Stage 2 self-compile verification (**in-flight as of this doc**)
+- **B13** — Institutional knowledge & document sync
+
+Each wave is one *bug class*. Each was load-bearing. Each was known
+before B0 started (from the T4 parity investigation). Each took
+between 30 minutes and a full day to fix properly.
+
+**Meta-observation.** The B-waves were not "new bugs found during
+Stage 2" — they were *latent bugs catalogued in the T4 investigation*
+that had to be fixed in a specific order because they compounded.
+The fact that the plan could be written down at all means the bug
+class was already understood. What was *not* understood was the B12
+ABI cascade.
+
+## 6.3 B12 session (new): the 8 ABI-mismatch cascade
+
+This is fresh material from the current session — not yet
+documented in `learning.md` beyond the commit messages. Capturing it
+here so it's not lost.
+
+Root cause was **"stage 2 was never exercised end-to-end"**. The
+W7.5 bootstrap test input was a trivial program, not the real
+`stage2/src/main.fuse`. When the real source was compiled for the
+first time, the following cascade surfaced:
+
+| # | Layer | Bug | Commit |
+|---|---|---|---|
+| 1 | Checker + Codegen | `compile_match` / `compile_two_arm_match` / `compile_when` hardcoded block arms as `Some("Unit")` even when the block diverged (`return` / `sys.exit` / trap). Every `val x = match y { Ok(v) => v, Err(_) => { return } }` lost its type. | [41a0cb4](../../) |
+| 2 | Codegen diagnostics | `cannot infer receiver type for X` had no source span. Cranelift verifier errors had no Fuse symbol name. | [41a0cb4](../../) |
+| 3 | Linker | 6 Cranelift FFI wrappers declared in stage 2 but never implemented in the Rust crate: `builder_block_param`, `builder_inst_result`, `builder_declare_var`, `builder_def_var`, `builder_use_var`, `ins_call_n`. | [d50f90c](../../) |
+| 4 | Extern decl mismatch | `cranelift_ffi_signature_new` declared with 1 param in `codegen.fuse` and 2 in `runtime.fuse`. The declare loop picked one by BTreeMap order, producing a silent Cranelift verifier error on the first call that disagreed. Fix: align the declaration, plus compiler error on *any* arity mismatch between duplicate externs. | [196fbb0](../../) |
+| 5 | Runtime type mismatch | `fuse_result_is_ok` declared as `(ptr) -> ptr` in stage 2's `declareAllRuntime` but the Rust function returns `bool` (I8). Garbage upper bits caused every `match result { Ok(_) => ..., Err(_) => ... }` to pick the wrong arm. Fix: `runtimeReturnTypeId` lookup for 11 non-uniform runtime functions. | [196fbb0](../../) |
+| 6 | List ABI | `cranelift_ffi::read_values(args, count)` dereferenced `args` as a raw `*const i64`. Stage 2 passes a Fuse `List<Int>` handle. Fix: `fuse_runtime::extract_int_list` iterates the list, `read_values` uses it, smoke test updated. | [9126baf](../../) |
+| 7 | String ABI | `cranelift_ffi::str_from_raw(ptr, len)` same problem. Fix: `fuse_runtime::extract_string_pub`, `str_from_raw` dual-path. Also: `cranelift_ffi_module_define_data` with raw bytes. Same treatment. | [9126baf, 9fdc21c](../../) |
+| 8 | Stage 2 source | `parseOutputFlag` had `return next.unwrap()` where the function signature promised `Option<String>`. The checker did not verify explicit `return` types against function signatures. | [9126baf](../../) |
+
+**Result after the 8 fixes.** For the first time in the project's
+history, `fusec stage2/src/main.fuse -o fusec2.exe` produced a
+self-hosted binary *and* that binary successfully compiled a trivial
+Fuse program (`@entrypoint fn main() { }`). The compiled binary ran
+and exited 0.
+
+**What's still broken as of this writing.** `fusec2 hello.fuse -o
+hello.exe` still panics with another `runtime received null Fuse
+handle` somewhere in the `println` runtime call chain — one more
+layer of the same ABI-mismatch cascade. Another audit pass would
+find it; we stopped to write this learnings doc instead.
+
+## 6.4 Pattern analysis
+
+Across L001–L029 and B1–B12, the bug classes by count:
+
+| Class | Count | Representative |
+|---|---|---|
+| **Information loss between checker and codegen** | 10+ | L027, L028, L029, B7, B9 |
+| **Silent failure in the checker** | 5 | B2 (extension resolution), L022, L029, parseOutputFlag, L013 (test authoring) |
+| **ABI mismatch at a subsystem boundary** | 8 | All of B12 |
+| **Pattern-match ownership / bind lifetime** | 5 | L005, L027, L029, plus two in stdlib |
+| **Missing diagnostics / bad error messages** | 5 | B12 span work, extern arity check, Cranelift verifier tagging |
+| **Parser gap for new syntax** | 4 | L008, L009, L018, L021 |
+| **Control-flow / divergence typing** | 3 | L002, L003, B12 Never-arm |
+| **Determinism** | 2 | B1 (HashMap), L014 (parallel test runner) |
+| **Stdlib workaround retained** | 3 | Bug #11 (stack frame), Bug #5 workaround (hand-rolled f-string eval) |
+
+**Top three root-cause patterns.** If Fuse3 eliminates these three,
+it eliminates most of Fuse2's backlog:
+
+1. **Post-hoc type inference in the codegen.** Fix: typed AST, one
+   checker pass, codegen never re-infers.
+2. **Silent failure in the checker.** Fix: every "could not resolve"
+   path returns an error, never falls through to "try something else"
+   unless that something else is documented and deterministic.
+3. **ABI boundary without a contract test.** Fix: single-language
+   implementation (Go) where Fuse3 values are Go values.
+
+---
+
+# Part 7 — Process learnings
+
+## 7.1 The "plan doc, execute strictly" pattern
+
+Every wave in Fuse2 had a plan doc. Every plan doc had:
+
+- A status section
+- Mandatory rules (philosophy, Rules 1–8)
+- Resolved design decisions (with rationale for each)
+- Task summary table
+- One section per wave with phase sections inside
+- Each phase had a "what is the issue", "what needs to be done",
+  "how should it be done", and a task checklist with checkbox tasks
+- Each phase ended with a commit at the phase boundary
+
+**What worked.** The plan docs were load-bearing for the entire
+project. They survived multiple sessions, multiple AI agents, and
+multiple implementers. Anyone could pick up a phase, read the
+mandatory rules, read the phase section, and start executing.
+
+**What hurt.** The plans were the most expensive documents to write
+and the most painful to keep in sync. When Wave B10 discovered a
+new gap (L028), the plan was updated, the learning was written, the
+commit messages were detailed, *then* the code landed. That cadence
+is sustainable for one person writing carefully. It's expensive.
+
+**Fuse3 implication.** Keep the plan-driven pattern. Compress it if
+possible. The rules section can live in one shared file (`rules.md`)
+and be linked from every plan. The "mandatory rules" section at the
+top of every document is long. Better: a single rules file, every
+plan doc starts with "read rules.md and this doc".
+
+## 7.2 The "no corners cut" rules
+
+From [`fuse-stage2-parity-plan.md`](../fuse-stage2-parity-plan.md),
+Mandatory Rules section:
+
+- **Rule 1 — No corners cut.** Every fix is a proper fix. No
+  workarounds. No "patch the test fixture." No "rewrite the Stage 2
+  source to avoid the compiler bug." No TODO comments.
+- **Rule 2 — Solve problems immediately.** If a new bug is
+  discovered while executing any phase, stop and fix it in the same
+  phase. Do not defer.
+- **Rule 3 — Ground every fix in the code.** Cite the exact file and
+  line range before the fix; cite the test that exercises it after.
+- **Rule 4 — Zero regressions.** All five test suites must be green
+  after every phase.
+- **Rule 5 — Determinism is load-bearing.** Non-determinism is a
+  bug.
+- **Rule 6 — Diagnostics are first-class.**
+- **Rule 7 — Document what you learn.**
+- **Rule 8 — Phase completion standard.** A phase is done only when
+  all checkboxes are `[x]`, all tests pass, and the plan doc is
+  updated.
+- **Rule 9 — Commit at phase boundaries.**
+
+**What worked.** Rule 1 is the reason the B-wave plan actually
+closed its bugs instead of accumulating technical debt. Every time
+the temptation arose to "just patch stage 2 source to avoid the
+compiler bug", the rule said no, and the compiler fix landed instead.
+
+**What hurt.** Rule 2 is hard to hold in the presence of scope
+creep. B11 discovered L029 (statement-position match compat) as a
+Rule 2 fix, but the proper fix (threading `value_context` through
+`check_expr`) was judged too invasive and a surgical Unit-filter
+was applied instead with a B12 follow-up note. This is documented
+honestly, but it's a soft violation of "no corners cut".
+
+**Fuse3 implication.** Rules 1, 4, 5, 6, 7, 9 transfer directly.
+Rule 2 should be softened to "Rule 2a: Solve problems immediately
+*if the solution fits in the phase's scope*. Otherwise, log the
+problem, defer to a follow-up phase, and be explicit about what
+the compromise costs." This is what Fuse2's L029 did in practice.
+
+## 7.3 Bug Policy (stdlib as stress test)
+
+See §5.3. The bug policy from [`fuse-stdlib-spec.md`](../fuse-stdlib-spec.md)
+is the most load-bearing single-paragraph rule in the Fuse2
+project. **Transfer verbatim.**
+
+## 7.4 Rules that worked, rules that didn't
+
+**Worked.**
+
+- "The guide precedes implementation."
+- "No timelines — a language is complete when correct, not when a
+  calendar says so."
+- "Every feature has been proven in production at scale."
+- "Stage 0 = Stage 1 = Stage 2 output."
+- "When the guide and the code disagree, fix the code."
+
+**Didn't work as well.**
+
+- "No TODO, no defer, no workaround." Works for small fixes.
+  Collides with reality when a fix requires a refactor larger than
+  the current phase. L029 is the canonical example — the proper fix
+  exists, was documented, but was not done because the wave didn't
+  budget for it.
+
+- "Stage 0 is a completed prototype." (ADR-012.) This was the
+  *intended* rule but L001 shows it was broken in practice when
+  implementers added features to Stage 0 to let Stage 2 code run
+  there. Needs to be stronger: Stage 0 is read-only after Phase 5.
+
+---
+
+# Part 8 — Items flagged for fresh design in Fuse3
+
+The meta-plan ([`fusev3-meta-plan.md`](fusev3-meta-plan.md))
+explicitly calls out:
+
+> Anything that was not done from scratch in Fuse2 will be put in
+> guide, planed and developed from scratch based on what we have
+> learnt. These include but not limited to the following:
+> - concurrency
+> - maps
+> - memory management for threads
+
+## 8.1 Concurrency — user directive
+
+Covered in detail in Part 3 (§3.5). Summary of the redesign surface:
+
+- **Primitives.** `spawn`, `Chan<T>`, `Shared<T>`, `@rank(N)`.
+  Keep semantics. Decide runtime mapping (goroutines? Go channels?
+  sync.RWMutex?).
+- **`select`** — promote from deferred to day-one. Go gives it for
+  free.
+- **`SpawnHandle<T>`** — decide whether Go's `sync.WaitGroup` +
+  channels pattern is enough, or whether Fuse3 needs a typed
+  handle abstraction.
+- **Memory model** — document explicitly. Adopt Go's or define a
+  subset.
+
+## 8.2 Maps — user directive
+
+Covered in detail in §5.4. Summary of the redesign surface:
+
+- **`Hashable` must exist before `Map` is designed.** Sequence
+  matters.
+- **Decide iteration order.** Insertion-order (friendly) vs
+  unspecified (fast).
+- **Decide key requirements.** Go-comparable? `Hashable`?
+  Both with fallbacks?
+- **No FFI boundary.** `Map[K, V]` is a Go map under the hood.
+
+## 8.3 Thread memory management — user directive
+
+Covered partially in §4.2 and §3.5. Summary of the redesign
+surface:
+
+- **No raw FuseHandle.** Fuse3 values are Go values. Go's garbage
+  collector owns lifetime for non-owned values; Fuse's ASAP
+  destruction owns lifetime for owned values. These must not
+  collide.
+- **Thread-safe `Shared<T>`.** Wrap a Go `sync.RWMutex` around a
+  Go struct. `@rank` checks at compile time; Go at runtime can
+  additionally give us `-race` detector coverage for free.
+- **Channels own their values.** A `Chan[T]` sending an owned value
+  transfers ownership. The sender cannot use the value after send.
+  Enforced at the Fuse checker, not at runtime.
+- **Goroutine stack growth.** Fuse3 inherits Go's growable stacks.
+  Users don't see stacks. Stage 2's "stack size 8MB via linker
+  flag" (pitfall 4 in Fuse2) disappears.
+
+## 8.4 Other candidates surfaced by the learnings
+
+These are not in the user's directive but are strong candidates
+for from-scratch redesign based on the learnings:
+
+- **The checker's `value_context` propagation.** See §2.1, §2.5.
+  Fuse2 added it post-hoc during B11 as a Unit-filter. Fuse3
+  should design it in.
+
+- **Arm type unification algorithm.** See §2.5. Fuse2's U1–U6
+  rules plus B12's U7 (Never) should be frozen into the Fuse3
+  guide from the start, with matching checker and codegen code.
+
+- **String indexing.** See §2.4. Fuse2's O(n) `charAt` vs O(1)
+  `byteAt` split is correct but easy to misuse. Fuse3 should
+  hide the trap.
+
+- **F-string representation.** See L028 and §4.3. Fuse2 stored
+  f-strings as `String` templates and re-scanned them four times.
+  Fuse3 should parse f-strings into a typed AST node
+  (`FStringNode { parts: []FStringPart }`) at lex time.
+
+- **Diagnostic format.** See §4.6. Fuse3 should have `Diagnostic`
+  as a struct from day one with `span`, `message`, `hint`,
+  `severity`, `code`.
+
+- **Module loading determinism.** See §4.5. Fuse3 should sort
+  map keys wherever they feed into user-visible output or
+  codegen.
+
+- **Checker exhaustiveness.** The checker currently has several
+  "silently pass through" code paths. Fuse3's checker should be
+  a total function: every AST node is either accepted or
+  rejected with a specific diagnostic, never ignored.
+
+---
+
+# Part 9 — Crosswalk: Fuse2 pain → Fuse3 design implications
+
+This is the one-page version. If you have 5 minutes to read, read
+this part and Part 1.
+
+| Fuse2 pain point | What hurt | Fuse3 design implication |
+|---|---|---|
+| **Three-stage bootstrap (Python → Rust → Fuse)** | 3 independent implementations of lexer/parser/checker to keep in sync. Stage 0 accreted features for Stage 2. Bootstrap test never exercised real stage 2 source. | **Single implementation in Go.** Go-hosted frontend is both the interpreter and the codegen driver. Bootstrap test always compiles the real compiler from day one. |
+| **Uniform FuseHandle ABI** | Elegant at the type system but brittle at the boundary: the smoke-test convention and the stage-2 convention disagreed silently, producing 8 different bug classes in B12. | **No FFI boundary.** Fuse3 values are Go values. Go's type system is the contract. `Map[K,V]` is literally `map[K]V`. `Chan[T]` is literally `chan T`. |
+| **Checker silently accepts unknowns** | `unresolved extension method` fell through to codegen in Fuse2, producing obscure downstream errors. B2 fixed it in the B-wave retrofit. | **Checker is a total function.** Every node is accepted or rejected. No silent pass-through. The compiler is **complete** — never tentative. |
+| **Post-hoc type inference in codegen** | Codegen re-computed types via `infer_expr_type` after pattern bindings had gone out of scope, producing L027, L028, L029 and half the B-waves. | **Typed AST (TAST).** Every node carries its type, value-context, and live-set *after* the checker pass. Codegen reads TAST; never infers. |
+| **Post-hoc ASAP analysis with 4 independent walkers** | F-string name collection, match-arm type collection, ASAP dead-binding release, defer capture analysis — four separate walkers, all had to agree. | **Single AST attribute.** `node.LiveAfter() stringSet` computed once during TAST construction, consumed by everyone. |
+| **Non-deterministic `HashMap` iteration** | Errors were reproduction-resistant; different runs hit different failures. B1 fix was `BTreeMap`. | **Fuse3 lint.** Iterating a Go `map` in a codegen/diagnostic path is a lint error unless preceded by `sort.Strings(keys)`. |
+| **Bare-string codegen errors** | `cannot infer receiver type for X` with no span. Cranelift verifier errors with no Fuse symbol name. B12 retrofit added both. | **`Diagnostic` struct from day one.** No `fmt.Errorf` in the compiler. Every error carries span, message, hint, severity, code. |
+| **Scheduling model deferral** | Stage 1 was single-threaded; Stage 2 planned OS threads; green threads deferred. Every phase had to imagine what the next phase would do. | **Day-one scheduling choice.** Fuse3 ships with goroutine-backed `spawn` from the first runnable program. Green threads are free. |
+| **Async/await re-rejected in Wave 0.6** | Distracted the team in an earlier iteration until it was killed. | **Never entertain async/await in Fuse3.** Closed question. |
+| **Matches can be used as expressions or statements** | The checker flagged statement-position matches with mixed arm types (L029). Fix was a Unit-filter; proper fix deferred. | **`ValueContext bool` propagated through the checker from day one.** Every `check_expr` call knows whether the value will be used. |
+| **`return <expr>` not checked against function signature** | Latent bug in `parseOutputFlag`. | **Checker verifies explicit return types.** Single entry point for "is this expression compatible with the function's declared return type". |
+| **Missing imports silently allowed because of hardcoded runtime paths** | Wave B2 fixed it, but not before 284 unresolved extension calls existed across 8 files. | **Imports are the only way to resolve extensions.** No hardcoded fallback in the codegen. No "did you forget an import" at link time. |
+| **`Map` before `Hashable`** | Required runtime special-casing for `Int`/`String` keys. | **Interfaces before Map.** Sequence: `Equatable`, `Hashable`, `Comparable` first, then `Map[K,V]` as a generic container requiring `Hashable`. |
+| **Stdlib written around compiler bugs (pre Bug Policy)** | Bug #11 (stack frame workaround) retained in stdlib. | **Bug Policy from day one.** No workarounds in stdlib, ever. Bug found → compiler fixed → stdlib rewritten the natural way. |
+| **Plan docs expensive to maintain** | Every B-wave required the plan, the learning entry, the commit message, the status table, the memory update. | **Shared `rules.md`.** Every plan links to it instead of re-stating it. Also: tool assistance for plan updates. |
+| **Docs sprawl (18 docs, 15k lines)** | Finding the right place for a new learning was hard. | **Fewer, denser docs.** One guide. One plan (per active wave). One learning log. One ADR directory. |
+
+---
+
+# Part 10 — Open design questions for the Fuse3 language guide
+
+These are the questions the guide must answer. Listed in rough
+dependency order (earlier answers constrain later ones).
+
+## Foundation (must answer before anything else)
+
+1. **Implementation language: Go. Confirmed.** Also: is Fuse3 a
+   library embedded in a Go program, or a standalone binary that
+   compiles Fuse source to native code, or both?
+
+2. **What does "compile to native" mean in Go?** Options:
+   - Go's `go/ssa` → Go source → `go build`. Fuse3 emits Go.
+   - Go's `go/ssa` → LLVM IR → native. Fuse3 uses a separate
+     codegen.
+   - Use Go's plugin mechanism. Fuse3 programs are Go plugins.
+   - Compile Fuse3 programs to Go source files, include them in a
+     Go module, let `go build` produce the binary.
+
+3. **AST representation.** Define the node types before writing
+   anything. The typed-AST design (§4.4) hinges on this.
+
+4. **Module system.** Fuse2's `import a.b.c` → `src/a/b/c.fuse`
+   worked. Go's module system is different. Decide now whether
+   Fuse3 follows Fuse2's file-per-module rule or Go's
+   directory-per-package rule.
+
+## Language semantics (decided in Fuse2, probably transfer)
+
+5. **Ownership keywords.** Keep `ref`/`mutref`/`owned`/`move`.
+   Confirm: `mutref` must appear at both call site and signature.
+
+6. **ASAP destruction.** Keep. Formalise the single-pass liveness
+   algorithm as part of the type checker (§2.2, §4.3).
+
+7. **Result/Option/?/?./?:.** Keep. Add: checker must verify
+   explicit `return <expr>` against the function's return type
+   (§2.3).
+
+8. **Match / when / exhaustiveness.** Keep. Formalise U1–U7
+   including Never (`!`) as a real type.
+
+9. **Interfaces and `implements`.** Keep. Keep ADR-013 exactly.
+   Generate methods from field metadata at compile time.
+
+10. **Decorators.** Keep the list: `@value`, `@entrypoint`,
+    `@export`, `@rank`, `@test`, `@inline`, `@builder`,
+    `@deprecated`, `@ignore`. Confirm: no behavioral decorators.
+
+11. **Data class / struct / @value.** Keep the split. Auto-generation
+    only for `data class` and `@value struct`.
+
+12. **Generics.** Monomorphise at compile time. Type parameters on
+    free functions *and* user types. No type erasure.
+
+13. **String operations.** Reconsider the O(n)/O(1) `charAt`/`byteAt`
+    split (§2.4). Probably: make `chars()` the default iteration
+    API, reserve `charAt`/`byteAt` for explicit performance paths.
+
+## Concurrency (user-flagged for from-scratch)
+
+14. **Scheduling.** Goroutines? Green threads? Both? Can they
+    coexist?
+
+15. **Channels.** Map to Go's `chan T` or define a Fuse-specific
+    wrapper? Decide now.
+
+16. **`Shared<T>` runtime.** `sync.RWMutex` around a Go struct.
+    Compile-time `@rank` still load-bearing.
+
+17. **Memory model.** Adopt Go's or document a stricter subset.
+
+18. **`select`.** Day one. Match Go's syntax or invent Fuse-native.
+
+19. **`spawn` capture rules.** Keep `spawn move` / `spawn ref` /
+    reject raw `mutref` capture. Mirror in the Fuse3 checker
+    on top of Go's goroutine runtime.
+
+## Stdlib / tooling
+
+20. **Tier structure.** Keep Core / Full / Ext. Confirm Core is
+    OS-free.
+
+21. **Interface set.** `Equatable`, `Hashable`, `Comparable`,
+    `Printable`, `Debuggable` are Core. `Serializable`,
+    `Encodable`, `Decodable` are Ext-tier (need `Encoder`/`Decoder`
+    types defined first).
+
+22. **Map design.** `Map[K: Hashable, V]`. Iteration order:
+    insertion or unspecified? Pick and document.
+
+23. **FFI to Go.** How does Fuse3 call Go code? How does Go code
+    call Fuse3 code? If Fuse3 compiles to Go source, this is
+    trivial. If Fuse3 compiles via cgo or similar, it needs a
+    contract.
+
+24. **Testing.** `@test` decorator. Fuse3 test runner. Integration
+    with `go test`?
+
+25. **LSP, formatter, linter.** Ship day one or deferred?
+
+## Meta / process
+
+26. **Bootstrapping.** Fuse3 is written in Go. At what point does
+    Fuse3 become self-hosting? Or does it never bootstrap itself?
+
+27. **Rules doc.** Single shared file vs per-plan restatement.
+
+28. **Learning log.** Ordered append-only (Fuse2 style) or
+    searchable database?
+
+---
+
+## Closing
+
+This is the source material for Part 1 of the Fuse3 docs — the
+Language Guide. It is deliberately wide. The next step is to answer
+Part 10's questions in the guide itself, and that answer-pass is what
+will shape the Fuse3 semantics.
+
+The two meta-rules from Fuse2 that carry over verbatim:
+
+1. **The guide precedes implementation.** If it's not in the guide,
+   it doesn't exist.
+2. **Every decision must serve the three pillars.** Memory safety
+   without GC, concurrency safety without a borrow checker, DX as a
+   first-class concern.
+
+Everything else is negotiable.
