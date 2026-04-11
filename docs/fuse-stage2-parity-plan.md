@@ -238,7 +238,7 @@ closed, so the checker — not a reviewer — drives the fix).
 | B7 | Codegen: Match-as-Expression Type Unification | 5 | 22 | B4, B5 | **Done** (commits 8b93265, b434a2a, d78f122, f3d86af, af35565, + B7.5) |
 | B8 | Codegen: Namespace Static Method Calls | 3 | 11 | B5 | **Done** (commits 17363c3, b3722ff) |
 | B9 | Codegen: Tuple Field Access Type Propagation | 3 | 10 | B7 | **Done** (commits f649172, ccbc74b) |
-| B10 | Lexer: F-String Brace Escaping | 3 | 9 | — | **Done** (commit b575bc0, closing commit pending) |
+| B10 | Lexer: F-String Brace Escaping | 3 | 9 | — | **Done** (commits b575bc0, fbefcac) |
 | B11 | Stage 2 Source: Missing Imports | 3 | 14 | B2, B4, B5 | Not started |
 | B12 | Stage 2 Self-Compile Verification | 6 | 22 | B1-B11 | Not started |
 | B13 | Institutional Knowledge & Document Sync | 4 | 14 | B12 | Not started |
