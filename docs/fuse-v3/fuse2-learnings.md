@@ -26,6 +26,7 @@
 - 1.5 Module system decisions (locked for Fuse3)
 - 1.6 Fuse3 C runtime surface (the ~40-entry platform layer)
 - 1.7 C FFI: `extern fn` and `@export` (five robustness rules)
+- 1.8 Day-one surface (CLI, targets, reserved slots)
 
 **Part 2 — Type system and memory model**
 - 2.1 Ownership: four keywords, no borrow checker
@@ -669,6 +670,205 @@ Fuse3 collapses the two declarations into one authored source
 (Fuse), auto-generates the other (C header), and static-asserts
 the ABI invariants at C compile time. The drift class disappears
 because there is only one document.
+
+---
+
+## 1.8 Day-one surface (CLI, targets, reserved slots)
+
+This section nails down what Stage 1 ships on *day one* — before
+self-hosting, before Wave 2 features, before SIMD or green threads
+or anything else. The principle: things that are expensive to
+retrofit (CLI ergonomics, reserved grammar slots, target triples)
+land day-one; things that are expensive to ship prematurely (SIMD,
+native backends) do not.
+
+### 1.8.1 The Stage 1 CLI
+
+Pillar 3 says DX is first-class, and the CLI is the primary
+touchpoint for every Fuse developer. Retrofitting good CLI UX
+later is much harder than starting clean, and the cost is
+modest — roughly 500–1000 LOC of Go, one week of work, pays back
+every single day after.
+
+**Subcommands, day one:**
+
+```
+fuse build    — emit C, invoke cc, produce native binary
+fuse run      — interpret / typecheck + tree-walk (for REPL/tests)
+fuse check    — typecheck only, emit diagnostics
+fuse test     — discover and run @test functions
+fuse fmt      — format Fuse source in place
+fuse doc      — generate docs from //! and /// comments
+fuse repl     — interactive typecheck-and-evaluate loop
+fuse version  — print compiler version + target triple
+fuse help     — top-level and per-subcommand help
+```
+
+**Non-negotiables for the CLI, day one:**
+
+1. **Hand-rolled arg parsing in Go.** No `cobra`, no `spf13/*`,
+   no external dependencies. The same rule that keeps Go's
+   runtime out of emitted binaries keeps Go's ecosystem out of
+   the Stage 1 binary. ~200 LOC of Go does the whole job.
+
+2. **Rich `--help` for every subcommand**, with inline examples.
+   `fuse help build` produces a man-page-quality output.
+
+3. **Colored output when TTY-detected**, plain when piped.
+   `NO_COLOR=1` env var honored (respecting the de facto
+   standard).
+
+4. **Documented exit codes.** `0` success, `1` user error
+   (diagnostics), `2` compiler bug (should never happen — if
+   you see `2`, file an issue), `3` toolchain missing
+   (e.g. `cc` not found). No mystery exits.
+
+5. **Parseable output mode.** `--format=json` on any subcommand
+   emits a stable JSON schema for editor/LSP/CI integration.
+   The schema is versioned and documented in the Fuse3 guide.
+
+6. **Stable flag names from day one.** Renaming flags after
+   release breaks every tutorial, script, and CI pipeline that
+   references them. The Fuse3 guide freezes the flag names.
+
+7. **`fuse build --target=<triple>`** present from day one, even
+   if initially only the host target works. Users grow into
+   other targets; they don't re-learn the flag syntax.
+
+### 1.8.2 Target triples, day one
+
+```
+--target=linux-amd64     (host, initial self-host target)
+--target=linux-arm64
+--target=macos-amd64
+--target=macos-arm64
+--target=windows-amd64
+--target=wasm32-wasi     (via clang --target=wasm32-wasi + wasi-sdk)
+```
+
+Implementation strategy: all targets route through the same C
+emit path, differing only in which C compiler is invoked and
+which flags it gets. `linux-*` uses the system `cc`; `macos-*`
+uses `clang`; `windows-amd64` uses `cl.exe` or `clang-cl`;
+`wasm32-wasi` uses `clang --target=wasm32-wasi` with `wasi-sdk`
+on the user's machine.
+
+**Initial self-host target: `linux-amd64`.** Everything else is
+"supported" in the sense that the CLI accepts the flag and the
+emit path works; a target moves to "tested" status when a CI
+matrix run for that target passes the Stage 2 three-generation
+reproducibility test.
+
+### 1.8.3 WASM: a target, not a backend
+
+The rejected alternative was shipping a native WebAssembly
+backend — a second codegen path that emits `.wasm` directly.
+Rejected for three reasons:
+
+1. **Two backends means two places for the checker→codegen
+   information-loss disease to hide.** §4.7's eight rules are
+   designed around a single emit path. Doubling it doubles the
+   invariant surface.
+
+2. **Emscripten pulls in a heavy runtime.** POSIX syscall
+   emulation, `malloc`, signal handlers, a virtual filesystem.
+   Shipping Emscripten as the WASM path contradicts §1.4's
+   "no runtime spillover" rule the same way bundling Go's
+   runtime would.
+
+3. **`clang --target=wasm32-wasi` gives us minimal WASM for
+   free.** We already emit plain C11, clang targets wasi-sdk
+   natively, the output is small and has no hidden runtime.
+   Zero new codegen work, real WASM deployment story, covered
+   by the same invariant walkers that cover native C.
+
+**What this buys.** Fuse3 programs run in the browser (via a
+WASI shim), on Cloudflare Workers / Deno / wasmtime / wasmer, in
+cloud sandboxes, on edge runtimes — anywhere WASI is supported.
+The user's only toolchain dependency beyond `fuse` is `wasi-sdk`,
+which they install once.
+
+**What's deferred.** A native WASM backend with direct access to
+WASM threads, GC references, reference types, and the WASM SIMD
+proposal. Nice to have, not day-one. Revisit in Wave 3 or later,
+when the WASM spec has stabilised further and the Fuse compiler
+is mature enough to carry a second backend.
+
+**One runtime caveat.** A few `fuse_rt_*` entry points don't map
+cleanly to WASI and need `#ifdef __wasi__` handling:
+`fuse_rt_thread_spawn` (WASM threads proposal, not universally
+available), `fuse_rt_fs_*` (requires WASI preopens). On WASI
+these either stub to errors or call into the WASI equivalents.
+~100 LOC of conditional C in `fuse_rt.c`.
+
+### 1.8.4 SIMD: reserved slot, not day-one feature
+
+Full vector SIMD is the right call *eventually*, and the wrong
+call *now*. Shipping SIMD in Stage 1 would mean locking ABI
+decisions (alignment, vector types at FFI boundaries, memory
+model interactions) before the compiler has even self-hosted.
+That is the worst possible time to commit to a feature this
+large. Rust's `std::simd` spent years in nightly and is still
+consolidating — the design problem is genuinely hard, and
+shipping a half-baked version means re-writing user code three
+times as the design converges.
+
+**What Fuse3 reserves day-one (grammar-level, zero
+implementation):**
+
+- `Vec[T, N]` as a reserved generic type name. User code cannot
+  declare a type or alias called `Vec`.
+- `@simd` as a reserved decorator name. User code cannot use
+  `@simd` for anything else.
+- Type names `V128`, `V256`, `V512` reserved for future
+  fixed-width vector aliases.
+
+These reservations cost zero at implementation time (just a
+handful of entries in the lexer's keyword/reserved table), and
+they mean that when SIMD does land (Wave 2 or Wave 3), the
+grammar slot is already waiting. No breaking change, no
+user-visible migration.
+
+**Interim story for users who need SIMD today.** Drop into C via
+`extern fn` — a single `unsafe { }` block, governed by the §1.7
+rules, and the user links against their own SIMD-using C
+library. This is a deliberate pressure-release valve: users who
+*really* need SIMD can get it, the rest of the language isn't
+held hostage to design work on a feature it doesn't need yet.
+
+**When to design SIMD.** After self-host, after concurrency is
+stable, after the property-test harness (§4.7 rule 8) is running.
+At that point the full surface — `Vec4f`, swizzles, masks,
+reductions, portable vs target-specific, alignment rules, FFI
+vector types — can be designed against a real compiler that can
+immediately test each decision.
+
+### 1.8.5 Day-one summary table
+
+| Surface                   | Day-one? | Notes |
+|---------------------------|----------|-------|
+| CLI with all 9 subcommands| ✅        | Hand-rolled Go, stable flag names |
+| `--format=json` output    | ✅        | Versioned schema |
+| Colored TTY output        | ✅        | Honors `NO_COLOR` |
+| `linux-amd64`             | ✅ (self-host target) | |
+| `linux-arm64`             | ✅ (target available, CI-tested later) | |
+| `macos-amd64/arm64`       | ✅ (target available) | |
+| `windows-amd64`           | ✅ (target available) | |
+| `wasm32-wasi`             | ✅ (via `clang + wasi-sdk`) | No native WASM backend |
+| `Vec[T, N]` reserved slot | ✅ (lexer only) | Implementation Wave 2-3 |
+| `@simd` reserved slot     | ✅ (lexer only) | Implementation Wave 2-3 |
+| SIMD operations           | ❌ (Wave 2-3) | Users drop to C via `extern fn` |
+| Native WASM backend       | ❌ (Wave 3+) | Use `wasm32-wasi` target instead |
+| Green-thread scheduler    | ❌ (Wave 2+) | OS threads first, per §3.3 |
+| `select` on channels      | ❌ (Wave 2)  | Per Q20 |
+| Async I/O / epoll         | ❌ (Wave 2+) | |
+
+The principle: day-one surface is about *commitments you can't
+cheaply reverse*. CLI flag names, grammar reservations, target
+triples, runtime entry-point names — all of these are API that
+users will build tooling around. Ship them right the first time.
+Features that are large and self-contained (SIMD, async, green
+threads) land when they're designed, not before.
 
 ---
 
@@ -2452,6 +2652,21 @@ for from-scratch redesign based on the learnings:
   a total function: every AST node is either accepted or
   rejected with a specific diagnostic, never ignored.
 
+- **SIMD (reserved day-one, designed Wave 2–3).** Fuse2 had no
+  SIMD story. Fuse3 reserves the `Vec[T, N]` generic type name
+  and the `@simd` decorator in the grammar from day one — zero
+  implementation cost, just lexer entries — so the feature has
+  a waiting slot when the full surface gets designed. The
+  actual design (swizzles, masks, reductions, portable vs
+  target-specific, FFI vector types, alignment rules) happens
+  in Wave 2 or Wave 3, alongside or after the concurrency
+  surface, when the compiler is self-hosting and the §4.7
+  property-test harness is running. Users who need SIMD in the
+  interim drop to C via `extern fn` (§1.7). Rust's `std::simd`
+  is the cautionary tale: years in nightly, multiple user
+  migrations. Fuse3 refuses to ship SIMD half-designed. See
+  §1.8.4.
+
 ---
 
 # Part 9 — Crosswalk: Fuse2 pain → Fuse3 design implications
@@ -2736,6 +2951,47 @@ questions are listed in rough dependency order.
     summary, active bugs get a full entry. A searchable database
     was considered and rejected as overhead without clear payoff;
     `grep -n` over a flat file is fine at Fuse3's scale.
+
+## Day-one surface
+
+31. **CLI polish day-one.** **[DECIDED]** Stage 1 ships nine
+    subcommands (`build`, `run`, `check`, `test`, `fmt`, `doc`,
+    `repl`, `version`, `help`) with hand-rolled Go arg parsing
+    (no external dependencies), rich `--help`, colored TTY
+    output honoring `NO_COLOR`, documented exit codes (0
+    success / 1 user error / 2 compiler bug / 3 toolchain
+    missing), `--format=json` output with a versioned schema,
+    and stable flag names. Pillar 3 (DX) is load-bearing; CLI
+    is the primary touchpoint. Roughly one week of work, pays
+    back every day after. Full spec in §1.8.1.
+
+32. **WASM as a target, not a backend.** **[DECIDED]**
+    `fuse build --target=wasm32-wasi` ships day one, implemented
+    by invoking `clang --target=wasm32-wasi` (requires `wasi-sdk`
+    on the user's machine) against the same emitted C11 that
+    every other target uses. Zero new codegen work, real WASM
+    deployment story (browser, Cloudflare Workers, wasmtime,
+    wasmer). A separate native WebAssembly backend is rejected
+    day-one and deferred to Wave 3+. Three reasons: doubles the
+    checker→codegen invariant surface, Emscripten contradicts
+    §1.4's no-runtime-spillover rule, and `clang + wasi-sdk` is
+    already a complete minimal-WASM story. ~100 LOC of
+    `#ifdef __wasi__` handling in `fuse_rt.c` covers the entry
+    points that don't map to WASI cleanly. Full spec in §1.8.3.
+
+33. **SIMD reserved, not shipped.** **[DECIDED]** `Vec[T, N]`
+    reserved as a generic type name and `@simd` reserved as a
+    decorator in the lexer day-one — zero implementation cost,
+    just a handful of keyword table entries. Full SIMD surface
+    (swizzles, masks, reductions, portable vs target-specific
+    operations, FFI vector types, alignment rules) is designed
+    in Wave 2 or Wave 3, alongside or after the concurrency
+    surface, when the compiler is self-hosting and the §4.7
+    property-test harness is running. Users who need SIMD
+    before then drop to C via `extern fn` (§1.7). Rust's
+    `std::simd` is the cautionary tale — years in nightly,
+    multiple user migrations. Fuse3 refuses to ship SIMD
+    half-designed. Full spec in §1.8.4 and §8.4.
 
 ---
 
