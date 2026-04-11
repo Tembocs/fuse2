@@ -239,7 +239,7 @@ closed, so the checker — not a reviewer — drives the fix).
 | B8 | Codegen: Namespace Static Method Calls | 3 | 11 | B5 | **Done** (commits 17363c3, b3722ff) |
 | B9 | Codegen: Tuple Field Access Type Propagation | 3 | 10 | B7 | **Done** (commits f649172, ccbc74b) |
 | B10 | Lexer: F-String Brace Escaping | 3 | 9 | — | **Done** (commits b575bc0, fbefcac) |
-| B11 | Stage 2 Source: Missing Imports | 3 | 14 | B2, B4, B5 | **Done** (commit c07a97f, closing commit pending) |
+| B11 | Stage 2 Source: Missing Imports | 3 | 14 | B2, B4, B5 | **Done** (commits c07a97f, fb39aea) |
 | B12 | Stage 2 Self-Compile Verification | 6 | 22 | B1-B11 | Not started |
 | B13 | Institutional Knowledge & Document Sync | 4 | 14 | B12 | Not started |
 | **Total** | | **45** | **~170** | | |
