@@ -47,6 +47,7 @@
 - 4.4 Checker → codegen information loss (the recurring disease)
 - 4.5 Determinism: the HashMap lesson
 - 4.6 Diagnostics as a first-class concern
+- 4.7 Fuse3 compiler architecture invariants (the eight rules)
 
 **Part 5 — Stdlib design**
 - 5.1 Core / Full / Ext tiers
@@ -1408,6 +1409,223 @@ Pillar 3 says developer experience matters. In practice:
   are much more expensive to triage. **Silent failure is the single
   biggest class of bug in the Fuse2 backlog.**
 
+## 4.7 Fuse3 compiler architecture invariants (the eight rules)
+
+Fuse3 is a systems language whose compiler is itself held to
+systems-level correctness. This section codifies the eight
+architectural rules that make the Fuse2 bug classes structurally
+impossible rather than "caught by tests". The aggregate costs ~3000
+extra lines of compiler framework before the first line of real
+compilation logic — it is exactly the right investment given what
+Fuse2's B-wave triage taught us about where bugs actually came from.
+
+Each rule eliminates a concrete bug class that bit Fuse2. Adopting
+only some of the rules leaves those classes open; they are designed
+to be adopted together.
+
+### Rule 1 — Three IRs: AST → HIR → MIR
+
+The compiler has three intermediate representations:
+
+- **AST** (Parse AST): pure syntax. Produced by the parser, consumed
+  by name resolution and type checking. No types, no resolved names,
+  every node carries only `span: SrcRange`.
+- **HIR** (High-level IR): names resolved, types inferred, every node
+  carries its full metadata contract (Rule 2). Produced by the
+  checker, consumed by the ASAP lowering pass.
+- **MIR** (Mid-level IR): a flattened, nearly-C form where every
+  `Drop(local)` and every `Move(dst, src)` is an explicit statement,
+  and nested expressions have been lifted into named temporaries.
+  Produced by ASAP lowering, consumed by the C emitter.
+
+**Why three, not two.** MIR exists so that ASAP destruction placement
+is a unit-testable pass that operates on HIR and produces MIR with no
+codegen noise. Table-driven tests of the form "given this HIR, expect
+these exact Drops in this exact order" catch L027-class bugs before
+they reach C. The MIR→C emitter is then a mechanical pretty-printer
+with no judgment calls, which means a user debugging a miscompile can
+read the emitted C line-by-line against the source.
+
+**Bug classes eliminated.** L027 (pattern-bound value lifetimes), B7
+(match arm unification re-derivation), B12 (divergence tagging):
+every bug where codegen had to re-derive something the checker
+already knew.
+
+### Rule 2 — Separate Go types per IR, no nullable post-checker fields
+
+`ast.Expr`, `hir.Expr`, `mir.Expr` are three disjoint Go interfaces.
+A function that takes an HIR node cannot accept an AST node — Go's
+type system rejects it at compile time. Inside HIR, every field that
+the checker is responsible for is non-nullable:
+
+```go
+type HirExpr interface {
+    Span() SrcRange              // from AST
+    Type() TypeId                // always valid; never Unknown
+    Ctx() ExprContext            // Statement | Value | Tail
+    LiveAfter() BitSet           // which bindings survive
+    Owning() Option[LocalId]     // produces-owned-value annotation
+    DivergesHere() bool          // Never-type propagation
+}
+```
+
+`Type() TypeId` returns a valid interned type ID or the HIR node
+wasn't constructible. A checker that fails to infer a type emits a
+diagnostic and halts; it *cannot* produce a half-inferred HIR node.
+HIR constructors take all required metadata as parameters, so you
+literally cannot build an underspecified node.
+
+**Bug classes eliminated.** The silent-checker bug class (the single
+biggest class in Fuse2's backlog per §4.6). "Checker knew but
+codegen saw None" becomes unrepresentable at the type level.
+
+### Rule 3 — Exhaustive node kind list, frozen at language-guide freeze
+
+Every AST, HIR, and MIR node kind lives in an appendix of the Fuse3
+language guide. Adding a kind after freeze requires an ADR. Every
+compiler pass is then an exhaustive `switch` over a known-finite set,
+and self-hosted Fuse3 itself checks exhaustiveness at compile time.
+
+**Bug classes eliminated.** Fuse2's organic AST growth created
+passes that handled 19 of 20 cases and silently dropped the 20th.
+Freezing the node set means the "did you handle every kind?"
+question becomes a literal compile error.
+
+### Rule 4 — Pass manifest framework
+
+Every compiler pass registers with a framework declaring which HIR
+fields it reads and which it writes:
+
+```go
+type PassManifest struct {
+    Name    string
+    Reads   []FieldId   // e.g. [hir.FieldType, hir.FieldCtx]
+    Writes  []FieldId   // e.g. [hir.FieldLiveAfter]
+    After   []string    // passes that must run before this one
+}
+```
+
+The framework enforces ordering: a pass that reads `LiveAfter`
+cannot run before the pass that writes it. At registration time,
+the framework computes a topological order and rejects cycles.
+This is how LLVM's analysis manager works.
+
+**Bug classes eliminated.** Pass-order bugs (Fuse2 hit this twice
+during B-wave triage). The cost is ~200 LOC of framework plus a
+few lines per pass.
+
+### Rule 5 — Invariant walkers at every pass boundary
+
+Debug builds run a walker after every pass verifying its
+post-conditions:
+
+- Checker done → every HIR node has `Type() != Unknown`.
+- ASAP lowering done → every owned local has a matching `Drop` on
+  every control-flow path; no local is dropped before its last use.
+- Codegen done → every C declaration has a use or is `@export`.
+- Name resolution done → every `IdentExpr` has a resolved binding.
+
+Release builds skip the walkers. Cost: negligible. Value: **catches
+bugs at the layer they were introduced, not three passes later**.
+This is the single highest-ROI discipline in the list — it turns
+invariant violations from "mysterious downstream crash" into "the
+pass that violated the invariant names itself".
+
+**Bug classes eliminated.** The whole category of "introduced
+early, manifested late" bugs that dominated B12 triage.
+
+### Rule 6 — Deterministic collections only in IR data structures
+
+No Go `map` in HIR or MIR. IR containers are ordered slices or a
+`SortedMap[K, V]` wrapper. Go's map iteration is intentionally
+randomized, and Fuse2 re-learned this lesson during Wave B1
+(nondeterministic monomorphization order made codegen
+non-reproducible; fixed by `HashMap` → `BTreeMap`).
+
+Block it at the type level: the `hir` and `mir` packages do not
+import Go's raw `map` for any field that participates in emission
+order. A lint (part of Rule 4's framework) flags
+`for k := range mapvar` inside codegen/diagnostic paths.
+
+**Bug classes eliminated.** Wave B1 reproducibility loss, and the
+whole family of "CI passes, local fails" flakes that depend on
+map iteration order.
+
+### Rule 7 — Global `TypeTable` with interned type IDs
+
+Types are `u32` IDs, not structs. Type equality is integer
+comparison. The `TypeTable` is a global intern table keyed by
+structural hash:
+
+```go
+type TypeTable struct {
+    types  []TypeKind     // indexed by TypeId
+    intern map[uint64]TypeId
+}
+
+func (t *TypeTable) Intern(kind TypeKind) TypeId { ... }
+func (t *TypeTable) Kind(id TypeId) TypeKind     { ... }
+```
+
+Two HIR nodes with the same `Type() TypeId` are *provably* the same
+type — not "structurally equivalent, let me re-walk to make sure".
+This is how Rust's `TyCtxt` works and it is both faster (integer
+compare) and more robust (single source of truth).
+
+**Bug classes eliminated.** Type-equality bugs where two
+structurally-identical types were compared via walk and one walker
+was slightly wrong. Fuse2 had several of these in generic
+substitution (Wave B3).
+
+### Rule 8 — Property-based tests on IR lowering
+
+A property-test harness generates random valid HIR, lowers it to
+MIR, and verifies semantic preservation invariants:
+
+- No owned local is dropped before its last use.
+- No variable is read before it is assigned.
+- Every function has exactly one entry and its returns type-check
+  against the declared return type.
+- Every `Drop` has a matching owning binding.
+- `!`-typed expressions never have a successor in the CFG.
+
+These find the bugs nobody thinks to write a unit test for. Fuse2
+had zero property tests; roughly half of the L-bugs would have been
+caught by a modest fuzzer.
+
+**Bug classes eliminated.** "We didn't know to test that combination"
+bugs — the long tail that unit tests miss because a human has to
+imagine them first.
+
+### Summary: what the eight rules cost and what they buy
+
+**Cost.** ~3000 lines of compiler framework (pass manager, invariant
+walkers, type table, MIR lowering, property-test harness, HIR node
+hierarchy) before the first real compilation logic. For Fuse2 that
+would have felt like over-engineering. For Fuse3, after learning
+what the bug classes actually were, it is exactly the right
+investment.
+
+**Buy.** The Fuse2 bug pattern — "pass A knew something, pass B
+re-derived it and got it wrong" — becomes *structurally impossible*:
+
+- Rules 1, 2, 4, 5 make "metadata missing" unrepresentable.
+- Rules 3, 6 make "nondeterministic output" unrepresentable.
+- Rule 7 makes "type equality mismatch" unrepresentable.
+- Rule 8 catches the long tail.
+
+**Temptation to skip.** The rules most likely to be cut as
+"over-engineering" are Rule 4 (pass manifest) and Rule 8 (property
+tests). Don't. Those two alone would have prevented roughly 60% of
+Fuse2's B-wave grief.
+
+**The bottom line.** Adopt all eight together. They are mutually
+reinforcing — skipping one leaves its bug class open and weakens
+the others (e.g. Rule 5 invariant walkers depend on Rule 2's
+non-nullable fields being enforceable). Fuse3's compiler is a
+systems program that compiles a systems language; the correctness
+bar is the same at both layers.
+
 ---
 
 # Part 5 — Stdlib design
@@ -2021,11 +2239,18 @@ questions are listed in rough dependency order.
    composition, generic bounds, auto-generation from field
    metadata) unchanged. See §5.2.
 
-5. **AST representation.** Define the node types before writing
-   anything. The typed-AST design (§4.4) hinges on this —
-   specifically, every node must carry its inferred type, value
-   context, and live-set after the checker pass so codegen never
-   re-infers.
+5. **AST representation.** **[DECIDED]** Three IRs:
+   AST → HIR → MIR, with strict Go-type separation, non-nullable
+   post-checker metadata, frozen exhaustive node kind list, a
+   pass manifest framework, invariant walkers at every pass
+   boundary, deterministic-only IR collections, a global interned
+   `TypeTable`, and property-based tests on IR lowering. The full
+   specification is in §4.7 "Fuse3 compiler architecture
+   invariants (the eight rules)". The aggregate cost is ~3000
+   lines of framework; the benefit is that the checker→codegen
+   information-loss bug class that dominated Fuse2's B-wave
+   triage becomes structurally impossible rather than
+   test-covered.
 
 ## Language semantics (carried over from Fuse2, mostly decided)
 
