@@ -1833,40 +1833,92 @@ questions are listed in rough dependency order.
    context, and live-set after the checker pass so codegen never
    re-infers.
 
-## Language semantics (decided in Fuse2, probably transfer unchanged)
+## Language semantics (carried over from Fuse2, mostly decided)
 
-6. **Ownership keywords.** Keep `ref` / `mutref` / `owned` /
-   `move`. Confirm: `mutref` must appear at both call site and
-   signature.
+6. **Ownership keywords.** **[DECIDED]** Keep `ref` / `mutref` /
+   `owned` / `move` exactly as Fuse2 shipped. `mutref` must
+   appear at *both* the parameter declaration AND the call site
+   — the call-site annotation is load-bearing for pillar 3
+   ("reading the call site tells you which arguments will be
+   modified without looking up the function signature"). See §2.1.
 
-7. **ASAP destruction.** Keep. Formalise the single-pass liveness
-   algorithm as part of the type checker (§2.2, §4.3).
+7. **ASAP destruction.** **[DECIDED]** Keep. Implementation note:
+   the liveness analysis is a single pass computed during HIR
+   lowering, exposed as a per-node `LiveAfter` attribute and
+   consumed by every release site and destructor site — NOT a
+   separate walker per consumer, which was the Fuse2 bug pattern
+   behind L027/L028. See §2.2 and §4.3.
 
-8. **Result / Option / ? / ?. / ?:.** Keep. Add: checker must
-   verify explicit `return <expr>` against the function's return
-   type (§2.3) — the `parseOutputFlag` bug class.
+8. **Result / Option / `?` / `?.` / `?:`.** **[DECIDED]** Keep the
+   Fuse2 semantics verbatim. The only addition: the checker MUST
+   verify `return <expr>` against the function's declared return
+   type — the same code path that validates trailing-expression
+   return types. This closes the `parseOutputFlag` bug class (a
+   function declared `Option<String>` was silently shipping a
+   `String` via `return next.unwrap()` because the checker only
+   validated trailing expressions). See §2.3.
 
 9. **Match / when / exhaustiveness.** Keep. Formalise U1–U7
-   including Never (`!`) as a real type.
+   including Never (`!`) as a real type. No conflict with boolean
+   negation because Fuse uses the `not` keyword for that, never
+   `!` — see the explanation recorded in the Fuse3 design
+   conversation. **Pending confirmation to mark DECIDED.**
 
-10. **Traits and `implements`.** Keep. Keep ADR-013 semantics
-    exactly. Generate methods from field metadata at compile time.
-    See §5.2.
+10. **Traits and `implements`.** **[DECIDED]** Keep ADR-013
+    semantics verbatim under the new `trait` vocabulary.
+    Default methods, parent composition, generic bounds
+    (`<T: Hashable>`), auto-generation from field metadata — all
+    of it. `implements` keyword retained because it reads
+    naturally with either "interface" or "trait" and sits at the
+    declaration site. See §5.2.
 
-11. **Decorators.** Keep the list: `@value`, `@entrypoint`,
-    `@export`, `@rank`, `@test`, `@inline`, `@builder`,
-    `@deprecated`, `@ignore`. Confirm: no behavioral decorators.
+11. **Decorators.** **[DECIDED]** Keep the Fuse2 list unchanged:
+    `@value`, `@entrypoint`, `@export`, `@rank`, `@test`,
+    `@inline`, `@builder`, `@deprecated`, `@ignore`. No
+    behavioral decorators — behavior is declared via
+    `implements Trait`, never via a decorator. The distinction
+    is load-bearing (ADR-013).
 
-12. **Data class / struct / @value.** Keep the split.
-    Auto-generation only for `data class` and `@value struct`.
+12. **Data class / struct / @value.** **[DECIDED]** Keep the
+    three-way split exactly:
+    - **plain `struct`** — opaque/private fields, manual
+      lifecycle, no auto-trait generation. Maximum control,
+      maximum responsibility. Use for FFI wrappers and
+      performance-critical types.
+    - **`@value struct`** — auto-generated `__copyinit__`,
+      `__moveinit__`, `__del__` (user can override `__del__`
+      only); auto-trait generation enabled. Opaque API with
+      value semantics. Use for resource types like `Connection`,
+      `File`.
+    - **`data class`** — shorthand for `@value struct` plus
+      public positional fields plus auto-generated `==`, `!=`,
+      `toString`. Everything on. Use for records: `Point`,
+      `User`, AST nodes, etc.
 
-13. **Generics.** Monomorphise at compile time. Type parameters
-    on free functions *and* user types. No type erasure.
+    `@value` is the "my fields are knowable at compile time"
+    opt-in that enables ADR-013 auto-generation. Plain `struct`
+    cannot auto-generate traits — the checker emits an explicit
+    error pointing the user at `@value` or manual implementation.
 
-14. **String operations.** Reconsider the O(n) / O(1)
-    `charAt` / `byteAt` split (§2.4). Probably: make `chars()`
-    the default iteration API, reserve `charAt` / `byteAt` for
-    explicit performance paths.
+13. **Generics.** **[DECIDED]** Monomorphise at compile time.
+    Type parameters on free functions AND user types. No type
+    erasure, no runtime dispatch. Implementation note for the
+    C backend: each generic instantiation emits a separate C
+    function with the type parameters substituted, giving
+    zero-cost specialisation without a template system — C
+    handles this naturally as independent functions, same as
+    Fuse2 did at the Cranelift IR level.
+
+14. **String operations.** **[DECIDED]** Make `chars()` the
+    default iteration API. Users iterate by character, not by
+    byte: `for c in s.chars() { ... }`. `charAt(i)` and
+    `byteAt(i)` remain available as explicit performance-path
+    operations with documentation that `charAt` is O(n) for
+    UTF-8 correctness and `byteAt` is O(1). `len()` returns
+    byte length; `charCount()` returns character count. The
+    goal: eliminate the Fuse2 footgun where
+    `for i in 0..s.len() { s.charAt(i) }` was both slow AND
+    incorrect for multi-byte UTF-8 sequences. See §2.4.
 
 ## Runtime and concurrency (still open)
 
