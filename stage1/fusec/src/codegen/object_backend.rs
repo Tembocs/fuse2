@@ -237,6 +237,76 @@ impl BuildSession {
         None
     }
 
+    /// B8.1: Resolve an import alias (the last path segment of an
+    /// `import a.b.c` declaration) to the loaded module it points at,
+    /// evaluated from `calling_module`'s imports. Used by every
+    /// module-qualified lookup (`module.function`, `module.Type(...)`,
+    /// `module.Type.staticMethod(...)`).
+    fn resolve_module_by_alias(
+        &self,
+        calling_module: &Path,
+        alias: &str,
+    ) -> Option<&LoadedModule> {
+        let calling = self.modules.get(calling_module)?;
+        for import in &calling.imports {
+            let import_alias = import.module_path.split('.').next_back()?;
+            if import_alias == alias {
+                let target = resolve_import_path(calling_module, &import.module_path)?;
+                let target = target.canonicalize().unwrap_or(target);
+                return self.modules.get(&target);
+            }
+        }
+        None
+    }
+
+    /// B8.2: `module.Type(...)` — resolve a data class defined in the
+    /// module reached through `alias`. Clones the decl because callers
+    /// hold `&mut self` during constructor emission.
+    fn resolve_module_data(
+        &self,
+        calling_module: &Path,
+        alias: &str,
+        type_name: &str,
+    ) -> Option<(PathBuf, fa::DataClassDecl)> {
+        let module = self.resolve_module_by_alias(calling_module, alias)?;
+        let key = layout::canonical_type_name(type_name);
+        let data = module.data_classes.get(key)?.clone();
+        Some((module.path.clone(), data))
+    }
+
+    /// B8.2: `module.Type(...)` — struct variant of `resolve_module_data`.
+    fn resolve_module_struct(
+        &self,
+        calling_module: &Path,
+        alias: &str,
+        type_name: &str,
+    ) -> Option<(PathBuf, fa::StructDecl)> {
+        let module = self.resolve_module_by_alias(calling_module, alias)?;
+        let key = layout::canonical_type_name(type_name);
+        let s = module.structs.get(key)?.clone();
+        Some((module.path.clone(), s))
+    }
+
+    /// B8.2: Is `type_name` defined in the module reached through
+    /// `alias` (as a data class, struct, or enum)? Used by the
+    /// `module.Type.staticMethod()` short-circuit to validate that the
+    /// middle segment is actually a type in the named module before we
+    /// dispatch to the static-method resolver.
+    fn module_defines_type(
+        &self,
+        calling_module: &Path,
+        alias: &str,
+        type_name: &str,
+    ) -> bool {
+        let Some(module) = self.resolve_module_by_alias(calling_module, alias) else {
+            return false;
+        };
+        let key = layout::canonical_type_name(type_name);
+        module.data_classes.contains_key(key)
+            || module.structs.contains_key(key)
+            || module.enums.contains_key(key)
+    }
+
     fn find_data(&self, type_name: &str) -> Option<(&Path, &fa::DataClassDecl)> {
         let key = layout::canonical_type_name(type_name);
         self.modules.values().find_map(|module| {
@@ -3523,6 +3593,25 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         ty: function.return_type.clone(),
                     });
                 }
+                // B8.2: `module.Type(args)` — module-qualified data
+                // class or struct constructor. Resolve the alias to a
+                // loaded module, then look up `member` as a type inside
+                // that module, and emit the same constructor sequence
+                // as an unqualified `Type(args)` call.
+                if let Some((module_path, data)) = self
+                    .compiler
+                    .session
+                    .resolve_module_data(self.module_path, base, member)
+                {
+                    return self.compile_data_constructor(builder, &module_path, &data, _args);
+                }
+                if let Some((module_path, s)) = self
+                    .compiler
+                    .session
+                    .resolve_module_struct(self.module_path, base, member)
+                {
+                    return self.compile_struct_constructor(builder, &module_path, &s, _args);
+                }
                 Err(format!("unsupported type namespace call `{namespace}.{member}`"))
             }
         }
@@ -3537,6 +3626,34 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         if let fa::Expr::Name(name) = member.object.as_ref() {
             if !self.locals.contains_key(&name.value) {
                 return self.compile_type_namespace_call(builder, &name.value, &member.name, args);
+            }
+        }
+        // B8.2: `module.Type.staticMethod(args)` — three-segment
+        // module-qualified static call. Parsed as
+        //   Member { object: Member { object: Name(module), name: Type },
+        //            name: staticMethod }
+        // The outer `Member` case below would otherwise try to compile
+        // `module.Type` as a value expression, which fails with
+        // "unknown binding" because `module` is not a local. Recognize
+        // the pattern, confirm `module` is an imported alias and `Type`
+        // is defined in that module, then dispatch to the existing
+        // `Type.staticMethod` resolver.
+        if let fa::Expr::Member(inner) = member.object.as_ref() {
+            if let fa::Expr::Name(mod_name) = inner.object.as_ref() {
+                if !self.locals.contains_key(&mod_name.value)
+                    && self.compiler.session.module_defines_type(
+                        self.module_path,
+                        &mod_name.value,
+                        &inner.name,
+                    )
+                {
+                    return self.compile_type_namespace_call(
+                        builder,
+                        &inner.name,
+                        &member.name,
+                        args,
+                    );
+                }
             }
         }
         let receiver = self.compile_expr(builder, &member.object)?;

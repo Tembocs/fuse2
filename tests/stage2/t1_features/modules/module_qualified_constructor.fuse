@@ -1,0 +1,13 @@
+// EXPECTED OUTPUT:
+// widget-7:hello
+// widget-42:new
+
+import src.helpers.widgets
+
+@entrypoint
+fn main() {
+  val w = widgets.Widget(7, "hello")
+  println(w.label())
+  val w2 = widgets.Widget.withId(42)
+  println(w2.label())
+}

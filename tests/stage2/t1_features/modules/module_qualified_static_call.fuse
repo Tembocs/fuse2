@@ -1,0 +1,9 @@
+// EXPECTED OUTPUT:
+// anonymous
+
+import src.helpers.widgets
+
+@entrypoint
+fn main() {
+  println(widgets.Widget.defaultName())
+}

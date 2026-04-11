@@ -1,0 +1,7 @@
+pub data class Widget(val id: Int, val name: String)
+
+pub fn Widget.label(ref self) -> String => f"widget-{self.id}:{self.name}"
+
+pub fn Widget.defaultName() -> String => "anonymous"
+
+pub fn Widget.withId(id: Int) -> Widget => Widget(id, "new")
