@@ -1,0 +1,9 @@
+// EXPECTED ERROR:
+// no type `NoSuch` in module `widgets`
+
+import src.helpers.widgets
+
+@entrypoint
+fn main() {
+  println(widgets.NoSuch.someCall())
+}

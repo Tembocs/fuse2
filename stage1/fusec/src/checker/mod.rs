@@ -1473,6 +1473,80 @@ impl Checker {
                         resolved = self.resolve_static_function(&name.value, &member.name);
                     }
                 }
+                // B8.2/B8.3: Module-qualified calls —
+                //   `alias.fn(args)`            (2-segment function)
+                //   `alias.Type(args)`          (2-segment constructor)
+                //   `alias.Type.method(args)`   (3-segment static method)
+                // The codegen handles all three, but the checker must
+                // validate the alias/type/method chain so typos fail
+                // loudly (B8.3) instead of surfacing as obscure codegen
+                // errors (or silently passing at --check time).
+                if resolved.is_none() {
+                    if let hir::Expr::Name(alias) = member.object.as_ref() {
+                        if !scope.contains_key(&alias.value) {
+                            if let Some(mod_path) =
+                                self.alias_resolves_to_module(module, &alias.value)
+                            {
+                                if self.module_defines_type(&mod_path, &member.name) {
+                                    // success: module-qualified constructor.
+                                    // Nothing more to validate here — the
+                                    // codegen will check argument arity
+                                    // against the data class fields.
+                                } else if let Some(function) =
+                                    self.lookup_module_function(&mod_path, &member.name)
+                                {
+                                    resolved = Some(function);
+                                } else {
+                                    self.add_error(
+                                        &display_name(&module.path),
+                                        member.span,
+                                        format!(
+                                            "no type or function `{}` in module `{}`",
+                                            member.name, alias.value
+                                        ),
+                                        None,
+                                    );
+                                }
+                            }
+                        }
+                    } else if let hir::Expr::Member(inner) = member.object.as_ref() {
+                        if let hir::Expr::Name(alias) = inner.object.as_ref() {
+                            if !scope.contains_key(&alias.value) {
+                                if let Some(mod_path) =
+                                    self.alias_resolves_to_module(module, &alias.value)
+                                {
+                                    if !self.module_defines_type(&mod_path, &inner.name) {
+                                        self.add_error(
+                                            &display_name(&module.path),
+                                            inner.span,
+                                            format!(
+                                                "no type `{}` in module `{}`",
+                                                inner.name, alias.value
+                                            ),
+                                            None,
+                                        );
+                                    } else if let Some(function) = self.lookup_module_static(
+                                        &mod_path,
+                                        &inner.name,
+                                        &member.name,
+                                    ) {
+                                        resolved = Some(function);
+                                    } else {
+                                        self.add_error(
+                                            &display_name(&module.path),
+                                            member.span,
+                                            format!(
+                                                "no static method `{}` on type `{}` in module `{}`",
+                                                member.name, inner.name, alias.value
+                                            ),
+                                            None,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 if resolved.is_none() {
                     if let Some(receiver_type) = self.infer_expr_type(module, &member.object, scope, owner_name) {
                         resolved = self.resolve_extension(&receiver_type, &member.name);
@@ -1683,6 +1757,75 @@ impl Checker {
                 .get(&(type_key.to_string(), name.to_string()))
                 .cloned()
         })
+    }
+
+    /// B8.3: Resolve an import alias (last segment of `import a.b.c`)
+    /// relative to `info`'s imports. Returns the path of the target
+    /// module if the alias matches one, None otherwise. The path is
+    /// NOT canonicalized because the checker's `module_cache` is keyed
+    /// by whatever `check_import` / `load_module` passed in (which is
+    /// the non-canonicalized return of `resolve_import_path`), so
+    /// canonicalizing here would miss the cache entry.
+    fn alias_resolves_to_module(&self, info: &ModuleInfo, alias: &str) -> Option<PathBuf> {
+        for import in &info.module.imports {
+            let import_alias = import.module_path.split('.').next_back()?;
+            if import_alias == alias {
+                return resolve_import_path(&info.path, &import.module_path);
+            }
+        }
+        None
+    }
+
+    /// B8.3: Is `type_name` defined (as a data/struct/enum) in the
+    /// given module? Used by module-qualified call validation to tell
+    /// "no such type in module" apart from "unknown method on type".
+    fn module_defines_type(&self, module_path: &Path, type_name: &str) -> bool {
+        let Some(info) = self.module_cache.get(module_path) else {
+            return false;
+        };
+        matches!(
+            info.symbols.get(type_name),
+            Some(Symbol::Data { .. } | Symbol::Struct { .. } | Symbol::Enum { .. })
+        )
+    }
+
+    /// B8.3: Look up a free function by name in a specific module.
+    /// Unlike `resolve_function`, this is scoped — it does not iterate
+    /// the whole module cache — so it reports exactly whether the
+    /// function lives in the given module.
+    fn lookup_module_function(
+        &self,
+        module_path: &Path,
+        name: &str,
+    ) -> Option<hir::FunctionDecl> {
+        let info = self.module_cache.get(module_path)?;
+        match info.symbols.get(name)? {
+            Symbol::Function { node, is_pub } => {
+                if *is_pub || info.path == self.current_file {
+                    Some(node.clone())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// B8.3: Look up a static method `(type_name, method_name)` in a
+    /// specific module. Module-scoped variant of
+    /// `resolve_static_function` for the 3-segment
+    /// `alias.Type.method()` validator.
+    fn lookup_module_static(
+        &self,
+        module_path: &Path,
+        type_name: &str,
+        method_name: &str,
+    ) -> Option<hir::FunctionDecl> {
+        let info = self.module_cache.get(module_path)?;
+        let type_key = builtins::canonical_receiver(type_name);
+        info.static_functions
+            .get(&(type_key.to_string(), method_name.to_string()))
+            .cloned()
     }
 
     fn find_data_decl(&self, type_name: &str) -> Option<hir::DataClassDecl> {
@@ -2006,6 +2149,45 @@ impl Checker {
                     }
                 },
                 hir::Expr::Member(member) => {
+                    // B8.2: Module-qualified constructor / function /
+                    // static method calls. Handled before the generic
+                    // receiver-type inference because `alias` is not a
+                    // value and infer_expr_type(Name(alias)) would
+                    // short-circuit to None, losing the call's type.
+                    if let hir::Expr::Name(alias) = member.object.as_ref() {
+                        if !scope.contains_key(&alias.value) {
+                            if let Some(mod_path) =
+                                self.alias_resolves_to_module(module, &alias.value)
+                            {
+                                if self.module_defines_type(&mod_path, &member.name) {
+                                    return Some(member.name.clone());
+                                }
+                                if let Some(function) =
+                                    self.lookup_module_function(&mod_path, &member.name)
+                                {
+                                    return function.return_type.clone();
+                                }
+                                return None;
+                            }
+                        }
+                    } else if let hir::Expr::Member(inner) = member.object.as_ref() {
+                        if let hir::Expr::Name(alias) = inner.object.as_ref() {
+                            if !scope.contains_key(&alias.value) {
+                                if let Some(mod_path) =
+                                    self.alias_resolves_to_module(module, &alias.value)
+                                {
+                                    if let Some(function) = self.lookup_module_static(
+                                        &mod_path,
+                                        &inner.name,
+                                        &member.name,
+                                    ) {
+                                        return function.return_type.clone();
+                                    }
+                                    return None;
+                                }
+                            }
+                        }
+                    }
                     let receiver_type = self.infer_expr_type(module, &member.object, scope, owner_name)?;
                     if receiver_type == "String" && member.name == "toUpper" {
                         return Some("String".to_string());

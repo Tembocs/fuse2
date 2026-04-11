@@ -1,0 +1,10 @@
+// EXPECTED ERROR:
+// no type or function `Gadget` in module `widgets`
+
+import src.helpers.widgets
+
+@entrypoint
+fn main() {
+  val g = widgets.Gadget(1, "oops")
+  println(g.label())
+}

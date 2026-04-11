@@ -1,0 +1,9 @@
+// EXPECTED ERROR:
+// no static method `missingMethod` on type `Widget` in module `widgets`
+
+import src.helpers.widgets
+
+@entrypoint
+fn main() {
+  println(widgets.Widget.missingMethod())
+}
