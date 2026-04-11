@@ -1171,11 +1171,31 @@ pub unsafe extern "C" fn cranelift_ffi_module_define_data(
         Some(id) => *id,
         None => return from_i64(-1),
     };
-    let ptr = to_i64(bytes) as *const u8;
-    let len = to_i64(byte_len) as usize;
-    let content = unsafe { slice::from_raw_parts(ptr, len) };
+    // B12 — dual-path byte source: prefer a Fuse `String` handle
+    // (the stage 2 convention), fall back to a raw `*const u8`
+    // wrapped as an Int handle (the smoke-test / stage 1 convention).
+    // Before this, calling from stage 2 with a String handle would
+    // dereference the handle as a raw byte pointer, reading the
+    // FuseValue struct header as bytes and producing garbage data
+    // (or segfaulting if the computed length overran the allocation).
+    let content: Vec<u8> = if !bytes.is_null() {
+        let s = extract_string_pub(bytes);
+        if !s.is_empty() {
+            s.as_bytes().to_vec()
+        } else {
+            let ptr = to_i64(bytes) as *const u8;
+            let len = to_i64(byte_len) as usize;
+            if ptr.is_null() || len == 0 {
+                Vec::new()
+            } else {
+                unsafe { slice::from_raw_parts(ptr, len).to_vec() }
+            }
+        }
+    } else {
+        Vec::new()
+    };
     let mut desc = DataDescription::new();
-    desc.define(content.to_vec().into_boxed_slice());
+    desc.define(content.into_boxed_slice());
     match m.module.define_data(did, &desc) {
         Ok(_) => from_i64(0),
         Err(_) => from_i64(-1),
