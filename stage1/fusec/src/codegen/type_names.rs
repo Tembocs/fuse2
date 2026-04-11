@@ -95,15 +95,24 @@ pub fn split_generic_args(type_name: &str) -> Option<Vec<String>> {
     let end = type_name.rfind('>')?;
     let inner = &type_name[start + 1..end];
     let mut args = Vec::new();
+    // B9.2 — track both `<>` AND `()` depth. The old version only
+    // incremented on `<` / `>`, so a generic argument that was itself
+    // a tuple (e.g. `Result<(Int,String),String>`) was split on the
+    // tuple's *internal* comma, corrupting every downstream consumer
+    // (`result_ok_type`, `option_inner_type`, `list_inner_type`, etc.)
+    // and silently giving pattern-bound variables the wrong type —
+    // which then surfaced as `cannot infer member `0`` when code tried
+    // to access a tuple field on the bound variable. Paren depth
+    // keeps the tuple intact.
     let mut depth = 0usize;
     let mut current = String::new();
     for ch in inner.chars() {
         match ch {
-            '<' => {
+            '<' | '(' => {
                 depth += 1;
                 current.push(ch);
             }
-            '>' => {
+            '>' | ')' => {
                 depth = depth.saturating_sub(1);
                 current.push(ch);
             }
@@ -118,6 +127,56 @@ pub fn split_generic_args(type_name: &str) -> Option<Vec<String>> {
         args.push(current.trim().to_string());
     }
     Some(args)
+}
+
+#[cfg(test)]
+mod split_generic_args_tests {
+    use super::split_generic_args;
+
+    #[test]
+    fn splits_flat_args() {
+        assert_eq!(
+            split_generic_args("Map<String,Int>"),
+            Some(vec!["String".to_string(), "Int".to_string()])
+        );
+    }
+
+    #[test]
+    fn splits_nested_generic_arg() {
+        assert_eq!(
+            split_generic_args("Map<String,List<Int>>"),
+            Some(vec!["String".to_string(), "List<Int>".to_string()])
+        );
+    }
+
+    #[test]
+    fn splits_result_wrapping_tuple() {
+        // B9.2 regression guard — the tuple's internal comma must
+        // not split the outer Result<Ok, Err>.
+        assert_eq!(
+            split_generic_args("Result<(Int,String),String>"),
+            Some(vec!["(Int,String)".to_string(), "String".to_string()])
+        );
+    }
+
+    #[test]
+    fn splits_option_wrapping_tuple() {
+        assert_eq!(
+            split_generic_args("Option<(Int,String)>"),
+            Some(vec!["(Int,String)".to_string()])
+        );
+    }
+
+    #[test]
+    fn splits_result_wrapping_nested_tuple() {
+        assert_eq!(
+            split_generic_args("Result<(Int,(String,Bool)),String>"),
+            Some(vec![
+                "(Int,(String,Bool))".to_string(),
+                "String".to_string(),
+            ])
+        );
+    }
 }
 
 pub fn option_inner_type(type_name: &str) -> Option<String> {

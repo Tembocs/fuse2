@@ -4463,6 +4463,12 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         if object_type.starts_with('(') {
             if let Ok(index) = name.parse::<i64>() {
                 let index_val = self.usize_const(builder, index);
+                // B9.2 — propagate the element type when we can split
+                // the tuple. Previously this path lost the type,
+                // which broke downstream member chains like
+                // `pair.0.name` (where pair.0's type was a data class).
+                let elem_ty = split_tuple_types(&object_type)
+                    .and_then(|ts| usize::try_from(index).ok().and_then(|i| ts.get(i).cloned()));
                 return Ok(TypedValue {
                     value: self.runtime(
                         builder,
@@ -4470,7 +4476,7 @@ impl<'a, 'b> LoweringState<'a, 'b> {
                         &[object.value, index_val],
                         self.compiler.pointer_type,
                     ),
-                    ty: None,
+                    ty: elem_ty,
                 });
             }
         }

@@ -1,0 +1,45 @@
+// EXPECTED OUTPUT:
+// 42
+// hello
+// 7
+// world
+// first
+// 10
+// nested=99
+
+fn pair() -> (Int, String) {
+  return (42, "hello")
+}
+
+fn wrapped() -> Result<(Int, String), String> {
+  return Ok((7, "world"))
+}
+
+fn nested() -> (String, (Int, Int)) {
+  return ("first", (10, 99))
+}
+
+@entrypoint
+fn main() {
+  // Direct tuple return.
+  val p = pair()
+  println(p.0)
+  println(p.1)
+
+  // Result-wrapped tuple — the B9.2 regression case.
+  val r = wrapped()
+  match r {
+    Ok(q) => {
+      println(q.0)
+      println(q.1)
+    },
+    Err(_) => println("err")
+  }
+
+  // Nested tuple — `.1.1` on a `(String, (Int, Int))`.
+  val n = nested()
+  println(n.0)
+  val inner = n.1
+  println(inner.0)
+  println(f"nested={inner.1}")
+}
