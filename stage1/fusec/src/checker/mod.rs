@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use crate::ast::nodes as hir;
 use crate::autogen;
-use crate::codegen::type_names::unify_match_arm_types;
+use crate::codegen::type_names::{split_generic_args, split_tuple_types, unify_match_arm_types};
 use crate::common::resolve_import_path;
 use crate::error::{Diagnostic, Span};
 use crate::hir::{lower_program, Module};
@@ -1195,6 +1195,12 @@ impl Checker {
                     }
                 }
                 // Struct field opaqueness: fields only accessible from methods of the same struct.
+                // B9.3: Validate tuple field access. `.0`, `.1`, etc.
+                // on a tuple must refer to an in-range element. The
+                // codegen's `member_access` accepts any non-negative
+                // integer and falls through to `rt_list_get`, which
+                // returns None at runtime for out-of-bounds indices —
+                // a clear error is better.
                 if let Some(object_ty) = self.infer_expr_type(module, &member.object, scope, owner_name) {
                     if let Some(struct_decl) = self.find_struct_decl(&object_ty) {
                         let is_field = struct_decl.fields.iter().any(|f| f.name == member.name);
@@ -1206,6 +1212,27 @@ impl Checker {
                                 format!("cannot access field `{}` on struct `{}` — struct fields are private", member.name, object_ty),
                                 Some("use a method instead".to_string()),
                             );
+                        }
+                    }
+                    if object_ty.starts_with('(') && object_ty.ends_with(')') {
+                        if let Ok(index) = member.name.parse::<usize>() {
+                            if let Some(elements) = split_tuple_types(&object_ty) {
+                                let arity = elements.len();
+                                if index >= arity {
+                                    self.add_error(
+                                        &display_name(&module.path),
+                                        member.span,
+                                        format!(
+                                            "tuple index `{}` out of range for `{}` (arity {})",
+                                            index, object_ty, arity
+                                        ),
+                                        Some(format!(
+                                            "valid indices are 0..{}",
+                                            arity.saturating_sub(1)
+                                        )),
+                                    );
+                                }
+                            }
                         }
                     }
                 }
@@ -2109,6 +2136,18 @@ impl Checker {
                 if object_ty == "String" && member.name == "isEmpty" {
                     return Some("Bool".to_string());
                 }
+                // B9.2 — Tuple field access `.0`, `.1`, ... returns
+                // the element type at the given index when known.
+                // Without this, downstream inference (e.g. a struct
+                // field whose type depends on a tuple field) loses
+                // the type and falls back to `None`.
+                if object_ty.starts_with('(') && object_ty.ends_with(')') {
+                    if let Ok(index) = member.name.parse::<usize>() {
+                        if let Some(elements) = split_tuple_types(&object_ty) {
+                            return elements.get(index).cloned();
+                        }
+                    }
+                }
                 None
             }
             hir::Expr::Binary(binary) => {
@@ -2128,11 +2167,20 @@ impl Checker {
             hir::Expr::If(if_expr) => self.infer_block_type(module, &if_expr.then_branch, scope, owner_name),
             hir::Expr::Question(question) => {
                 let inner = self.infer_expr_type(module, &question.value, scope, owner_name)?;
+                // B9.2 — paren-aware splitter. The old path called
+                // `.split(',').next()` on the substring inside the
+                // outermost `<...>`, which corrupted the Ok type when
+                // it was itself a tuple (`Result<(Int,String),String>?`
+                // would produce `(Int` instead of `(Int,String)`).
                 if inner.starts_with("Result<") && inner.ends_with('>') {
-                    return inner[7..inner.len() - 1].split(',').next().map(|part| part.trim().to_string());
+                    if let Some(args) = split_generic_args(&inner) {
+                        return args.into_iter().next();
+                    }
                 }
                 if inner.starts_with("Option<") && inner.ends_with('>') {
-                    return Some(inner[7..inner.len() - 1].trim().to_string());
+                    if let Some(args) = split_generic_args(&inner) {
+                        return args.into_iter().next();
+                    }
                 }
                 None
             }
@@ -2274,15 +2322,18 @@ impl Checker {
 
         // Step 1: Substitute type vars from receiver generics.
         // If receiver is Option<Int> and function is on Option<T>, then T=Int.
-        if let (Some(receiver_start), Some(decl_receiver)) = (receiver_type.find('<'), function.receiver_type.as_ref().and_then(|r| r.find('<'))) {
-            let receiver_args_str = &receiver_type[receiver_start + 1..receiver_type.len().saturating_sub(1)];
+        // B9.2 — use the paren-aware `split_generic_args` so that a
+        // receiver like `List<(Int,String)>` binds `T` to
+        // `(Int,String)` instead of `(Int`.
+        if function.receiver_type.is_some() {
+            let receiver_args = split_generic_args(receiver_type);
             let decl_receiver_type = function.receiver_type.as_ref().unwrap();
-            let decl_args_str = &decl_receiver_type[decl_receiver + 1..decl_receiver_type.len().saturating_sub(1)];
-            let receiver_args: Vec<&str> = receiver_args_str.split(',').map(|s| s.trim()).collect();
-            let decl_args: Vec<&str> = decl_args_str.split(',').map(|s| s.trim()).collect();
-            for (decl_arg, actual_arg) in decl_args.iter().zip(receiver_args.iter()) {
-                if decl_arg.len() <= 2 && decl_arg.chars().all(|c| c.is_uppercase()) {
-                    result = result.replace(decl_arg, actual_arg);
+            let decl_args = split_generic_args(decl_receiver_type);
+            if let (Some(receiver_args), Some(decl_args)) = (receiver_args, decl_args) {
+                for (decl_arg, actual_arg) in decl_args.iter().zip(receiver_args.iter()) {
+                    if decl_arg.len() <= 2 && decl_arg.chars().all(|c| c.is_uppercase()) {
+                        result = result.replace(decl_arg.as_str(), actual_arg.as_str());
+                    }
                 }
             }
         }

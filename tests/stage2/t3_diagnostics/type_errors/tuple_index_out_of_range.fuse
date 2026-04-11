@@ -1,0 +1,9 @@
+// EXPECTED ERROR:
+// tuple index `5` out of range for
+// arity 2
+
+@entrypoint
+fn main() {
+  val p: (Int, String) = (1, "a")
+  println(p.5)
+}
