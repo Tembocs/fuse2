@@ -684,6 +684,64 @@ Plus the **checker**'s `infer_expr_type` had the same find_map-first-arm bug (li
 
 ---
 
+### L029: `check_match_arm_compatibility` rejected statement-position matches with Unit arms
+
+**Group:** G5 (pattern matching) — related to L027
+**Phase:** Wave B11 (docs/fuse-stage2-parity-plan.md), discovered during B11.2.2 as a Rule 2 in-phase fix
+**Affected tests:** `fusec --check stage2/src/checker.fuse` rejected two genuinely correct statement-position matches after `import stdlib.core.list` was added in B11.2.2. Both failures were at `stage2/src/checker.fuse:322` and `:370`:
+
+```
+error: match arms have incompatible types `List<NamedBinding>` and `Unit`
+  --> checker.fuse:322:38
+```
+
+**What happened:** B7.4 added `check_match_arm_compatibility` in `stage1/fusec/src/checker/mod.rs:1424`. For every `hir::Expr::Match` the checker visited, it inferred each arm's type and fed the vector into `unify_match_arm_types` (rules U1–U6 from the parity plan). If unification returned `None`, the checker emitted an error naming the two incompatible types.
+
+The stage2 self-hosted checker has a canonical statement-position match pattern:
+
+```fuse
+match ifExpr.elseBranch {
+  Some(eb) => {
+    match eb {
+      ElseBranch.Block(blk) => { checkBlock(mutref state, info, blk, s, loopDepth) },
+      ElseBranch.IfExpr(inner) => {
+        s = checkExpr(mutref state, info, Expr.If(inner), s, loopDepth)
+      }
+    }
+  },
+  None => {}
+}
+```
+
+The inner `match eb` has two arms:
+1. `ElseBranch.Block(blk) => { checkBlock(...) }` — block with a trailing call expression; arm type = `List<NamedBinding>` (checkBlock's return type).
+2. `ElseBranch.IfExpr(inner) => { s = checkExpr(...) }` — block with a single assignment statement and no trailing expression; arm type = `Unit` (via `infer_block_type` falling to the `_ => Some("Unit".to_string())` case).
+
+The match is in statement position — the enclosing function has a trailing `s` expression that returns the accumulated scope, so this match's result is discarded. Its arm types are not required to unify. The checker rejected it anyway because `check_match_arm_compatibility` had no way to distinguish statement-position matches from value-position ones.
+
+**Root cause (`stage1/fusec/src/checker/mod.rs` around 1318 and 1424):** The checker's `hir::Expr::Match` handler in `check_expr` ran `check_match_arm_compatibility` unconditionally on every match. The helper filtered `None`-typed arms (Rule U6) but treated `Some("Unit")` as a concrete type that must unify with sibling arms. There is no "match used as statement" flag anywhere in the HIR walker or in `check_expr`'s signature — both statement and value positions call through the same path.
+
+**Why the bigger fix wasn't done:** The semantically correct fix is to thread an `in_value_context: bool` parameter through `check_expr` and its ~27 call sites, plus `check_arm_body`, so that `check_match_arm_compatibility` runs only when the match's result is observed by a consumer. That fix was judged out of scope for B11 (whose declared scope is "add imports to stage2/src"): it would be a bigger-than-the-wave checker refactor, and every call site's choice of `true` vs `false` would need careful review to match Fuse semantics.
+
+**Fix plan (completed):**
+1. In `check_match_arm_compatibility`, change the "collect known arms" filter from "type is `Some(_)`" to "type is `Some(t)` where `t != "Unit"` and `t != "!"`". Unit arms and `!` (Never) arms are filtered out pre-unification and treated the same as arms with no inferred type (Rule U6). This makes statement-position matches whose arms mix `Unit` and some other type silently pass.
+2. Document the trade-off in the code comment: a `Unit`-typed arm is almost always a side-effect block (`{ s = foo(...) }`, `{ println(...) }`) whose value is not meant to be observed; treating it as "no type information" is a conservative approximation of the real "is this match in value context?" question.
+3. Added a reference from the comment to `stage2/src/checker.fuse` `checkExpr`'s `Expr.If` arm so future readers can find the canonical case.
+
+**Verification:** All 59 existing `cargo test -p fusec --lib` tests pass, including the 7 B7.4 fixtures that exercise the match-arm unification helper directly (none of those fixtures use Unit arms — the B7.4 test set was all value-position match expressions with mixed concrete arm types). Stage 2 fixture suite: 400 passed, 0 failed, 5 skipped. `fusec --check stage2/src/checker.fuse` exits 0.
+
+**Known trade-off / follow-up for B12 or later:** If a user writes
+
+```fuse
+val x = match y { A => 5, B => { doThing() } }
+```
+
+the checker now accepts it without a diagnostic (B's arm is `Unit`, filtered out, unification of the remaining `[Int]` succeeds at `Int`). At runtime, if arm B is taken, `x` will not be initialized with an `Int` — the block evaluates to `Unit`, and the codegen's compile_match will either produce a dummy value for that arm or a runtime trap. In practice this pattern does not appear in stage2/src or the stdlib (checked by hand), but it is a weakening of the front-line diagnostic. The proper fix is the `in_value_context` threading described above; captured as "B12 follow-up" rather than left silent. If stage2 self-compile in B12 surfaces a real codegen issue from this relaxation, the follow-up becomes mandatory; otherwise, it is a language DX improvement to do after bootstrap.
+
+**Status:** Fixed — Wave B11 completion.
+
+---
+
 ## Bug Entry Template
 
 ```markdown
