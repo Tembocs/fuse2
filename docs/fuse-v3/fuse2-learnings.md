@@ -2119,7 +2119,7 @@ questions are listed in rough dependency order.
     `for i in 0..s.len() { s.charAt(i) }` was both slow AND
     incorrect for multi-byte UTF-8 sequences. See §2.4.
 
-## Runtime and concurrency (still open)
+## Runtime and concurrency (mostly decided)
 
 15. **What primitives does the Fuse3 C runtime expose, minimum
     viable?** The ~500 LOC target from §1.4 includes: malloc/free,
@@ -2129,49 +2129,52 @@ questions are listed in rough dependency order.
     storage. The exact list of entry points is still to be
     enumerated in the Fuse3 guide alongside the emitted-C format.
 
-16. **Scheduling.** **[TENTATIVE: OS threads first.]** §3.5
+16. **Scheduling.** **[DECIDED: OS threads first.]** §3.5
     recommends starting with OS threads via the C runtime and
     deferring green threads until profiling data justifies them.
     Same decision Fuse2's ADR-014 made for Stage 2, unblocked
     earlier.
 
-17. **`Chan[T]` implementation.** Fuse-owned ring buffer (for
-    bounded) or linked list (for unbounded), guarded by a C mutex
-    + condition variable. ~100 LOC of C for the primitive plus
-    Fuse code for `.bounded(n)` / `.unbounded()` constructors.
+17. **`Chan[T]` implementation.** **[DECIDED]** Fuse-owned ring
+    buffer (for bounded) or linked list (for unbounded), guarded
+    by a C mutex + condition variable. ~100 LOC of C for the
+    primitive plus Fuse code for `.bounded(n)` / `.unbounded()`
+    constructors.
 
-18. **`Shared[T]` implementation.** Wraps the value plus a
-    `pthread_rwlock_t` / `SRWLOCK`. `.read()` / `.write()` call
-    into the C runtime. `@rank(N)` is pure compile-time in the
-    checker, emits no code.
+18. **`Shared[T]` implementation.** **[DECIDED]** Wraps the value
+    plus a `pthread_rwlock_t` / `SRWLOCK`. `.read()` / `.write()`
+    call into the C runtime. `@rank(N)` is pure compile-time in
+    the checker, emits no code.
 
-19. **Memory model.** Sequentially consistent across `Shared[T]`
-    lock acquisitions and `Chan[T]` send/recv edges. Everything
-    else is either statically forbidden by the ownership checker
-    or explicitly undefined (and the checker rejects it). Document
-    in the Fuse3 guide.
+19. **Memory model.** **[DECIDED]** Sequentially consistent across
+    `Shared[T]` lock acquisitions and `Chan[T]` send/recv edges.
+    Everything else is either statically forbidden by the ownership
+    checker or explicitly undefined (and the checker rejects it).
+    Document in the Fuse3 guide.
 
-20. **`select`.** Deferred to Fuse3 Wave 2. Day-one workaround is
-    `spawn` per channel + collect results. Fuse2 deferred this
-    for the same reason; Fuse3 faces the same implementation cost
-    (waiting on multiple condition variables simultaneously).
+20. **`select`.** **[DECIDED: deferred to Fuse3 Wave 2.]** Day-one
+    workaround is `spawn` per channel + collect results. Fuse2
+    deferred this for the same reason; Fuse3 faces the same
+    implementation cost (waiting on multiple condition variables
+    simultaneously).
 
-21. **`spawn` capture rules.** Keep `spawn move` / `spawn ref`
-    and reject raw `mutref` capture — same as Fuse2. The Fuse3
-    checker enforces these rules on top of the C-runtime thread
-    primitives.
+21. **`spawn` capture rules.** **[DECIDED]** Keep `spawn move` /
+    `spawn ref` and reject raw `mutref` capture — same as Fuse2.
+    The Fuse3 checker enforces these rules on top of the C-runtime
+    thread primitives.
 
 ## Stdlib / tooling
 
-22. **Tier structure.** Keep Core / Full / Ext. Confirm Core is
-    OS-free.
+22. **Tier structure.** **[DECIDED]** Keep Core / Full / Ext.
+    Core is OS-free (no file I/O, no network, no process, no
+    threading — those live in Full).
 
-23. **Trait set for Core.** `Equatable`, `Hashable`, `Comparable`,
-    `Printable`, `Debuggable` in Core (day one). `Serializable`,
-    `Encodable`, `Decodable` in Ext (need `Encoder` / `Decoder`
-    types defined first — post-bootstrap).
+23. **Trait set for Core.** **[DECIDED]** `Equatable`, `Hashable`,
+    `Comparable`, `Printable`, `Debuggable` in Core (day one).
+    `Serializable`, `Encodable`, `Decodable` in Ext (need
+    `Encoder` / `Decoder` types defined first — post-bootstrap).
 
-24. **`Map[K: Hashable, V]`.** **[TENTATIVE: insertion order.]**
+24. **`Map[K: Hashable, V]`.** **[DECIDED: insertion order.]**
     §5.4 recommends insertion-order iteration by default, with
     explicit `sortedKeys()` / `unorderedKeys()` opt-outs. Prevents
     the Wave B1 HashMap→BTreeMap bug class entirely.
@@ -2184,31 +2187,35 @@ questions are listed in rough dependency order.
     (emit the call verbatim), but the type checker needs a rule.
     Fuse2's `extern fn` mechanism is a good starting point.
 
-26. **Testing.** `@test` decorator. Fuse3 test runner invoked
-    via `fuse test`. Is there a cross-runner story (can Go's
-    `go test` drive Fuse tests through the Stage 1 binary)? Not
-    needed day one but worth deciding.
+26. **Testing.** **[DECIDED]** `@test` decorator. Fuse3 test
+    runner invoked via `fuse test`. Cross-runner story (can Go's
+    `go test` drive Fuse tests through the Stage 1 binary?) is
+    deferred — not needed day one, revisit when Stage 2 is
+    self-hosting.
 
-27. **LSP, formatter, linter.** Ship day one or deferred? Fuse2
-    shipped an LSP in Wave 7 of pre-Stage 2, which was valuable
-    for self-host development. Recommendation: LSP day one (it
-    pays for itself), formatter day one (tiny code), linter
-    deferred until real Fuse code exists to lint.
+27. **LSP, formatter, linter.** **[DECIDED]** LSP day one (it
+    pays for itself — Fuse2 proved this in pre-Stage 2 Wave 7),
+    formatter day one (tiny code), linter deferred until real
+    Fuse code exists to lint.
 
 ## Meta / process
 
-28. **Bootstrapping milestones.** Fuse3 is Go-hosted Stage 1 from
-    day one. Stage 2 self-hosting begins when Stage 1 can compile
-    the Fuse3 stdlib (~Wave 3 or 4 in the implementation plan).
-    Three-generation reproducibility is the Stage 2 completion
-    gate.
+28. **Bootstrapping milestones.** **[DECIDED]** Fuse3 is Go-hosted
+    Stage 1 from day one. Stage 2 self-hosting begins when Stage 1
+    can compile the Fuse3 stdlib (~Wave 3 or 4 in the implementation
+    plan). Three-generation reproducibility is the Stage 2
+    completion gate.
 
-29. **Rules doc.** Single shared `rules.md` file referenced by
-    every wave plan, *not* re-stated at the top of every doc.
-    Fuse2's per-doc restatement was expensive.
+29. **Rules doc.** **[DECIDED]** Single shared `rules.md` file
+    referenced by every wave plan, *not* re-stated at the top of
+    every doc. Fuse2's per-doc restatement was expensive.
 
-28. **Learning log.** Ordered append-only (Fuse2 style) or
-    searchable database?
+30. **Learning log.** **[DECIDED: ordered append-only.]** Fuse2's
+    `fuse2-learnings.md` / L001–L029 style. Chronological,
+    numbered, never rewritten — mature bugs get a one-line
+    summary, active bugs get a full entry. A searchable database
+    was considered and rejected as overhead without clear payoff;
+    `grep -n` over a flat file is fine at Fuse3's scale.
 
 ---
 
