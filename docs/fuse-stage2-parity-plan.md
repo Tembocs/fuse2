@@ -238,7 +238,7 @@ closed, so the checker — not a reviewer — drives the fix).
 | B7 | Codegen: Match-as-Expression Type Unification | 5 | 22 | B4, B5 | **Done** (commits 8b93265, b434a2a, d78f122, f3d86af, af35565, + B7.5) |
 | B8 | Codegen: Namespace Static Method Calls | 3 | 11 | B5 | **Done** (commits 17363c3, b3722ff) |
 | B9 | Codegen: Tuple Field Access Type Propagation | 3 | 10 | B7 | **Done** (commits f649172, ccbc74b) |
-| B10 | Lexer: F-String Brace Escaping | 3 | 9 | — | Not started |
+| B10 | Lexer: F-String Brace Escaping | 3 | 9 | — | **Done** (commit b575bc0, closing commit pending) |
 | B11 | Stage 2 Source: Missing Imports | 3 | 14 | B2, B4, B5 | Not started |
 | B12 | Stage 2 Self-Compile Verification | 6 | 22 | B1-B11 | Not started |
 | B13 | Institutional Knowledge & Document Sync | 4 | 14 | B12 | Not started |
@@ -1293,12 +1293,18 @@ next character is the same brace, emit a single literal and advance twice.
 
 **Tasks:**
 
-- [ ] **B10.1.1** Modify the f-string scan in `lexer.rs` to handle `{{` → literal `{`, `}}` → literal `}`.
-- [ ] **B10.1.2** Make sure the f-string token representation preserves the literal for the parser (the current representation seems to be a flat string; confirm the parser doesn't re-scan for braces in a way that would re-misinterpret them).
+- [x] **B10.1.1** Modify the f-string scan in `lexer.rs` to handle `{{` → literal `{`, `}}` → literal `}`. Added two new match arms at the top of `read_string`'s loop guarded by `brace_depth == 0 && self.peek(1) == '{'` (and the `}` counterpart). Both arms push the doubled character pair to `value` and advance two positions *without* touching `brace_depth`. The pre-existing `'{' if formatted` and `'}' if formatted && brace_depth > 0` arms still handle real interpolation start/end, so inside an interpolation (depth > 0) the escape guards never fire — map literals and nested blocks still work.
+- [x] **B10.1.2** Make sure the f-string token representation preserves the literal for the parser. Chose the "store verbatim, resolve in re-scanner" option: the lexer writes both brace characters into the token's `text` field (e.g. `f"{{hello}}"` → token text `{{hello}}`), and a new shared helper `stage1/fusec/src/fstring.rs::parse_fstring_template` walks the template producing a `Vec<FStringPart>` where `{{`/`}}` are resolved to literal `{`/`}` and single `{...}` becomes `FStringPart::Interp`. Rewrote the four previous re-scanners to consume this Vec:
+  - `codegen/object_backend.rs::compile_fstring` (println path)
+  - `codegen/object_backend.rs::collect_expr_names` FString arm (ASAP dead-binding analysis)
+  - `evaluator.rs::render_fstring` (`--run` / REPL)
+  - `evaluator.rs::collect_expr_names` FString arm (ASAP dead-binding in interpreter)
 
-**Deliverables:** Updated f-string lexer.
+  The old inline `fstring_brace_end` helper was moved from `object_backend.rs` into the new `fstring` module and is now pub; both `parse_fstring_template` and any future consumer share one definition. The parser itself (`parser.rs:1052`) just copies the token text into `Expr::FString.template`, so no parser changes were required.
 
-**Success criteria:** `f"{{hello}}"` lexes as the literal `{hello}`.
+**Deliverables:** Updated f-string lexer + shared `fstring` module + four unified re-scanner call sites.
+
+**Success criteria:** `f"{{hello}}"` lexes as the literal `{hello}`. ✓ — verified by `cargo test -p fusec --lib fstring` (14 tests including `escaped_brace_pair`) and by running the T1 fixture through the release binary.
 
 ---
 
@@ -1310,13 +1316,15 @@ next character is the same brace, emit a single literal and advance twice.
 
 **Tasks:**
 
-- [ ] **B10.2.1** `tests/stage2/t1_features/strings/fstring_brace_escape.fuse`: `println(f"{{hello}}")` → expected `{hello}`.
-- [ ] **B10.2.2** Mixed: `println(f"{{x = {x}}}")` with `val x = 5` → expected `{x = 5}`.
-- [ ] **B10.2.3** Lexer unit test in `stage1/fusec/src/lexer/lexer.rs` or sibling test file.
+- [x] **B10.2.1** `tests/stage2/t1_features/strings/fstring_brace_escape.fuse`: covers `f"{{hello}}"` → `{hello}`, `f"{{ }}"` → `{ }`, and quadrupled `f"{{{{raw}}}}"` → `{{raw}}` so the re-scanner's "literal then literal" handling is exercised.
+- [x] **B10.2.2** Mixed: `tests/stage2/t1_features/strings/fstring_brace_escape_mixed.fuse` — three lines. First is `f"{{x = {x}}}"` with `val x = 5` → `{x = 5}`. Second mirrors the canonical `buildWrapper` cargoToml template: `f"fuse-runtime = {{ path = \"{runtimePath}\" }}"` with `val runtimePath = "../runtime"` → `fuse-runtime = { path = "../runtime" }`. Third mirrors the buildRs template: `f"fn main() {{ println!(\"{msg}\"); }}"` → `fn main() { println!("hi"); }`.
+- [x] **B10.2.3** Unit tests in two files:
+  - `stage1/fusec/src/fstring.rs` — 11 tests covering plain literal, single interp, escaped open, escaped close, escape pair, escape-then-interp, nested map literal inside interp, escape-surrounding-nested-interp, lone `}` legacy passthrough, unterminated interp error, and the exact `buildWrapper` cargoToml fragment.
+  - `stage1/fusec/src/lexer/lexer.rs::fstring_escape_tests` — 3 tests asserting the *lexer* stores the doubled form for `f"{{hello}}"`, `f"{{x = {x}}}"`, and the buildWrapper-shape input. These are lexer-level tests (token `text` inspection), not end-to-end, complementing the re-scanner tests in `fstring.rs`.
 
-**Deliverables:** Three new tests.
+**Deliverables:** Three new tests (one T1 output fixture, one mixed T1 output fixture, one lexer-level unit test file). Total 14 new unit tests (11 in `fstring` + 3 in `lexer`) plus 2 new T1 fixtures.
 
-**Success criteria:** All three pass.
+**Success criteria:** All pass. ✓ — `cargo test -p fusec --lib fstring` reports `14 passed; 0 failed`. The two T1 fixtures produce the expected output when executed via the release binary.
 
 ---
 
@@ -1330,12 +1338,12 @@ compiles correctly after B10.1.
 
 **Tasks:**
 
-- [ ] **B10.3.1** Locate the f-string in `stage2/src/main.fuse`'s `buildWrapper`.
-- [ ] **B10.3.2** Compile `stage2/src/main.fuse` with `--check`. The f-string must no longer be flagged.
+- [x] **B10.3.1** Located. `stage2/src/main.fuse:465` is the cargoToml f-string (`fuse-runtime = {{ path = \"{runtimePath}\" }}` with `craneliftFfiPath` counterpart); `stage2/src/main.fuse:471` is the buildRs f-string (`fn main() {{`, `if cfg!(target_os = \"windows\") {{`). Both live in the `buildWrapper` function starting at `main.fuse:441`.
+- [x] **B10.3.2** `d:/fuse/fuse2/stage1/target/release/fusec.exe --check stage2/src/main.fuse` no longer flags lines 465 or 471. Grep over the `--check` output confirms: the only `main.fuse:46*` diagnostic is on line 467 (`io.writeFile(...).mapErr(...)` — a B11 missing-import issue, not an f-string issue), and line 471 produces no diagnostic at all. All remaining errors on `main.fuse` are B2-promoted extension resolution errors from missing `stdlib.core.{list,option,result}` imports, which are B11's scope.
 
 **Deliverables:** Verification.
 
-**Success criteria:** `main.fuse` `--check` passes (subject to other waves).
+**Success criteria:** `main.fuse` `--check` no longer produces any diagnostic caused by the f-string parser. ✓ — lines 465 and 471 are clean; remaining errors are B11's.
 
 ---
 

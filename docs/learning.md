@@ -653,6 +653,37 @@ Plus the **checker**'s `infer_expr_type` had the same find_map-first-arm bug (li
 
 ---
 
+### L028: F-string literal brace escape `{{` / `}}` was unimplemented
+
+**Group:** G4 (parser/lexer gap exposed by codegen re-scanning)
+**Phase:** Wave B10 (docs/fuse-stage2-parity-plan.md)
+**Affected tests:** `stage2/src/main.fuse:465` (`buildWrapper` cargoToml f-string), `stage2/src/main.fuse:471` (buildRs f-string) — both contain `{{ ... }}` literals around real `{interp}` substitutions. Plus `tests/stage2/t1_features/strings/fstring_brace_escape*.fuse` (new B10 fixtures) and 14 new unit tests in `src/fstring.rs` + `src/lexer/lexer.rs`.
+
+**What happened:** `f"fuse-runtime = {{ path = \"{runtimePath}\" }}"` was intended to produce the literal string `fuse-runtime = { path = "/actual/path" }`. Instead the compiler treated every `{` as an interpolation start and tried to parse `{hello}` / `{ path = "..." }` / etc. as Fuse expressions, producing either garbage output or an `f-string parse error`. This blocked `buildWrapper` from ever emitting a valid `Cargo.toml` or `build.rs`, which in turn blocked any attempt to actually link a compiled object into an executable via the self-hosted wrapper path.
+
+**Root cause (two layers):**
+1. **stage1/fusec/src/lexer/lexer.rs `read_string`** — the f-string scan had no provision for literal braces. Its `brace_depth` counter incremented on every `{` and decremented on every `}`, which happened to preserve the raw characters (`{{hello}}`) in the token's value field for balanced inputs, but the *semantics* were wrong: a `"` appearing between `{{` and `}}` (at the lexer's false depth > 0) would be swallowed instead of closing the string, and the concept of "literal brace" simply did not exist in the grammar.
+2. **Four re-scanners** consumed the stored template as-if every `{` were an interpolation start:
+   - `codegen/object_backend.rs compile_fstring` — the codegen path for `println(f"...")`.
+   - `codegen/object_backend.rs collect_expr_names` (FString arm) — dead-binding analysis used by ASAP destruction to decide which bindings a following statement still needs.
+   - `evaluator.rs render_fstring` — the `--run` / REPL path.
+   - `evaluator.rs collect_expr_names` (FString arm) — same dead-binding analysis in the interpreter.
+   
+   All four used `rest.find('{')` / `rest[start+1..].find('}')` directly, with no escape recognition.
+
+**Fix (Wave B10):**
+1. **B10.1.1** — New shared module `stage1/fusec/src/fstring.rs` exports `enum FStringPart { Literal(String), Interp(&str) }` and `fn parse_fstring_template(template) -> Result<Vec<FStringPart>, String>`. The walker strips `{{`/`}}` into literal `{`/`}`, treats a solo `{` as the start of an interpolation whose body extends to the matching `}` (via the existing `fstring_brace_end` depth walker, moved into the new module), and passes lone `}` through as a literal for backward compatibility with pre-B10 lenient behavior.
+2. **B10.1.2** — Lexer's `read_string` now explicitly matches `{{`/`}}` at `brace_depth == 0` and advances two positions without touching the depth counter. A `{` that is not the first half of a `{{` increments depth (entering an interpolation); a `}` that is not the first half of a `}}` decrements depth (or falls through at depth 0). This makes the lexer's depth semantically correct — `"` inside a true literal region now correctly terminates the string — while still storing the template with `{{`/`}}` preserved verbatim so the re-scanners see the same view they did before (plus the escape).
+3. **Re-scanner unification** — `compile_fstring`, `render_fstring`, and both `collect_expr_names` FString arms all now call `parse_fstring_template` and iterate its `Vec<FStringPart>`. The duplicate `fstring_brace_end` helper was removed from `codegen/object_backend.rs` in favor of the one in `fstring`.
+4. **B10.2** — 11 unit tests in `src/fstring.rs` cover plain literal, single interpolation, escaped open/close/pair, escape-then-interp, nested map literal inside interp, escape surrounding nested interp, lone `}` legacy path, unterminated interp error, and the canonical `buildWrapper` fragment. 3 unit tests in `src/lexer/lexer.rs` assert the lexer stores the doubled-brace form. 2 T1 fixtures `fstring_brace_escape.fuse` and `fstring_brace_escape_mixed.fuse` exercise the end-to-end pipeline through codegen — the latter mirrors the exact shape of `stage2/src/main.fuse`'s cargoToml and buildRs templates.
+5. **B10.3** — `stage1/target/release/fusec.exe --check stage2/src/main.fuse` no longer flags lines 465 and 471 (the two buildWrapper f-strings). All remaining `--check` errors on `main.fuse` are B11 missing-import issues, not f-string issues.
+
+**Lesson:** When a lexer stores raw text that a downstream consumer re-scans, *either* the lexer resolves the escape *or* the re-scanner does — never both, never neither. The pre-B10 code did neither: the lexer stored `{{` verbatim (by accident, via mis-counted depth), and the re-scanner had no concept of `{{`. This is the third bug in B0-B10 where a single field (f-string template, tuple generic substring, match arm type) was passed between two subsystems with implicit-and-divergent assumptions about its meaning. Prefer a single typed representation (`Vec<FStringPart>`) over "a string plus a shared parsing convention we hope both sides agree on."
+
+**Status:** Fixed — Wave B10 completion.
+
+---
+
 ## Bug Entry Template
 
 ```markdown
