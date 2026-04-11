@@ -31,6 +31,7 @@
 - 2.3 Result/Option/? — error handling without null or exceptions
 - 2.4 The type catalogue (primitives, compound, user-defined)
 - 2.5 Pattern matching and arm unification
+- 2.6 Memory safety case audit (every allocation path)
 
 **Part 3 — Concurrency (user flagged for from-scratch redesign)**
 - 3.1 The three-tier model
@@ -699,6 +700,199 @@ pinned the behaviour.
 - **Statement vs expression context is a property of the surrounding
   expression, not a flag threaded through check_expr.** The HIR
   should mark each subexpression with its context at lowering time.
+
+---
+
+## 2.6 Memory safety case audit (every allocation path)
+
+Pillar 1 promises: *memory safety without garbage collection, without
+manual `free`, without a borrow checker.* That is a strong claim. This
+section audits it case by case so Fuse3's language guide can state
+confidently which allocation patterns are automatic, which are
+compiler-enforced, and where the one documented exception lives.
+
+The question the audit answers: **given a value that needs heap
+storage, is its destruction guaranteed without developer action?**
+
+### 2.6.1 The allocation-path catalogue
+
+Every value in Fuse lives in exactly one of these shapes. The table
+below is the exhaustive list — if Fuse3 adds a shape that isn't here,
+this audit has to be extended.
+
+| # | Allocation shape                             | Destruction mechanism                            | Automatic? |
+|---|----------------------------------------------|--------------------------------------------------|------------|
+|  1 | Stack primitive (`Int`, `Bool`, `F64`, …)    | Stack unwind                                     | ✅ |
+|  2 | Stack struct with only primitive fields      | Stack unwind                                     | ✅ |
+|  3 | `@value struct` (trivially copyable bundle)  | Stack unwind; field dtors run at last use        | ✅ |
+|  4 | Owned `String`                               | ASAP dtor at last use                            | ✅ |
+|  5 | Owned `List<T>`                              | ASAP dtor, element dtors run first               | ✅ |
+|  6 | Owned `Map<K,V>`                             | ASAP dtor, key/value dtors run first             | ✅ |
+|  7 | Owned `Set<T>`                               | ASAP dtor, element dtors run first               | ✅ |
+|  8 | Owned `Option<T>` / `Result<T,E>`            | ASAP dtor, payload dtor runs iff variant holds   | ✅ |
+|  9 | Owned tuple `(A, B, …)`                      | ASAP dtor, field dtors in declared order         | ✅ |
+| 10 | `data class` (auto `@value`-like)            | Compiler-generated dtor, fields in order         | ✅ |
+| 11 | `struct` with owning fields                  | Compiler-generated dtor, fields in order         | ✅ |
+| 12 | Nested owners (`List<List<String>>`, …)      | Recursive dtor walk, innermost first             | ✅ |
+| 13 | Enum with payloads                           | Tag-dispatched dtor, only the live variant       | ✅ |
+| 14 | Temporary from expression (`f(g(h()))`)      | Dtor at end of enclosing statement               | ✅ |
+| 15 | Pattern-bound value (`Some(s) => use(s)`)    | Dtor at arm exit; binding extends source lifetime | ✅ |
+| 16 | Function parameter (`owned` / `move`)        | Dtor at last use inside callee                   | ✅ |
+| 17 | Return value                                 | Ownership transferred to caller; caller owns dtor | ✅ |
+| 18 | Closure capturing owned values by reference  | Captures extend enclosing scope lifetime          | ✅ (non-escaping); ⚠️ escaping — see 2.6.2 |
+| 19 | Closure capturing by move                    | Dtor runs when closure itself is destroyed      | ✅ |
+| 20 | `Shared<T>` (ref-counted, `@rank`-ordered)   | Refcount drop; dtor runs when count hits zero    | ✅ |
+| 21 | `Chan<T>` buffered elements                  | Channel dtor drains buffer, destroying each item | ✅ |
+| 22 | Task-local heap inside `spawn { … }`         | Task teardown walks the task arena               | ✅ (needs Fuse3 redesign — Part 8.3) |
+| 23 | Cyclic data structure                        | **Disallowed by design** — no back-pointers      | ✅ (by construction) |
+| 24 | FFI raw `Ptr<T>` / `Unsafe.alloc`            | **Manual** — developer owns lifetime             | ❌ (the documented exception) |
+
+Twenty-three of the twenty-four cases are automatic. The two that need
+commentary — case 18 (the real gap) and case 24 (the documented kernel
+exception) — are below.
+
+### 2.6.2 The one real gap: escaping closures (case 18)
+
+A non-escaping closure is fine. When a closure is passed to
+`list.map(…)` and consumed before the function returns, the captures
+are alive because the enclosing scope is alive. ASAP destruction
+covers it.
+
+The problem is the *escaping* closure: one that outlives the scope
+that created its captures. Returning a closure from a function, or
+storing it in a struct field, or sending it over a channel to another
+task — all of these need the captures to outlive the original stack
+frame, and ASAP destruction on the caller side would otherwise destroy
+them too early.
+
+**Fuse2 status.** Fuse2 dodges this because its closures are
+second-class: they are almost exclusively consumed in place
+(`map`/`filter`/`fold`), and the compiler does not permit storing them
+across awaits or returning them from functions that own their
+captures. The problem was never stressed.
+
+**Fuse3 decision (recommended, pending confirmation).** Adopt the
+Rust-style discipline: **escaping closures must capture by `move`
+explicitly**. Non-escaping closures stay implicit and ergonomic.
+
+```fuse
+// non-escaping — implicit capture is fine
+list.map(|x| x + offset)           // offset stays alive; closure dies before return
+
+// escaping — compiler demands an explicit move
+fn make_counter(start: Int) -> Fn() -> Int {
+    var n = start
+    return move || { n = n + 1; n }   // `move` transfers `n` into the closure
+}
+```
+
+The compiler rule: if a closure's lifetime cannot be proven to end
+before its captures' enclosing scope, it must be marked `move`, and
+the captures become *owned* by the closure. The closure itself is now
+a heap-allocated object with a dtor that destroys each captured value.
+Same ASAP discipline, same uniform ownership model — just made
+explicit at the escape boundary.
+
+This is the only case in the entire catalogue where the developer
+writes something extra (`move`). It is not manual allocation; it is
+an ownership annotation at the boundary where ownership actually
+transfers.
+
+### 2.6.3 The documented exception: FFI raw pointers (case 24)
+
+The language guide has always promised an escape hatch for the
+extreme case: kernel programming, bare-metal embedded, custom
+allocators, hand-rolled data structures for a hot loop. These live
+under `Unsafe` / `Ptr<T>` and are the *only* place a developer can
+call `alloc` / `free` by hand.
+
+The audit does not weaken pillar 1, because:
+
+1. **The escape hatch is syntactically marked.** Any use of `Ptr<T>`
+   or `Unsafe.alloc` must appear inside an `unsafe { … }` block.
+   Search-and-audit is trivial: `grep -rn 'unsafe {' src/` tells you
+   every place in a codebase where manual memory management lives.
+
+2. **The escape hatch is rare by default.** Standard library
+   containers, channels, shared references, strings, lists, maps —
+   none of them expose raw pointers. A pure application programmer
+   can write a full Fuse3 program and never type the word `unsafe`.
+
+3. **The escape hatch is opt-in at the crate level.** Fuse3 should
+   allow a module to declare `#![forbid(unsafe)]` so that higher-tier
+   code (stdlib-level libraries, business logic) mechanically rejects
+   `unsafe` blocks at compile time. This is the Rust discipline and
+   it works.
+
+### 2.6.4 How ASAP becomes C in the Fuse3 backend
+
+Because §1.4 locked in "emit C, invoke system cc", the audit above
+has to hold down to the generated C. Here is a minimal example —
+a function that owns a `String` and a `List<String>`, both of which
+should be destroyed before the function returns, the `List` inner
+element first, then the outer `List`, then the `String`.
+
+Fuse source:
+
+```fuse
+fn greet(name: String) -> Int {
+    val items: List<String> = ["hello", name]
+    println(items.len())
+    return items.len()
+}
+```
+
+Emitted C (illustrative, not final syntax):
+
+```c
+int64_t fuse_greet(fuse_string_t name) {
+    fuse_list_t items = fuse_list_new_cap(2);
+    fuse_list_push_string(&items, fuse_string_lit("hello"));
+    fuse_list_push_string(&items, name);          // ownership of `name` moves in
+    int64_t _t0 = fuse_list_len(&items);
+    fuse_println_int(_t0);
+    int64_t _ret = fuse_list_len(&items);
+    fuse_list_destroy(&items);                    // outer dtor walks elements first
+    return _ret;
+    // `name`'s dtor is NOT here — ownership was moved into `items`
+}
+```
+
+Key properties:
+
+- **Every owning binding has a matching `fuse_*_destroy` call** at
+  its last-use point. The codegen emits these during ASAP lowering;
+  they are not optional.
+- **Moved values do not get a dtor on the source side.** The `name`
+  parameter moved into `items`, so the only dtor for it is the one
+  `fuse_list_destroy` calls while walking elements.
+- **Destructors recurse.** `fuse_list_destroy` walks the backing
+  array and calls `fuse_string_destroy` on each element before
+  freeing the array itself. No tracing, no refcounts in the hot
+  path, just a single deterministic walk.
+- **The C compiler sees plain C.** No Fuse runtime, no GC, no
+  dependency on `libgo`. Just `fuse_runtime.c` (a small Fuse-owned
+  file) and the system's `cc`.
+
+The runtime library (`fuse_runtime.c` / `fuse_runtime.h`) is written
+in C for stage 1, then replaced by a Fuse-authored version once the
+compiler is self-hosting. It exposes `fuse_string_*`, `fuse_list_*`,
+`fuse_map_*`, `fuse_chan_*`, and `fuse_shared_*`. Every one of them
+has a `*_destroy` entry point that codegen calls directly.
+
+### 2.6.5 Summary
+
+Pillar 1 holds: **23 of 24 allocation shapes are destroyed
+automatically by the compiler, with zero developer action**. The 24th
+(`Ptr<T>` / `Unsafe.alloc`) is the documented kernel-programming
+exception, syntactically marked, lintable, and forbiddable at the
+module level. The one shape that needs developer input — escaping
+closures — needs only an ownership annotation (`move`), not a manual
+allocation or free.
+
+Fuse3's language guide should open the memory-safety chapter with the
+24-row table above. It is the shortest possible proof that the pillar
+is real.
 
 ---
 
@@ -1858,11 +2052,16 @@ questions are listed in rough dependency order.
    `String` via `return next.unwrap()` because the checker only
    validated trailing expressions). See §2.3.
 
-9. **Match / when / exhaustiveness.** Keep. Formalise U1–U7
-   including Never (`!`) as a real type. No conflict with boolean
-   negation because Fuse uses the `not` keyword for that, never
-   `!` — see the explanation recorded in the Fuse3 design
-   conversation. **Pending confirmation to mark DECIDED.**
+9. **Match / when / exhaustiveness.** **[DECIDED]** Keep Fuse2's
+   semantics. Formalise U1–U7 arm unification rules, including
+   `!` (Never) as a real type in the type system. No conflict
+   with boolean negation — Fuse uses the `not` keyword for that,
+   never `!`. The `!` character appears only as the two-character
+   `!=` token (lexed as a unit) and as the Never type marker in
+   type position; the two uses are syntactically unambiguous
+   because they never occupy the same grammar slot. Rust uses
+   both, and it works for them; Fuse is cleaner because `not`
+   handles negation and `!` is left solely for Never.
 
 10. **Traits and `implements`.** **[DECIDED]** Keep ADR-013
     semantics verbatim under the new `trait` vocabulary.
