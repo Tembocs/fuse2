@@ -1,0 +1,14 @@
+// EXPECTED OUTPUT:
+// {hello}
+// { }
+// {{raw}}
+
+@entrypoint
+fn main() {
+  // B10.2.1: `{{` and `}}` outside interpolations are literal braces.
+  println(f"{{hello}}")
+  // Empty braces with spacing.
+  println(f"{{ }}")
+  // Quadrupled braces produce two literal pairs.
+  println(f"{{{{raw}}}}")
+}

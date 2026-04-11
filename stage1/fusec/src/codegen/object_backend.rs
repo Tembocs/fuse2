@@ -13,6 +13,7 @@ use cranelift_object::{ObjectBuilder, ObjectModule};
 use crate::ast::nodes as fa;
 use crate::autogen;
 use crate::common::{repo_root, resolve_import_path};
+use crate::fstring::{parse_fstring_template, FStringPart};
 use crate::hir::lower_program;
 use crate::parser::parse_source;
 
@@ -2256,65 +2257,58 @@ impl<'a, 'b> LoweringState<'a, 'b> {
         template: &str,
     ) -> Result<TypedValue, String> {
         let mut current = self.string_value(builder, "")?;
-        let mut rest = template;
-        while let Some(start) = rest.find('{') {
-            if start > 0 {
-                let piece = self.string_value(builder, &rest[..start])?;
-                current = self.runtime(
-                    builder,
-                    self.compiler.runtime.concat,
-                    &[current, piece],
-                    self.compiler.pointer_type,
-                );
+        let parts = parse_fstring_template(template)?;
+        for part in parts {
+            match part {
+                FStringPart::Literal(text) => {
+                    let piece = self.string_value(builder, &text)?;
+                    current = self.runtime(
+                        builder,
+                        self.compiler.runtime.concat,
+                        &[current, piece],
+                        self.compiler.pointer_type,
+                    );
+                }
+                FStringPart::Interp(expr_text) => {
+                    let trimmed = expr_text.trim();
+                    let source = format!("fn __fstr__() => {trimmed}");
+                    let program = parse_source(&source, "<fstring>")
+                        .map_err(|d| format!("f-string parse error: {}", d.render()))?;
+                    let expr = program
+                        .declarations
+                        .first()
+                        .and_then(|decl| {
+                            if let fa::Declaration::Function(func) = decl {
+                                func.body.statements.first()
+                            } else {
+                                None
+                            }
+                        })
+                        .and_then(|stmt| {
+                            if let fa::Statement::Expr(expr_stmt) = stmt {
+                                Some(&expr_stmt.expr)
+                            } else {
+                                None
+                            }
+                        })
+                        .ok_or_else(|| {
+                            format!("failed to parse f-string expression: {trimmed}")
+                        })?;
+                    let value = self.compile_expr(builder, expr)?;
+                    let rendered = self.runtime(
+                        builder,
+                        self.compiler.runtime.to_string,
+                        &[value.value],
+                        self.compiler.pointer_type,
+                    );
+                    current = self.runtime(
+                        builder,
+                        self.compiler.runtime.concat,
+                        &[current, rendered],
+                        self.compiler.pointer_type,
+                    );
+                }
             }
-            let after = &rest[start + 1..];
-            let end = fstring_brace_end(after)
-                .ok_or_else(|| "unterminated f-string interpolation".to_string())?;
-            let expr_text = after[..end].trim();
-            let source = format!("fn __fstr__() => {expr_text}");
-            let program = parse_source(&source, "<fstring>")
-                .map_err(|d| format!("f-string parse error: {}", d.render()))?;
-            let expr = program
-                .declarations
-                .first()
-                .and_then(|decl| {
-                    if let fa::Declaration::Function(func) = decl {
-                        func.body.statements.first()
-                    } else {
-                        None
-                    }
-                })
-                .and_then(|stmt| {
-                    if let fa::Statement::Expr(expr_stmt) = stmt {
-                        Some(&expr_stmt.expr)
-                    } else {
-                        None
-                    }
-                })
-                .ok_or_else(|| format!("failed to parse f-string expression: {expr_text}"))?;
-            let value = self.compile_expr(builder, expr)?;
-            let rendered = self.runtime(
-                builder,
-                self.compiler.runtime.to_string,
-                &[value.value],
-                self.compiler.pointer_type,
-            );
-            current = self.runtime(
-                builder,
-                self.compiler.runtime.concat,
-                &[current, rendered],
-                self.compiler.pointer_type,
-            );
-            rest = &after[end + 1..];
-        }
-        if !rest.is_empty() {
-            let piece = self.string_value(builder, rest)?;
-            current = self.runtime(
-                builder,
-                self.compiler.runtime.concat,
-                &[current, piece],
-                self.compiler.pointer_type,
-            );
         }
         Ok(TypedValue {
             value: current,
@@ -5785,24 +5779,25 @@ fn collect_expr_names(expr: &fa::Expr) -> HashSet<String> {
         fa::Expr::Literal(_) => HashSet::new(),
         fa::Expr::FString(fstring) => {
             let mut names = HashSet::new();
-            let mut rest = fstring.template.as_str();
-            while let Some(start) = rest.find('{') {
-                let after = &rest[start + 1..];
-                if let Some(end) = fstring_brace_end(after) {
-                    let expr_text = after[..end].trim();
-                    let source = format!("fn __names__() => {expr_text}");
+            let parts = match parse_fstring_template(&fstring.template) {
+                Ok(parts) => parts,
+                Err(_) => return names,
+            };
+            for part in parts {
+                if let FStringPart::Interp(expr_text) = part {
+                    let trimmed = expr_text.trim();
+                    let source = format!("fn __names__() => {trimmed}");
                     if let Ok(program) = parse_source(&source, "<fstring-names>") {
                         for decl in &program.declarations {
                             if let fa::Declaration::Function(func) = decl {
-                                if let Some(fa::Statement::Expr(expr_stmt)) = func.body.statements.first() {
+                                if let Some(fa::Statement::Expr(expr_stmt)) =
+                                    func.body.statements.first()
+                                {
                                     names.extend(collect_expr_names(&expr_stmt.expr));
                                 }
                             }
                         }
                     }
-                    rest = &after[end + 1..];
-                } else {
-                    break;
                 }
             }
             names
@@ -5972,21 +5967,6 @@ fn simd_lane_count(vec_ty: cranelift_codegen::ir::Type) -> u8 {
 /// Return true if the vector type has floating-point lanes.
 fn simd_is_float(vec_ty: cranelift_codegen::ir::Type) -> bool {
     matches!(vec_ty, types::F32X4 | types::F64X2)
-}
-
-/// Find the closing `}` for an f-string interpolation, accounting for nested
-/// brace pairs (e.g. in map literals or nested f-strings).
-fn fstring_brace_end(s: &str) -> Option<usize> {
-    let mut depth: usize = 0;
-    for (i, ch) in s.char_indices() {
-        match ch {
-            '{' => depth += 1,
-            '}' if depth == 0 => return Some(i),
-            '}' => depth -= 1,
-            _ => {}
-        }
-    }
-    None
 }
 
 #[cfg(test)]

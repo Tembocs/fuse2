@@ -25,7 +25,7 @@
 // None
 // === Map ===
 // 2
-// alice
+// Some(alice)
 // name, role
 
 // ---- Feature 1: First-class functions & lambdas ----

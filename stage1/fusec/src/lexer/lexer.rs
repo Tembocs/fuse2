@@ -177,6 +177,10 @@ impl<'a> Lexer<'a> {
         }
         self.advance();
         let mut value = String::new();
+        // `brace_depth` tracks whether we are inside an f-string interpolation
+        // (depth > 0) so that `"` inside the interpolation does not terminate
+        // the outer string. Escaped literal braces `{{` / `}}` never enter an
+        // interpolation and do not change the depth.
         let mut brace_depth: usize = 0;
         loop {
             match self.peek(0) {
@@ -184,6 +188,21 @@ impl<'a> Lexer<'a> {
                 '"' if brace_depth == 0 => {
                     self.advance();
                     break;
+                }
+                '{' if formatted && brace_depth == 0 && self.peek(1) == '{' => {
+                    // `{{` at literal position is a literal `{`. We store both
+                    // braces verbatim in the value so the f-string re-scanner
+                    // in codegen/evaluator can recognise and resolve the escape.
+                    value.push('{');
+                    value.push('{');
+                    self.advance();
+                    self.advance();
+                }
+                '}' if formatted && brace_depth == 0 && self.peek(1) == '}' => {
+                    value.push('}');
+                    value.push('}');
+                    self.advance();
+                    self.advance();
                 }
                 '{' if formatted => {
                     brace_depth += 1;
@@ -221,3 +240,42 @@ impl<'a> Lexer<'a> {
     }
 }
 
+#[cfg(test)]
+mod fstring_escape_tests {
+    use super::*;
+
+    fn lex_one_fstring(source: &str) -> String {
+        let tokens = lex(source, "<test>").expect("lexing failed");
+        let token = tokens
+            .iter()
+            .find(|t| matches!(t.kind, TokenKind::FString))
+            .expect("no FString token");
+        token.text.clone()
+    }
+
+    #[test]
+    fn b10_1_1_lexes_double_open_as_literal_pair() {
+        // The stored value preserves the doubled braces so the f-string
+        // re-scanner resolves them; the raw text must contain `{{hello}}`.
+        let text = lex_one_fstring(r#"val s = f"{{hello}}""#);
+        assert_eq!(text, "{{hello}}");
+    }
+
+    #[test]
+    fn b10_1_1_lexes_mixed_escape_and_interpolation() {
+        // `f"{{x = {x}}}"` should store as the doubled form so the
+        // re-scanner produces `{x = ` + Interp(x) + `}`.
+        let text = lex_one_fstring(r#"val s = f"{{x = {x}}}""#);
+        assert_eq!(text, "{{x = {x}}}");
+    }
+
+    #[test]
+    fn b10_1_1_depth_isolated_from_escapes() {
+        // `{{` at literal position must not corrupt interpolation depth
+        // tracking. This is the buildWrapper-style fragment from
+        // stage2/src/main.fuse:465.
+        let text =
+            lex_one_fstring(r#"val s = f"fuse-runtime = {{ path = \"{runtimePath}\" }}""#);
+        assert_eq!(text, "fuse-runtime = {{ path = \"{runtimePath}\" }}");
+    }
+}

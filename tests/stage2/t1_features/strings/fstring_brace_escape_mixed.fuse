@@ -1,0 +1,19 @@
+// EXPECTED OUTPUT:
+// {x = 5}
+// fuse-runtime = { path = "../runtime" }
+// fn main() { println!("hi"); }
+
+@entrypoint
+fn main() {
+  // B10.2.2: escape plus interpolation.
+  val x = 5
+  println(f"{{x = {x}}}")
+
+  // Realistic TOML table fragment — mirrors stage2/src/main.fuse:465.
+  val runtimePath = "../runtime"
+  println(f"fuse-runtime = {{ path = \"{runtimePath}\" }}")
+
+  // Rust source fragment — mirrors stage2/src/main.fuse:471.
+  val msg = "hi"
+  println(f"fn main() {{ println!(\"{msg}\"); }}")
+}

@@ -6,6 +6,7 @@ use std::rc::Rc;
 use crate::ast::nodes as fa;
 use crate::codegen;
 use crate::common::resolve_import_path;
+use crate::fstring::{parse_fstring_template, FStringPart};
 use crate::parser::parse_source;
 
 thread_local! {
@@ -3186,19 +3187,19 @@ impl Evaluator {
 
     fn render_fstring(&mut self, template: &str, module_path: &Path, env: &Environment) -> String {
         let mut output = String::new();
-        let mut rest = template;
-        while let Some(start) = rest.find('{') {
-            output.push_str(&rest[..start]);
-            if let Some(end) = rest[start + 1..].find('}') {
-                let expr_str = rest[start + 1..start + 1 + end].trim();
-                output.push_str(&self.interpolate(expr_str, module_path, env));
-                rest = &rest[start + 2 + end..];
-            } else {
-                output.push_str(&rest[start..]);
-                rest = "";
+        let parts = match parse_fstring_template(template) {
+            Ok(parts) => parts,
+            Err(_) => return template.to_string(),
+        };
+        for part in parts {
+            match part {
+                FStringPart::Literal(text) => output.push_str(&text),
+                FStringPart::Interp(expr_text) => {
+                    let trimmed = expr_text.trim();
+                    output.push_str(&self.interpolate(trimmed, module_path, env));
+                }
             }
         }
-        output.push_str(rest);
         output
     }
 
@@ -3497,23 +3498,25 @@ fn collect_expr_names(expr: &fa::Expr) -> HashSet<String> {
             // not just the first dot-separated segment. This ensures ASAP destruction
             // doesn't move variables that are still needed inside f-string expressions.
             let mut names = HashSet::new();
-            let mut rest = fstring.template.as_str();
-            while let Some(start) = rest.find('{') {
-                if let Some(end) = rest[start + 1..].find('}') {
-                    let expr_str = rest[start + 1..start + 1 + end].trim();
-                    let source = format!("fn __names__() => {expr_str}");
+            let parts = match parse_fstring_template(&fstring.template) {
+                Ok(parts) => parts,
+                Err(_) => return names,
+            };
+            for part in parts {
+                if let FStringPart::Interp(expr_text) = part {
+                    let trimmed = expr_text.trim();
+                    let source = format!("fn __names__() => {trimmed}");
                     if let Ok(program) = parse_source(&source, "<fstring-names>") {
                         for decl in &program.declarations {
                             if let fa::Declaration::Function(func) = decl {
-                                if let Some(fa::Statement::Expr(expr_stmt)) = func.body.statements.first() {
+                                if let Some(fa::Statement::Expr(expr_stmt)) =
+                                    func.body.statements.first()
+                                {
                                     names.extend(collect_expr_names(&expr_stmt.expr));
                                 }
                             }
                         }
                     }
-                    rest = &rest[start + 2 + end..];
-                } else {
-                    break;
                 }
             }
             names
