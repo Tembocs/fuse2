@@ -23,6 +23,7 @@
 - 1.2 Language DNA (what Fuse steals from production languages)
 - 1.3 Core vs Full tiering
 - 1.4 Fuse3 staging: Go → Fuse → Fuse (the two-stage contract)
+- 1.5 Module system decisions (locked for Fuse3)
 
 **Part 2 — Type system and memory model**
 - 2.1 Ownership: four keywords, no borrow checker
@@ -201,28 +202,51 @@ captured here. Redoing it in Python for Fuse3 would burn time and
 teach nothing new.
 
 ```
-Stage 1   Go compiler (replaces Fuse2's Stage 1 in Rust)
-          Lexer, parser, checker, type inference, codegen.
-          Uses Go's standard toolchain (go/ssa, go/types, go build,
-          the Go linker). There is no separate runtime crate and no
-          uniform-handle FFI — eliminating the single biggest source
-          of Fuse2's B12 bug cascade (§4.2).
-          One program. Multiple modes: `fuse run`, `fuse build`,
-          `fuse check`.
+Stage 1   Fuse compiler hosted in Go (replaces Fuse2's Rust Stage 1)
+          Lexer, parser, checker, type inference, C-code emission.
+          Written in Go for host-language leverage: strong standard
+          library, fast iteration, stable tooling.
+
+          Codegen path: emit portable C99 source + a small Fuse
+          runtime (also C, ~500 LOC target) and invoke the system
+          C compiler (cc / gcc / clang / msvc) with cross-target
+          flags to produce native binaries for Windows, Linux,
+          macOS on amd64 and arm64.
+
+          No Go runtime linked into emitted binaries. No Go GC.
+          No goroutine scheduler under the hood. No bundled
+          codegen library — `cc` is an ambient OS tool the same
+          way `link.exe` is, not a dependency we ship. The
+          philosophy is honest all the way down: a Fuse program
+          has exactly the runtime Fuse defines, nothing more.
+
+          One Go program. Multiple modes:
+            fuse run     — interpret (typecheck + tree-walk, for REPL/tests)
+            fuse build   — emit C, invoke cc, produce native binary
+            fuse check   — typecheck only, emit diagnostics
+            fuse build --target=linux-arm64  — cross-compile
 
 Stage 2   Self-hosted Fuse compiler (same purpose as Fuse2's Stage 2)
-          Written in Fuse. Compiled first by Stage 1 in Go, then by
-          itself. Once Stage 2 is self-hosting, the canonical story
-          becomes "Fuse builds Fuse, end-to-end" — Stage 1 in Go
-          retires to a bootstrap-and-reproducibility tool.
+          Written in Fuse. Compiled first by Stage 1 in Go, then
+          by itself. Once Stage 2 is self-hosting, the canonical
+          story is "Fuse builds Fuse, end-to-end" — Stage 1 in Go
+          retires to a boot-and-recover tool.
+
+          The tiny Fuse runtime (initially ~500 LOC of C) is
+          rewritten in Fuse over time, compiled by Stage 1,
+          bundled as C headers or precompiled objects. At that
+          point the only non-Fuse code in the shipped toolchain is
+          libc + the system C compiler — both already present on
+          every developer machine, neither part of the Fuse binary
+          we ship.
 ```
 
 **The bootstrap chain, post-self-host:**
 
 ```
-Step 1:   Stage 1 (Go)     compiles stage2/src/main.fuse  →  fusec3-bootstrap
-Step 2:   fusec3-bootstrap  compiles stage2/src/main.fuse  →  fusec3-stage2
-Step 3:   fusec3-stage2     compiles stage2/src/main.fuse  →  fusec3-verified
+Step 1:   Stage 1 (Go)      compiles stage2/src/main.fuse  →  fusec3-bootstrap
+Step 2:   fusec3-bootstrap   compiles stage2/src/main.fuse  →  fusec3-stage2
+Step 3:   fusec3-stage2      compiles stage2/src/main.fuse  →  fusec3-verified
 Step 4:   sha256(fusec3-stage2) == sha256(fusec3-verified)  ← reproducibility proof
 ```
 
@@ -234,15 +258,25 @@ correctness check and there's nothing to redesign.
 - **"Should this feature exist now or wait?"** — the same question
   Fuse2 asked via Core vs Full. Stage 1 (Go) implements Fuse Core
   first — enough to write the self-hosted Stage 2 compiler. Fuse
-  Full (concurrency, SIMD, interfaces) lands on top.
+  Full (concurrency, SIMD, traits) lands on top.
 
-- **"Should this runtime type be Go-native or Fuse-native?"** — a
-  free win unique to Fuse3. A Fuse `Map[K, V]` can be *literally*
-  a Go `map[K]V` under the hood. `Chan[T]` can be a Go `chan T`.
-  `Shared[T]` can be a Go struct wrapping `sync.RWMutex`. There is
-  no FFI boundary to negotiate, no uniform pointer ABI, no opaque
-  runtime crate. This is the single biggest architectural
-  simplification Fuse3 gets by choosing Go.
+- **"What runtime primitives does Fuse3 need, minimum viable?"** —
+  the C backend gives us total control over what ends up in the
+  emitted binary, which means we have to enumerate the runtime
+  surface explicitly. The minimum set targets ~500 LOC of C:
+  malloc/free (or ASAP-friendly bump allocators), stdin/stdout/
+  stderr via libc, file I/O, process exit, OS-thread spawn, atomics
+  for `Shared[T]`, mutexes for rank-based locking, thread-local
+  storage. Everything above that primitive layer — `Map`, `List`,
+  `Option`, `Result`, `Chan`, `String` extensions — is written in
+  Fuse itself and compiled by Stage 1.
+
+  Fuse2 leaked this question. It imported Rust's entire
+  `std::collections` and `std::sync` wholesale, which is a major
+  reason the B12 ABI cascade had so many layers (runtime function
+  signatures, string representations, handle conventions, uniform
+  `FuseHandle` tagging). Fuse3 enumerates the runtime surface
+  explicitly in the language guide and keeps it small.
 
 - **"Where do we write new stdlib modules?"** — in Fuse, as soon
   as Stage 1 can compile them. Fuse2's Bug Policy (§5.3, §7.3)
@@ -257,19 +291,104 @@ correctness check and there's nothing to redesign.
   recover from a self-hosting regression, but not the day-to-day
   compiler anyone runs. Fuse builds Fuse. End-to-end.
 
-**One implication worth making explicit:** the B12 B-wave bug
-classes (§6.3) that took weeks to untangle in Fuse2 are, in Fuse3's
-two-stage model, either mechanically prevented by the choice of
-host language (the ABI cascade) or shifted earlier in the pipeline
-where they're cheaper to catch (the checker information-loss
-pattern, §4.4). Neither is automatic. Both require the Fuse3
-language guide to specify the right semantics and the Fuse3 Stage 1
-implementation to follow them. But the *cost* of getting them right
-in Fuse3 is a fraction of the cost in Fuse2, because the
-architectural headwind is gone.
+**Why the C backend specifically, not Go's native tools.** The
+obvious path from "Stage 1 in Go" is to emit Go source and invoke
+`go build`. Rejected: every Go toolchain path that produces a
+native binary links in Go's runtime — goroutine scheduler, stack
+growth, `defer` machinery, `mallocgc`. You can disable Go's GC at
+startup via `debug.SetGCPercent(-1)` but the rest of the runtime
+stays in the binary. A Fuse binary produced that way is "a Go
+program pretending it isn't" — philosophy leak, whether or not
+the user sees it. Pillar 1 ("memory safety without a GC") and
+pillar 2 ("concurrency safety without a borrow checker") both
+become lies the moment Go's runtime is a second-order authority
+in the emitted binary. Option A (emit C + invoke system `cc`)
+was selected specifically to preserve those pillars at the
+binary level, not just at the source level.
 
-That's the Fuse3 staging contract. Every other design question in
-Part 10 is downstream of it.
+**One implication worth making explicit.** The B12 B-wave bug
+classes (§6.3) that took weeks to untangle in Fuse2 were produced
+by Fuse2's split of the Rust `fuse-runtime` crate from the
+`cranelift-ffi` crate from the `fusec` compiler — three
+independently-versioned modules connected by an untyped uniform
+pointer ABI. Fuse3 eliminates that split: one Stage 1 compiler
+in Go, one small C runtime we own, one emitted C source file per
+Fuse program. No bridge crate to version-drift. No opaque handle
+convention. There is still a runtime boundary (between emitted
+C and the runtime's C), but it's entirely under our control,
+defined in one file, auditable in one reading. The architectural
+headwind that produced the B12 cascade is gone.
+
+That's the Fuse3 staging contract. Every other design question
+in Part 10 is downstream of it.
+
+---
+
+## 1.5 Module system decisions (locked for Fuse3)
+
+Fuse2's module system worked well and transfers unchanged, plus
+two small additions:
+
+**Inherited verbatim from Fuse2:**
+
+- One file = one module. The file name is the module name.
+- Import paths use dots, not slashes: `import stdlib.core.list`,
+  `import a.b.c` → `src/a/b/c.fuse` relative to project root.
+- `pub` marks exported items; everything is private by default.
+- `import a.b.{X, Y}` imports specific items.
+- `import a.b` imports the whole module; all public symbols are
+  available directly, qualified access (`b.X`) also works.
+- Circular imports are a compile error.
+
+**New in Fuse3:**
+
+1. **Module-level doc comments.** Fuse2 had function doc comments
+   but no convention for module headers. Fuse3 adopts a Rust-style
+   `//!` prefix at the top of a file:
+
+   ```fuse
+   //! stdlib.core.list
+   //! Extension methods for List<T> — push, map, filter, etc.
+
+   import stdlib.core.option
+
+   pub fn List<T>.push(mutref self, item: T) { ... }
+   ```
+
+   Surfaced by the LSP on hover over the import name and by any
+   future docgen.
+
+2. **`pub import` for explicit re-exports.** Fuse2 had no clean
+   way to build a prelude module that gathered symbols from
+   children. Fuse3 adds the `pub` prefix on `import`:
+
+   ```fuse
+   // stdlib/core/prelude.fuse
+   pub import stdlib.core.list
+   pub import stdlib.core.map
+   pub import stdlib.core.option
+   pub import stdlib.core.result
+   pub import stdlib.core.string
+   ```
+
+   Users write one line:
+
+   ```fuse
+   import stdlib.core.prelude
+   // List, Map, Option, Result, String extensions all in scope
+   ```
+
+   Two concrete use cases this unblocks: batteries-included
+   entry points (one import instead of many), and facade modules
+   that re-export a stable public surface from a refactorable
+   internal layout. Without `pub import`, Fuse2 users reached for
+   hand-written wrapper functions — which don't work for types
+   and are noise for everything else. Zero runtime cost; the
+   resolver walks `import` chains already.
+
+**Explicitly rejected:** trailing commas in import lists
+(`import a.b.{X, Y,}`). Cosmetic, not worth the parser special
+case.
 
 ---
 
@@ -494,10 +613,12 @@ default.
 **Fuse3 implication.**
 
 - Maps and the whole `Hashable`-dependent cluster of stdlib types
-  should be designed *with the interface system already decided*.
+  should be designed *with the trait system already decided*.
   Fuse2's Wave 5 interface system landed after maps were in use,
-  which meant retrofitting. Fuse3 flips the order: interfaces first,
-  then maps on top of `Hashable`.
+  which meant retrofitting. Fuse3 flips the order: traits first
+  (`Equatable`, `Hashable`, `Comparable`, `Printable`, `Debuggable`
+  — see §5.2 for the rename from Fuse2's "interface" vocabulary),
+  then maps on top of `K: Hashable`.
 
 - The user has explicitly flagged **maps and memory management for
   threads** for from-scratch design (from
@@ -715,54 +836,76 @@ From [`ADR-014`](../adr/ADR-014-threading-model.md) and
 ## 3.5 Open questions for Fuse3 concurrency
 
 The user's meta-plan explicitly flags **concurrency** and **memory
-management for threads** for from-scratch redesign. Starting from a
-blank page in Fuse3, the questions are:
+management for threads** for from-scratch redesign. With the
+C-backend decision locked in (see §1.4), the questions to answer
+in the Fuse3 language guide are:
 
-1. **Go goroutines or Fuse green threads?** Fuse3 is written in Go.
-   The temptation is to expose `go` (the keyword) directly as Fuse's
-   `spawn`. This gives free M:N scheduling, work-stealing, stack
-   growth, and network I/O integration. Question: does mapping
-   `spawn` → `goroutine` preserve the compile-time `@rank` guarantee?
-   The Go runtime has its own scheduler — `@rank` still works at the
-   Fuse checker level because it's a compile-time check that doesn't
-   care how the resulting machine code is scheduled. But see the
-   next question.
+1. **OS threads or green threads?** The C backend gives us
+   direct access to pthreads / Windows threads via the C runtime.
+   OS threads are simple, correct, proven — the same default
+   Fuse2 planned for Stage 2. Green threads (M:N scheduling with
+   work-stealing) would require us to *write* a scheduler in C
+   or Fuse, which is several thousand lines of careful code.
+   Recommendation for Fuse3: start with OS threads. Defer green
+   threads until profiling data says OS thread overhead is
+   actually a bottleneck — same decision Fuse2's ADR-014 made for
+   Stage 2, except now unblocked earlier.
 
-2. **Can `Shared<T>` use Go's `sync.RWMutex`?** Yes, at the
-   implementation level. The ABI mismatch Fuse2 hit in Stage 2 was
-   because the Fuse runtime wanted raw-pointer conventions and
-   stage 2 couldn't produce them. In Fuse3-on-Go, there *is* no
-   separate runtime C ABI — Go types are Fuse types and vice versa.
-   `Shared[T]` in Fuse3 can literally be a Go struct wrapping a
-   `sync.RWMutex`.
+2. **How is `Shared[T]` implemented?** Wraps a C mutex
+   (pthread_rwlock_t on POSIX, SRWLOCK on Windows) plus the
+   wrapped value. Acquired via Fuse-level `.read()` / `.write()`
+   methods that call into the C runtime. The `@rank(N)` check is
+   entirely compile-time in the Fuse3 checker — it emits no code,
+   it just rejects programs that would deadlock. The runtime
+   primitive is ~20 LOC of C.
 
-3. **What's the memory model for thread-shared data?** Fuse2
-   dodged this question by being single-threaded. Go has a published
-   memory model based on happens-before edges. Fuse3 should either
-   (a) adopt Go's memory model verbatim and document it, or
-   (b) define a stricter memory model that compiles down to a
-   subset of Go's. Option (a) is simpler; option (b) gives Fuse a
-   stronger correctness story.
+3. **What's the memory model?** Fuse2 was single-threaded and
+   dodged this. Fuse3 needs to be explicit. Recommendation: adopt
+   a sequentially-consistent model for `Shared[T]` reads and
+   writes (acquire on read lock, release on write unlock, full
+   barrier on lock acquisition). `Chan[T]` send/recv form
+   happens-before edges. Everything else is undefined and the
+   checker rejects it via the ownership rules. This is the same
+   contract Rust's `std::sync` gives, documented in the guide.
 
-4. **Does `Chan<T>` just become Go's `chan T`?** Type-wise, yes.
-   Semantically, yes. The only difference is Fuse3's `Chan<T>`
-   must honor Fuse's ownership rules — sending a `move`-only value
-   through a channel transfers ownership, and the sender must
-   not use it after. Go channels don't enforce this; the Fuse
-   checker must.
+4. **How is `Chan[T]` implemented?** Fuse-owned ring buffer or
+   linked list of payloads, guarded by a C mutex and a condition
+   variable for blocking send/recv. Unbounded and bounded variants
+   both need explicit implementations. Fuse's ownership checker
+   enforces that a sent value cannot be used by the sender
+   afterward (the runtime doesn't enforce this — it's a
+   compile-time rule). ~100 LOC of C for the primitive + whatever
+   Fuse code we write on top for the `.bounded(n)` / `.unbounded()`
+   constructors.
 
-5. **What about `select`?** If we map to Go, `select` is free —
-   Go's `select` statement is exactly what Fuse wanted. The deferred
-   decision in Fuse2 can be un-deferred in Fuse3 as a day-one
-   feature. The only question is syntax: match Go's `case <-ch:` or
-   invent something more Fuse-like (`case val n from rx:`).
+5. **`select` — ship it day one or defer?** Fuse2 deferred because
+   it needed runtime scheduler integration. Fuse3 has the same
+   constraint: `select` over multiple channels requires the
+   runtime to wait on multiple condition variables
+   simultaneously, which is doable (pthread_cond_wait on a single
+   condition with a shared wait flag, plus book-keeping), but
+   non-trivial. Recommendation: defer to Wave 2 of Fuse3, document
+   the workaround (`spawn` per channel + collect results) in the
+   guide day one.
 
-6. **`@rank` — keep it, or let Go's `-race` detector handle it?**
-   Go's race detector is runtime. `@rank` is compile-time. They are
-   complementary, not replacements. Fuse3 should keep `@rank` because
-   it satisfies pillar 2 (concurrency safety *without* a borrow
-   checker) at compile time — the very thing that distinguishes Fuse
-   from "just write Go carefully".
+6. **`@rank` — keep it, unconditionally.** The entire point of
+   pillar 2 is "concurrency safety without a borrow checker at
+   compile time." `@rank` is the mechanism. It's compile-time,
+   cheap, and catches deadlocks before the program runs. Fuse3
+   keeps `@rank` exactly as Fuse2 designed it. There is no
+   runtime race detector because there is no runtime with enough
+   metadata to have one — and that's fine, because `@rank`
+   replaces it at compile time.
+
+**Key reframing from my earlier draft of this section:** the
+questions used to assume Fuse3 would map `spawn` → Go goroutines,
+`Chan[T]` → Go `chan T`, `Shared[T]` → Go `sync.RWMutex`. That
+plan linked the Go runtime into every Fuse binary, which §1.4
+now rejects. The new answers are: everything concurrency-related
+is implemented in the Fuse3 C runtime (or, over time, in Fuse
+itself), not borrowed from Go's runtime. The implementation is
+more work up front, but it's the only way to keep pillar 1 and
+pillar 2 honest.
 
 ---
 
@@ -832,13 +975,16 @@ tasks.
   in this learnings doc. Skipping Stage 0 is not a shortcut; it's
   the correct response to "the experiment has already been run."
 
-- **Stage 1 in Go owns the full frontend + backend in one
-  program.** One binary, multiple modes (`fuse run`, `fuse build`,
-  `fuse check`). Go's standard toolchain (`go/ssa`, `go/types`,
-  `go build`, the Go linker) replaces Fuse2's Cranelift +
-  cranelift-ffi + fuse-runtime split, which is what eliminates
-  the subsystem-boundary class of bug that produced the entire
-  B12 ABI cascade (§4.2, §6.3).
+- **Stage 1 is one Go program emitting portable C.** Lexer,
+  parser, checker, type inference, C-code emission — all in one
+  binary with modes `fuse run` / `fuse build` / `fuse check`. The
+  emitted C is compiled by the system C compiler
+  (cc / gcc / clang / msvc). One small Fuse-owned C runtime
+  (~500 LOC target) replaces Fuse2's Rust `fuse-runtime` crate.
+  The Cranelift + cranelift-ffi + fuse-runtime triangle — which
+  produced the entire B12 ABI cascade (§4.2, §6.3) — is gone
+  because there is no bridge crate to drift. See §1.4 for why
+  the C backend specifically, not Go's native tools.
 
 - **Keep the "guide precedes implementation" rule.** It scales.
 
@@ -893,16 +1039,38 @@ the Fuse-handle convention. No test exercised the interaction.
 
 **Fuse3 implication.**
 
-- **Go eliminates this problem entirely.** Fuse3 values are Go values.
-  Go's type system is the contract. There is no uniform pointer ABI,
-  no FuseHandle, no cranelift-ffi. When Fuse code calls into a Go
-  function, the Go compiler checks the types.
+- **Fuse3 has one runtime boundary, entirely under Fuse3's own
+  control.** With the C-backend decision (§1.4), Fuse3 still has
+  a runtime — a small C module covering malloc/free, I/O, thread
+  primitives, atomics. But it's *our* code, versioned with the
+  compiler, defined in one file. There is no bundled Rust crate
+  (no `fuse-runtime`), no bundled codegen library (no Cranelift,
+  no LLVM), no external versioning authority to disagree with.
+  The uniform-pointer-ABI pattern that produced B12 is
+  specifically the *untyped bridge between independently-versioned
+  crates* — and Fuse3 has no such bridge. There is exactly one
+  contract: emitted C ↔ Fuse C runtime. That contract is
+  specified in the Fuse3 language guide alongside the emitted C
+  format, and the Stage 1 compiler has a checker-level rule that
+  the emitter only produces calls the runtime can receive.
+
+- **Type tagging is visible at the C layer.** A Fuse3 `Int` is a
+  `int64_t` in the emitted C (with debug tag info in debug mode).
+  A Fuse3 `List<Int>` is a pointer to a small struct `{ items,
+  len, cap }`. There is no `FuseValue` tagged union — the type
+  information stays at compile time, erased into direct C types.
+  This preserves the Fuse2 insight ("no runtime type tags leak
+  into the binary") while getting rid of the `FuseHandle = *mut
+  FuseValue` indirection that made the B12 cascade possible.
 
 - **The general lesson transcends the specific bug.** Any time a
-  value crosses a language or subsystem boundary, the boundary needs
-  a typed contract, a test that exercises *both* sides of the
-  contract simultaneously, and a failure mode when the contract is
-  violated (not silent wrong output). Fuse3 should codify this rule.
+  value crosses a language or subsystem boundary, the boundary
+  needs a typed contract, a test that exercises *both* sides of
+  the contract simultaneously, and a failure mode when the
+  contract is violated (not silent wrong output). Fuse3 codifies
+  this as a rule: the emitted-C ↔ runtime-C contract is verified
+  by a test that compiles a reference set of Fuse programs, runs
+  them, and compares output byte-for-byte against an oracle.
 
 ## 4.3 ASAP analysis, future uses, dead binding release
 
@@ -1117,10 +1285,24 @@ still get free equality. Compromise: the checker's error message is
 explicit — *"either add @value to enable auto-generation, or
 implement the method manually"*.
 
-**Fuse3 implication.** Keep ADR-013 exactly. It's the most elegant
-piece of Fuse design. Go's equivalent (generate code at build time
-via `go generate`) is klugy; Fuse3's compile-time autogen should be
-built-in, reading directly from the typed AST.
+**Fuse3 implication.** Keep ADR-013's mechanism exactly — it's the
+most elegant piece of Fuse design. One terminology change:
+**Fuse3 calls this construct a `trait`, not an `interface`.** The
+word change matches Rust and Mojo (both of which have the same
+feature set: default methods, parent composition, generic bounds,
+auto-generation) and reflects what Fuse's construct actually is —
+a set of capabilities a type has, not a point of interaction. The
+`implements` keyword stays (`data class Point(...) implements
+Hashable`) because it reads naturally with either vocabulary. All
+stdlib "interfaces" from Fuse2 (`Equatable`, `Hashable`,
+`Comparable`, `Printable`, `Debuggable`) are renamed to "traits"
+in the Fuse3 guide; the semantics and auto-generation rules are
+unchanged.
+
+Fuse3's compile-time autogen reads directly from the typed AST,
+same as Fuse2's autogen module. The emitted C includes the
+generated trait-method implementations as regular C functions —
+no vtables, no runtime metadata, same zero-cost story as Fuse2.
 
 ## 5.3 The stdlib-first test strategy and its yield
 
@@ -1201,19 +1383,31 @@ eliminates the null/panic/sentinel footgun. The `.keys()`, `.values()`,
 
 **Fuse3 implication — why the user flagged this.**
 
-- In Go, Fuse3's `Map[K, V]` can literally be a Go generic map
-  `map[K]V` for types where `K` is Go-comparable. For user types
-  with custom `Hashable`, it can be a Go map over a shim key type.
-  There is no runtime FFI.
+- **Map is a Fuse type, implemented in Fuse over a small C
+  runtime primitive.** The C backend (§1.4) means there's no Go
+  `map[K]V` to borrow — we write our own hashtable. The primitive
+  layer in C provides just the unsafe byte-level hashtable
+  operations (hash, probe, resize), and the friendly `Map[K, V]`
+  API with `Hashable` keys is written in Fuse itself. ~200 LOC of
+  C for the primitive, a few hundred lines of Fuse for the type.
 
-- The interface system (`Hashable`, `Equatable`) must exist *before*
-  Map is designed. This is the opposite order from Fuse2.
+- **The trait system (`Hashable`, `Equatable`) must exist
+  *before* Map is designed.** This is the opposite order from
+  Fuse2. It means Fuse3's Wave 1 implements traits; Wave 2
+  implements Map on top. Map has no special cases for `Int` or
+  `String` keys — every key type implements `Hashable` through
+  the same mechanism.
 
-- Deterministic iteration: either (a) make Fuse3's Map iterate in
-  insertion order (like modern Python dicts, Go's iteration via
-  slice of keys), or (b) document that iteration order is
-  unspecified and provide a `sortedKeys()` helper. The former is
-  friendlier. The latter is faster.
+- **Deterministic iteration by default.** Fuse3 maps iterate in
+  insertion order — the same choice modern Python dicts and
+  Swift's `OrderedDictionary` made. It is friendlier, catches
+  non-determinism bugs earlier, and costs one extra pointer per
+  bucket (small linked list or index vector). Users who want
+  sorted iteration get `map.sortedKeys()` explicitly. Users who
+  want unspecified-order iteration for performance get an
+  opt-out (`map.unorderedKeys()`), but the *default* is
+  deterministic. This choice alone would have prevented Fuse2's
+  Wave B1 HashMap→BTreeMap rewrite.
 
 ---
 
@@ -1331,8 +1525,11 @@ it eliminates most of Fuse2's backlog:
 2. **Silent failure in the checker.** Fix: every "could not resolve"
    path returns an error, never falls through to "try something else"
    unless that something else is documented and deterministic.
-3. **ABI boundary without a contract test.** Fix: single-language
-   implementation (Go) where Fuse3 values are Go values.
+3. **ABI boundary without a contract test.** Fix: one runtime ABI
+   under Fuse3's sole control (the Fuse3 C runtime, §1.4 / §4.2),
+   specified in the guide alongside the emitted C format, and
+   verified by a contract test that compiles reference Fuse
+   programs and diffs output byte-for-byte against an oracle.
 
 ---
 
@@ -1456,49 +1653,79 @@ explicitly calls out:
 
 ## 8.1 Concurrency — user directive
 
-Covered in detail in Part 3 (§3.5). Summary of the redesign surface:
+Covered in detail in Part 3 (§3.5). With the C-backend decision
+(§1.4) locked in, the redesign surface is:
 
-- **Primitives.** `spawn`, `Chan<T>`, `Shared<T>`, `@rank(N)`.
-  Keep semantics. Decide runtime mapping (goroutines? Go channels?
-  sync.RWMutex?).
-- **`select`** — promote from deferred to day-one. Go gives it for
-  free.
-- **`SpawnHandle<T>`** — decide whether Go's `sync.WaitGroup` +
-  channels pattern is enough, or whether Fuse3 needs a typed
-  handle abstraction.
-- **Memory model** — document explicitly. Adopt Go's or define a
-  subset.
+- **Primitives.** `spawn`, `Chan[T]`, `Shared[T]`, `@rank(N)`.
+  Keep semantics from Fuse2 unchanged. Implement in the Fuse3 C
+  runtime: pthread_create / Windows CreateThread for `spawn`,
+  pthread_rwlock_t / SRWLOCK for `Shared[T]`, condition-variable-
+  guarded ring buffer for `Chan[T]`. `@rank` is compile-time and
+  emits no code.
+- **`select`** — deferred to Fuse3 Wave 2, workaround (`spawn`
+  per channel) documented day one. Implementing `select` properly
+  requires waiting on multiple condition variables simultaneously;
+  not hard but not trivial.
+- **`SpawnHandle<T>`** — deferred. Fire-and-forget + channels
+  covers the common cases. Reconsider if real-world Fuse3 code
+  demands typed join.
+- **Memory model** — documented explicitly as sequentially
+  consistent across `Shared[T]` lock acquisition and `Chan[T]`
+  send/recv edges. Outside those, the ownership model forbids
+  concurrent access at compile time.
 
 ## 8.2 Maps — user directive
 
-Covered in detail in §5.4. Summary of the redesign surface:
+Covered in detail in §5.4. Redesign decisions already made:
 
-- **`Hashable` must exist before `Map` is designed.** Sequence
-  matters.
-- **Decide iteration order.** Insertion-order (friendly) vs
-  unspecified (fast).
-- **Decide key requirements.** Go-comparable? `Hashable`?
-  Both with fallbacks?
-- **No FFI boundary.** `Map[K, V]` is a Go map under the hood.
+- **`Hashable` (a trait, see §5.2) must exist before `Map` is
+  designed.** Fuse3 Wave 1 implements traits; Wave 2 implements
+  `Map[K, V]` on top. No runtime special cases for `Int`/`String`
+  keys — every key type implements `Hashable` uniformly.
+- **Iteration order is insertion-order by default.** Same
+  decision modern Python, Swift `OrderedDictionary`, and JavaScript
+  `Map` made. Prevents the Wave B1 HashMap→BTreeMap class of
+  bug. Users who want explicit sorted iteration get
+  `map.sortedKeys()`; users who want unspecified for performance
+  get `map.unorderedKeys()`. The default is deterministic.
+- **Map primitive is a ~200 LOC C hashtable** exposed to Fuse as
+  opaque pointer plus hash/probe/resize operations. The friendly
+  `Map[K, V]` API is written in Fuse itself on top of this
+  primitive. No runtime FFI crate to drift.
 
 ## 8.3 Thread memory management — user directive
 
-Covered partially in §4.2 and §3.5. Summary of the redesign
-surface:
+Covered partially in §4.2 and §3.5. With the C backend:
 
-- **No raw FuseHandle.** Fuse3 values are Go values. Go's garbage
-  collector owns lifetime for non-owned values; Fuse's ASAP
-  destruction owns lifetime for owned values. These must not
-  collide.
-- **Thread-safe `Shared<T>`.** Wrap a Go `sync.RWMutex` around a
-  Go struct. `@rank` checks at compile time; Go at runtime can
-  additionally give us `-race` detector coverage for free.
-- **Channels own their values.** A `Chan[T]` sending an owned value
-  transfers ownership. The sender cannot use the value after send.
-  Enforced at the Fuse checker, not at runtime.
-- **Goroutine stack growth.** Fuse3 inherits Go's growable stacks.
-  Users don't see stacks. Stage 2's "stack size 8MB via linker
-  flag" (pitfall 4 in Fuse2) disappears.
+- **No FuseHandle.** No uniform-pointer ABI. Emitted C uses
+  direct C types: `int64_t`, `struct { char *data; size_t len; }`
+  for strings, `struct { T *items; size_t len, cap; }` for
+  `List[T]`, etc. Type information stays at compile time; the
+  emitted code has no runtime tags.
+- **Thread-safe `Shared[T]`.** A struct holding the wrapped value
+  plus a `pthread_rwlock_t` (or platform equivalent). `.read()`
+  acquires a read lock, returns the value. `.write()` acquires
+  a write lock, returns a mutable reference. Unlock via ASAP
+  destruction of the guard. `@rank` is a pure compile-time check
+  in the Fuse3 checker — no runtime race detector, no runtime
+  ordering metadata.
+- **Channels own their values.** A `Chan[T]` sending a `move` or
+  `owned` value transfers ownership through the channel; the
+  sender cannot use the value after send. Enforced at the Fuse
+  checker, not by the C runtime. The C runtime just copies the
+  bytes across the channel memory — the checker guarantees no
+  aliasing on either side.
+- **OS-thread stacks.** Default stack size set by the Fuse3 C
+  runtime when calling pthread_create (Linux/macOS) or
+  CreateThread (Windows). Start conservative (1 MB) and let users
+  request larger via spawn options if a future use case demands
+  it. Fuse2's "8 MB default stack" was a workaround for the
+  compiler's own stack frame size; Fuse3's Go-hosted Stage 1
+  doesn't have that problem.
+- **No Go runtime.** Explicit. This whole section is about
+  Fuse3-native thread memory management specifically because
+  borrowing Go's runtime would leak Go's memory model and
+  scheduler into Fuse binaries, which §1.4 rejects.
 
 ## 8.4 Other candidates surfaced by the learnings
 
@@ -1544,19 +1771,19 @@ this part and Part 1.
 
 | Fuse2 pain point | What hurt | Fuse3 design implication |
 |---|---|---|
-| **Three-stage bootstrap (Python → Rust → Fuse)** | 3 independent implementations of lexer/parser/checker to keep in sync. Stage 0 accreted features for Stage 2. Bootstrap test never exercised real `stage2/src/main.fuse`. | **Two stages: Stage 1 (Go) → Stage 2 (self-hosted Fuse).** See §1.4. No Stage 0 — Fuse2's Python prototype already answered the implementability question. Stage 1 is one Go program (frontend + backend, `fuse run` / `fuse build` / `fuse check`). Stage 2 is Fuse compiled by Stage 1; once self-hosting passes 3-gen reproducibility, Stage 2 becomes the primary compiler and Stage 1 retires to a boot-and-recover tool. Fuse builds Fuse, end-to-end. Bootstrap test always compiles the real `stage2/src/main.fuse`, not a synthetic input. |
-| **Uniform FuseHandle ABI** | Elegant at the type system but brittle at the boundary: the smoke-test convention and the stage-2 convention disagreed silently, producing 8 different bug classes in B12. | **No FFI boundary.** Fuse3 values are Go values. Go's type system is the contract. `Map[K,V]` is literally `map[K]V`. `Chan[T]` is literally `chan T`. |
+| **Three-stage bootstrap (Python → Rust → Fuse)** | 3 independent implementations of lexer/parser/checker to keep in sync. Stage 0 accreted features for Stage 2. Bootstrap test never exercised real `stage2/src/main.fuse`. | **Two stages: Stage 1 (Go-hosted) → Stage 2 (self-hosted Fuse).** See §1.4. No Stage 0 — Fuse2's Python prototype already answered the implementability question. Stage 1 is one Go program that emits portable C99 and invokes the system C compiler (cc/gcc/clang/msvc); no Go runtime links into emitted binaries. Stage 2 is Fuse compiled by Stage 1; once self-hosting passes 3-gen reproducibility, Stage 2 becomes the primary compiler and Stage 1 retires to a boot-and-recover tool. Fuse builds Fuse, end-to-end. Bootstrap test always compiles the real `stage2/src/main.fuse`, not a synthetic input. |
+| **Uniform FuseHandle ABI** | Elegant at the type system but brittle at the boundary: the smoke-test convention and the stage-2 convention disagreed silently, producing 8 different bug classes in B12. | **Single runtime boundary, under Fuse3's sole control.** No bundled Rust crate, no Cranelift/LLVM, no external convention. Emitted C talks to a Fuse3-owned C runtime (~500 LOC) through a contract specified in the Fuse3 guide and verified by an oracle test. No FuseHandle — emitted C uses direct C types (`int64_t`, `struct { items, len, cap }`, etc.) with type information erased at compile time. The B12 cascade pattern — an untyped bridge between independently-versioned modules — is structurally impossible. |
 | **Checker silently accepts unknowns** | `unresolved extension method` fell through to codegen in Fuse2, producing obscure downstream errors. B2 fixed it in the B-wave retrofit. | **Checker is a total function.** Every node is accepted or rejected. No silent pass-through. The compiler is **complete** — never tentative. |
 | **Post-hoc type inference in codegen** | Codegen re-computed types via `infer_expr_type` after pattern bindings had gone out of scope, producing L027, L028, L029 and half the B-waves. | **Typed AST (TAST).** Every node carries its type, value-context, and live-set *after* the checker pass. Codegen reads TAST; never infers. |
 | **Post-hoc ASAP analysis with 4 independent walkers** | F-string name collection, match-arm type collection, ASAP dead-binding release, defer capture analysis — four separate walkers, all had to agree. | **Single AST attribute.** `node.LiveAfter() stringSet` computed once during TAST construction, consumed by everyone. |
 | **Non-deterministic `HashMap` iteration** | Errors were reproduction-resistant; different runs hit different failures. B1 fix was `BTreeMap`. | **Fuse3 lint.** Iterating a Go `map` in a codegen/diagnostic path is a lint error unless preceded by `sort.Strings(keys)`. |
 | **Bare-string codegen errors** | `cannot infer receiver type for X` with no span. Cranelift verifier errors with no Fuse symbol name. B12 retrofit added both. | **`Diagnostic` struct from day one.** No `fmt.Errorf` in the compiler. Every error carries span, message, hint, severity, code. |
-| **Scheduling model deferral** | Stage 1 was single-threaded; Stage 2 planned OS threads; green threads deferred. Every phase had to imagine what the next phase would do. | **Day-one scheduling choice.** Fuse3 ships with goroutine-backed `spawn` from the first runnable program. Green threads are free. |
+| **Scheduling model deferral** | Stage 1 was single-threaded; Stage 2 planned OS threads; green threads deferred. Every phase had to imagine what the next phase would do. | **Day-one OS threads via the Fuse3 C runtime** (pthread_create / CreateThread). Same choice Fuse2 planned for its Stage 2, now unblocked earlier. Green threads stay deferred — they require us to write a scheduler, and Fuse3 is not borrowing Go's. |
 | **Async/await re-rejected in Wave 0.6** | Distracted the team in an earlier iteration until it was killed. | **Never entertain async/await in Fuse3.** Closed question. |
 | **Matches can be used as expressions or statements** | The checker flagged statement-position matches with mixed arm types (L029). Fix was a Unit-filter; proper fix deferred. | **`ValueContext bool` propagated through the checker from day one.** Every `check_expr` call knows whether the value will be used. |
 | **`return <expr>` not checked against function signature** | Latent bug in `parseOutputFlag`. | **Checker verifies explicit return types.** Single entry point for "is this expression compatible with the function's declared return type". |
 | **Missing imports silently allowed because of hardcoded runtime paths** | Wave B2 fixed it, but not before 284 unresolved extension calls existed across 8 files. | **Imports are the only way to resolve extensions.** No hardcoded fallback in the codegen. No "did you forget an import" at link time. |
-| **`Map` before `Hashable`** | Required runtime special-casing for `Int`/`String` keys. | **Interfaces before Map.** Sequence: `Equatable`, `Hashable`, `Comparable` first, then `Map[K,V]` as a generic container requiring `Hashable`. |
+| **`Map` before `Hashable`** | Required runtime special-casing for `Int`/`String` keys. | **Traits before Map.** Sequence: `Equatable`, `Hashable`, `Comparable` traits first, then `Map[K, V]` as a generic container requiring `K: Hashable`. Iteration is insertion-order by default; sorted and unordered are explicit opt-ins. |
 | **Stdlib written around compiler bugs (pre Bug Policy)** | Bug #11 (stack frame workaround) retained in stdlib. | **Bug Policy from day one.** No workarounds in stdlib, ever. Bug found → compiler fixed → stdlib rewritten the natural way. |
 | **Plan docs expensive to maintain** | Every B-wave required the plan, the learning entry, the commit message, the status table, the memory update. | **Shared `rules.md`.** Every plan links to it instead of re-stating it. Also: tool assistance for plan updates. |
 | **Docs sprawl (18 docs, 15k lines)** | Finding the right place for a new learning was hard. | **Fewer, denser docs.** One guide. One plan (per active wave). One learning log. One ADR directory. |
@@ -1565,111 +1792,169 @@ this part and Part 1.
 
 # Part 10 — Open design questions for the Fuse3 language guide
 
-These are the questions the guide must answer. Listed in rough
-dependency order (earlier answers constrain later ones).
+These are the questions the guide must answer. Decisions already
+made during the learnings-doc review are marked **[DECIDED]** with
+a short summary and a pointer to where the details live. Remaining
+questions are listed in rough dependency order.
 
-## Foundation (must answer before anything else)
+## Foundation (mostly settled)
 
-1. **Implementation language: Go. Confirmed.** Also: is Fuse3 a
-   library embedded in a Go program, or a standalone binary that
-   compiles Fuse source to native code, or both?
+1. **Implementation language.** **[DECIDED]** Stage 1 is written
+   in Go. Go is used for its host-language leverage (strong
+   stdlib, fast iteration, stable tooling), *not* for its runtime
+   or codegen — Fuse3 does not emit Go source and does not link
+   against the Go runtime. See §1.4.
 
-2. **What does "compile to native" mean in Go?** Options:
-   - Go's `go/ssa` → Go source → `go build`. Fuse3 emits Go.
-   - Go's `go/ssa` → LLVM IR → native. Fuse3 uses a separate
-     codegen.
-   - Use Go's plugin mechanism. Fuse3 programs are Go plugins.
-   - Compile Fuse3 programs to Go source files, include them in a
-     Go module, let `go build` produce the binary.
+2. **Codegen path.** **[DECIDED]** Emit portable C99 source plus
+   a small Fuse-owned C runtime (~500 LOC target), invoke the
+   system C compiler (cc / gcc / clang / msvc) to produce native
+   binaries. `cc` is treated as an ambient OS tool, not a bundled
+   dependency. Cross-compilation works via cross-cc toolchains.
+   Options (emit Go + disable GC) and (custom backend) both
+   rejected — see §1.4 for the reasoning. The specific question
+   "what primitives does the C runtime expose?" is still open —
+   see Q14 below.
 
-3. **AST representation.** Define the node types before writing
-   anything. The typed-AST design (§4.4) hinges on this.
+3. **Module system.** **[DECIDED]** Inherit Fuse2's `import a.b.c`
+   → `src/a/b/c.fuse` one-file-per-module model. Add `pub import`
+   for explicit re-exports. Add `//!` module-level doc comments.
+   Reject trailing commas in import lists. See §1.5.
 
-4. **Module system.** Fuse2's `import a.b.c` → `src/a/b/c.fuse`
-   worked. Go's module system is different. Decide now whether
-   Fuse3 follows Fuse2's file-per-module rule or Go's
-   directory-per-package rule.
+4. **Behavioral contracts.** **[DECIDED]** Renamed from
+   `interface` to `trait` to match Rust/Mojo vocabulary and more
+   accurately describe what the construct is. `implements`
+   keyword retained. ADR-013 semantics (default methods, parent
+   composition, generic bounds, auto-generation from field
+   metadata) unchanged. See §5.2.
 
-## Language semantics (decided in Fuse2, probably transfer)
+5. **AST representation.** Define the node types before writing
+   anything. The typed-AST design (§4.4) hinges on this —
+   specifically, every node must carry its inferred type, value
+   context, and live-set after the checker pass so codegen never
+   re-infers.
 
-5. **Ownership keywords.** Keep `ref`/`mutref`/`owned`/`move`.
-   Confirm: `mutref` must appear at both call site and signature.
+## Language semantics (decided in Fuse2, probably transfer unchanged)
 
-6. **ASAP destruction.** Keep. Formalise the single-pass liveness
+6. **Ownership keywords.** Keep `ref` / `mutref` / `owned` /
+   `move`. Confirm: `mutref` must appear at both call site and
+   signature.
+
+7. **ASAP destruction.** Keep. Formalise the single-pass liveness
    algorithm as part of the type checker (§2.2, §4.3).
 
-7. **Result/Option/?/?./?:.** Keep. Add: checker must verify
-   explicit `return <expr>` against the function's return type
-   (§2.3).
+8. **Result / Option / ? / ?. / ?:.** Keep. Add: checker must
+   verify explicit `return <expr>` against the function's return
+   type (§2.3) — the `parseOutputFlag` bug class.
 
-8. **Match / when / exhaustiveness.** Keep. Formalise U1–U7
+9. **Match / when / exhaustiveness.** Keep. Formalise U1–U7
    including Never (`!`) as a real type.
 
-9. **Interfaces and `implements`.** Keep. Keep ADR-013 exactly.
-   Generate methods from field metadata at compile time.
+10. **Traits and `implements`.** Keep. Keep ADR-013 semantics
+    exactly. Generate methods from field metadata at compile time.
+    See §5.2.
 
-10. **Decorators.** Keep the list: `@value`, `@entrypoint`,
+11. **Decorators.** Keep the list: `@value`, `@entrypoint`,
     `@export`, `@rank`, `@test`, `@inline`, `@builder`,
     `@deprecated`, `@ignore`. Confirm: no behavioral decorators.
 
-11. **Data class / struct / @value.** Keep the split. Auto-generation
-    only for `data class` and `@value struct`.
+12. **Data class / struct / @value.** Keep the split.
+    Auto-generation only for `data class` and `@value struct`.
 
-12. **Generics.** Monomorphise at compile time. Type parameters on
-    free functions *and* user types. No type erasure.
+13. **Generics.** Monomorphise at compile time. Type parameters
+    on free functions *and* user types. No type erasure.
 
-13. **String operations.** Reconsider the O(n)/O(1) `charAt`/`byteAt`
-    split (§2.4). Probably: make `chars()` the default iteration
-    API, reserve `charAt`/`byteAt` for explicit performance paths.
+14. **String operations.** Reconsider the O(n) / O(1)
+    `charAt` / `byteAt` split (§2.4). Probably: make `chars()`
+    the default iteration API, reserve `charAt` / `byteAt` for
+    explicit performance paths.
 
-## Concurrency (user-flagged for from-scratch)
+## Runtime and concurrency (still open)
 
-14. **Scheduling.** Goroutines? Green threads? Both? Can they
-    coexist?
+15. **What primitives does the Fuse3 C runtime expose, minimum
+    viable?** The ~500 LOC target from §1.4 includes: malloc/free,
+    stdin/stdout/stderr via libc, file I/O, process exit,
+    OS-thread spawn (pthread_create / CreateThread), atomics
+    (C11 `<stdatomic.h>`), mutexes and rwlocks, thread-local
+    storage. The exact list of entry points is still to be
+    enumerated in the Fuse3 guide alongside the emitted-C format.
 
-15. **Channels.** Map to Go's `chan T` or define a Fuse-specific
-    wrapper? Decide now.
+16. **Scheduling.** **[TENTATIVE: OS threads first.]** §3.5
+    recommends starting with OS threads via the C runtime and
+    deferring green threads until profiling data justifies them.
+    Same decision Fuse2's ADR-014 made for Stage 2, unblocked
+    earlier.
 
-16. **`Shared<T>` runtime.** `sync.RWMutex` around a Go struct.
-    Compile-time `@rank` still load-bearing.
+17. **`Chan[T]` implementation.** Fuse-owned ring buffer (for
+    bounded) or linked list (for unbounded), guarded by a C mutex
+    + condition variable. ~100 LOC of C for the primitive plus
+    Fuse code for `.bounded(n)` / `.unbounded()` constructors.
 
-17. **Memory model.** Adopt Go's or document a stricter subset.
+18. **`Shared[T]` implementation.** Wraps the value plus a
+    `pthread_rwlock_t` / `SRWLOCK`. `.read()` / `.write()` call
+    into the C runtime. `@rank(N)` is pure compile-time in the
+    checker, emits no code.
 
-18. **`select`.** Day one. Match Go's syntax or invent Fuse-native.
+19. **Memory model.** Sequentially consistent across `Shared[T]`
+    lock acquisitions and `Chan[T]` send/recv edges. Everything
+    else is either statically forbidden by the ownership checker
+    or explicitly undefined (and the checker rejects it). Document
+    in the Fuse3 guide.
 
-19. **`spawn` capture rules.** Keep `spawn move` / `spawn ref` /
-    reject raw `mutref` capture. Mirror in the Fuse3 checker
-    on top of Go's goroutine runtime.
+20. **`select`.** Deferred to Fuse3 Wave 2. Day-one workaround is
+    `spawn` per channel + collect results. Fuse2 deferred this
+    for the same reason; Fuse3 faces the same implementation cost
+    (waiting on multiple condition variables simultaneously).
+
+21. **`spawn` capture rules.** Keep `spawn move` / `spawn ref`
+    and reject raw `mutref` capture — same as Fuse2. The Fuse3
+    checker enforces these rules on top of the C-runtime thread
+    primitives.
 
 ## Stdlib / tooling
 
-20. **Tier structure.** Keep Core / Full / Ext. Confirm Core is
+22. **Tier structure.** Keep Core / Full / Ext. Confirm Core is
     OS-free.
 
-21. **Interface set.** `Equatable`, `Hashable`, `Comparable`,
-    `Printable`, `Debuggable` are Core. `Serializable`,
-    `Encodable`, `Decodable` are Ext-tier (need `Encoder`/`Decoder`
-    types defined first).
+23. **Trait set for Core.** `Equatable`, `Hashable`, `Comparable`,
+    `Printable`, `Debuggable` in Core (day one). `Serializable`,
+    `Encodable`, `Decodable` in Ext (need `Encoder` / `Decoder`
+    types defined first — post-bootstrap).
 
-22. **Map design.** `Map[K: Hashable, V]`. Iteration order:
-    insertion or unspecified? Pick and document.
+24. **`Map[K: Hashable, V]`.** **[TENTATIVE: insertion order.]**
+    §5.4 recommends insertion-order iteration by default, with
+    explicit `sortedKeys()` / `unorderedKeys()` opt-outs. Prevents
+    the Wave B1 HashMap→BTreeMap bug class entirely.
 
-23. **FFI to Go.** How does Fuse3 call Go code? How does Go code
-    call Fuse3 code? If Fuse3 compiles to Go source, this is
-    trivial. If Fuse3 compiles via cgo or similar, it needs a
-    contract.
+25. **C runtime interop.** Fuse3 needs an FFI mechanism for
+    calling C functions (the runtime itself uses this heavily,
+    and stdlib modules for `net`, `http`, `process` etc. will
+    too). Design question: what does `extern fn` mean in Fuse3,
+    given that emitted Fuse is *already* C? Probably trivial
+    (emit the call verbatim), but the type checker needs a rule.
+    Fuse2's `extern fn` mechanism is a good starting point.
 
-24. **Testing.** `@test` decorator. Fuse3 test runner. Integration
-    with `go test`?
+26. **Testing.** `@test` decorator. Fuse3 test runner invoked
+    via `fuse test`. Is there a cross-runner story (can Go's
+    `go test` drive Fuse tests through the Stage 1 binary)? Not
+    needed day one but worth deciding.
 
-25. **LSP, formatter, linter.** Ship day one or deferred?
+27. **LSP, formatter, linter.** Ship day one or deferred? Fuse2
+    shipped an LSP in Wave 7 of pre-Stage 2, which was valuable
+    for self-host development. Recommendation: LSP day one (it
+    pays for itself), formatter day one (tiny code), linter
+    deferred until real Fuse code exists to lint.
 
 ## Meta / process
 
-26. **Bootstrapping.** Fuse3 is written in Go. At what point does
-    Fuse3 become self-hosting? Or does it never bootstrap itself?
+28. **Bootstrapping milestones.** Fuse3 is Go-hosted Stage 1 from
+    day one. Stage 2 self-hosting begins when Stage 1 can compile
+    the Fuse3 stdlib (~Wave 3 or 4 in the implementation plan).
+    Three-generation reproducibility is the Stage 2 completion
+    gate.
 
-27. **Rules doc.** Single shared file vs per-plan restatement.
+29. **Rules doc.** Single shared `rules.md` file referenced by
+    every wave plan, *not* re-stated at the top of every doc.
+    Fuse2's per-doc restatement was expensive.
 
 28. **Learning log.** Ordered append-only (Fuse2 style) or
     searchable database?
